@@ -260,12 +260,12 @@ struct pte_deconstructed {
 	};
 };
 
-static bool is_pte_valid(u64 descriptor)
+static bool is_desc_valid(u64 descriptor)
 {
 	return (descriptor & PTE_BIT_VALID) == PTE_BIT_VALID;
 }
 
-static bool is_pte_table(u64 descriptor, u64 level, bool s2)
+static bool is_desc_table(u64 descriptor, u64 level, bool s2)
 {
 	if (level == 3)
 		return false;
@@ -288,10 +288,10 @@ struct pte_deconstructed deconstruct_pte(u64 desc, u64 level, bool s2)
 {
 	struct pte_deconstructed deconstructed;
 
-	if (! is_pte_valid(desc)) {
+	if (! is_desc_valid(desc)) {
 		deconstructed.kind = PTE_KIND_INVALID;
 		return deconstructed;
-	} else if (is_pte_table(desc, level, s2)) {
+	} else if (is_desc_table(desc, level, s2)) {
 		deconstructed.kind = PTE_KIND_TABLE;
 		deconstructed.table_data.next_level_table_addr = extract_table_address(desc);
 		return deconstructed;
@@ -587,7 +587,7 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 
 static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
-	if (! is_pte_valid(val)) {
+	if (! is_desc_valid(val)) {
 		// overwrite invalid with another invalid is identity
 		return;
 	}
@@ -604,7 +604,7 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 
 static void step_write_on_invalid_unclean(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
-	if (is_pte_valid(val)) {
+	if (is_desc_valid(val)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM invalid unclean->valid");
 		return;
 	} else {
@@ -616,11 +616,12 @@ static void step_write_on_invalid_unclean(enum memory_order_t mo, struct sm_loca
 
 static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
-	if (is_pte_valid(val)) {
+	if (is_desc_valid(val)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->valid");
 		return;
 	}
 
+  // TODO:JP: maybe this is too strong, and keeping the old "valid" value
 	// can only write 0 at level~N if level~N+1 children are clean
 	if (! pre_all_reachable_clean(loc)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->invalid with unclean children");
