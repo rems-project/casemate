@@ -379,9 +379,10 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 static void traverse_pgtable(u64 root, bool s2, pgtable_traverse_cb visitor_cb, void *data)
 {
+	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
 	// TODO: concatenated s2 pagetables
-	u64 start_level = discover_start_level(s2);
+	start_level = discover_start_level(s2);
 	GHOST_LOG(root, u64);
 	GHOST_LOG(start_level, u64);
 	traverse_pgtable_from(root, root, 0, start_level, s2, visitor_cb, data);
