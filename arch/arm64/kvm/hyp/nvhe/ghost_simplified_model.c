@@ -82,6 +82,7 @@ static void ensure_blob(u64 phys)
 	// so let the first-seen checks initialise them.
 	for (int i = 0; i < SLOTS_PER_PAGE*PAGES_PER_BLOB; i++) {
 		first_free->slots[i].initialised = false;
+		first_free->slots[i].phys_addr = blob_phys + i*sizeof(u64);
 	}
 }
 
