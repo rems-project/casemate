@@ -81,8 +81,9 @@ static void ensure_blob(u64 phys)
 	// as of yet, they haven't been "seen" by the simplified model
 	// so let the first-seen checks initialise them.
 	for (int i = 0; i < SLOTS_PER_PAGE*PAGES_PER_BLOB; i++) {
-		first_free->slots[i].initialised = false;
-		first_free->slots[i].phys_addr = blob_phys + i*sizeof(u64);
+		struct sm_location *slot = &first_free->slots[i];
+		slot->initialised = false;
+		slot->phys_addr = blob_phys + i*sizeof(u64);
 	}
 }
 
@@ -105,7 +106,10 @@ struct sm_location *location(u64 phys)
 	}
 
 	// we ensured there was a blob, so we must have found it.
+	GHOST_WARN("tried to access location that wasn't in a blob");
+	ghost_assert(false);
 	unreachable();
+	return NULL;
 }
 
 /**
@@ -204,10 +208,10 @@ static u64 read_phys(u64 addr)
 
 // how much memory a map at level [N] maps
 static const u64 MAP_SIZES[] = {
-	[0] = GiB(512),
-	[1] = GiB(1),
-	[2] = MiB(2),
-	[3] = KiB(4),
+	[0] = GiB(512ULL),
+	[1] = GiB(1ULL),
+	[2] = MiB(2ULL),
+	[3] = KiB(4ULL),
 };
 
 static const u64 OA_shift[] = {
@@ -305,7 +309,6 @@ struct pte_deconstructed deconstruct_pte(u64 desc, u64 level, bool s2)
 }
 
 struct pgtable_traverse_context {
-	u64 pte_phys_addr;
 	struct sm_location *loc;
 
 	u64 descriptor;
@@ -352,7 +355,6 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 		loc = location(pte_phys);
 
-		ctxt.pte_phys_addr = pte_phys;
 		ctxt.loc = loc;
 		ctxt.descriptor = desc;
 		ctxt.deconstructed = deconstruct_pte(desc, level, s2);
@@ -377,11 +379,13 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 static void traverse_pgtable(u64 root, bool s2, pgtable_traverse_cb visitor_cb, void *data)
 {
+	GHOST_LOG_CONTEXT_ENTER();
 	// TODO: concatenated s2 pagetables
 	u64 start_level = discover_start_level(s2);
 	GHOST_LOG(root, u64);
 	GHOST_LOG(start_level, u64);
 	traverse_pgtable_from(root, root, 0, start_level, s2, visitor_cb, data);
+	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void traverse_all_s1_pgtables(pgtable_traverse_cb visitor_cb, void *data)
@@ -420,7 +424,7 @@ struct pgtable_walk_result {
 void finder_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct pgtable_walk_result *result = (struct pgtable_walk_result*)ctxt->data;
-	if (ctxt->pte_phys_addr == result->requested_pte) {
+	if (ctxt->loc->phys_addr == result->requested_pte) {
 		result->found = true;
 		result->root = ctxt->root;
 		result->deconstructed = ctxt->deconstructed;
