@@ -99,7 +99,7 @@ struct sm_location *location(u64 phys)
 	for (int i = 0; i < MAX_BLOBS; i++) {
 		struct ghost_memory_blob *blob = &the_ghost_state.memory.blobs[i];
 		if (blob->valid && blob->phys == blob_phys) {
-			struct sm_location *loc = &blob->slots[OFFSET_IN_BLOB(phys) >> SLOT_SHIFT];
+			struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
 			return loc;
 		}
 	}
