@@ -57,7 +57,7 @@ static void ensure_blob(u64 phys)
 
 	// just iterate, try find the blob
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *this = &the_ghost_state.memory[i];
+		struct ghost_memory_blob *this = &the_ghost_state.memory.blobs[i];
 		if (!this->valid) {
 			if (first_free == NULL) {
 				first_free = this;
@@ -85,14 +85,18 @@ static void ensure_blob(u64 phys)
 	}
 }
 
-struct sm_location *phys_location(u64 phys)
+/**
+ * location() - Read an address from the simplified model state.
+ * @phys: the physical address.
+ */
+struct sm_location *location(u64 phys)
 {
 	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
 	ensure_blob(phys);
 
 	// just iterate, try to find the blob
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *blob = &the_ghost_state.memory[i];
+		struct ghost_memory_blob *blob = &the_ghost_state.memory.blobs[i];
 		if (blob->valid && blob->phys == blob_phys) {
 			struct sm_location *loc = &blob->slots[OFFSET_IN_BLOB(phys) >> SLOT_SHIFT];
 			return loc;
@@ -103,31 +107,19 @@ struct sm_location *phys_location(u64 phys)
 	unreachable();
 }
 
-
 /**
- * location() - Get the simplified model ghost memory slot for a pte.
- * @hyp_virt: reference to the pte (in hyp va space).
+ * read_phys() - Read a location from the simplified model memory.
+ * @pre: if true, read-from the memory before the transition.
+ *
+ * for reading the location this transition is writing,
+ * `pre` selects reading the 'old' value of the location.
  */
-static struct sm_location *location(u64 *hyp_virt)
-{
-	u64 pa = (u64)hyp_virt_to_phys((void*)hyp_virt);
-	return phys_location(pa);
-}
-
-
-static u64 location_to_phys(struct sm_location *loc)
-{
-	return loc->addr;
-}
-
-/**
- * read_phys_pre() - Read from a physical address, from before transition.
- */
-static u64 read_phys_pre(u64 addr)
+static u64 __read_phys(u64 addr, bool pre)
 {
 	struct sm_location *loc;
 	u64 value;
 	u64 *hyp_va = (u64*)hyp_phys_to_virt((phys_addr_t)addr);
+	u64 hyp_val = *hyp_va;
 
 	// if it's not a location being tracked by the simplified model,
 	// then this is probably a mistake
@@ -136,69 +128,32 @@ static u64 read_phys_pre(u64 addr)
 	}
 
 	// otherwise, convert to index in memory and get the val
-	loc = phys_location(addr);
+	loc = location(addr);
 
 	if (! loc->initialised) {
 		// if not yet initialised
 		// assume the program was well-behaved up until now
 		// and just return the current concrete value
-		return *hyp_va;
+		return hyp_val;
 	}
 
 	value = loc->val;
 
-	// santity check:
-	// if the model thinks the value is that, make sure the real location has that too
-	// EDGE CASE: if we are currently stepping on a write to addr, then this may be newer, so skip
-	if (current_transition.kind == TRANS_MEM_WRITE && (u64)hyp_va == (u64)current_transition.write_data.hyp_va) {
-		return value;
-	} else {
-		u64 hyp_val = *hyp_va;
-		if (hyp_val != value) {
-			ghost_assert(false);
+	// EDGE CASE: if `addr` is the address this transition is writing to
+	// then the current value in the model memory will be old.
+	if (current_transition.kind == TRANS_MEM_WRITE && addr == current_transition.write_data.phys_addr) {
+		if (pre) {
+			// if want the old value, return it.
+			return value;
+		} else {
+			// otherwise, secretly return the value we are about to write.
+			// then continue with checks.
+			value = current_transition.write_data.val;
 		}
 	}
 
-	return value;
-}
-
-/**
- * read_phys() - Read from a physical address.
- */
-static u64 read_phys(u64 addr)
-{
-	struct sm_location *loc;
-	u64 value;
-	u64 hyp_val;
-	u64 *hyp_va = (u64*)hyp_phys_to_virt((phys_addr_t)addr);
-
-	// if it's not a location being tracked by the simplified model,
-	// then this is probably a mistake
-	if (! in_simplified_memory(addr)) {
-		ghost_assert(false);
-	}
-
-	// otherwise, convert to index in memory and get the val
-	loc = phys_location(addr);
-
-	if (! loc->initialised) {
-		// if not yet initialised
-		// assume the program was well-behaved up until now
-		// and just return the current concrete value
-		return *hyp_va;
-	}
-
-	value = loc->val;
-
-	// EDGE CASE: if we are currently stepping on a write to addr, then this may be old,
-	// so return whatever the current trans says
-	if (current_transition.kind == TRANS_MEM_WRITE && (u64)hyp_va == (u64)current_transition.write_data.hyp_va) {
-		value = current_transition.write_data.val;
-	}
-
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
-	hyp_val = *hyp_va;
 	if (hyp_val != value) {
 		GHOST_WARN("the simplified model detected a PTE that changed under it");
 		GHOST_LOG(hyp_va, u64);
@@ -210,6 +165,26 @@ static u64 read_phys(u64 addr)
 	return value;
 }
 
+/**
+ * read_phys_pre() - Read a physical address from the simplified model memory.
+ *
+ * This reads from the state just before the transition.
+ * i.e. if this transition is a write to a location,
+ * then this returns the previous value for that location.
+ */
+static u64 read_phys_pre(u64 addr)
+{
+	return __read_phys(addr, true);
+}
+
+/**
+ * read_phys() - Read a physical address from the simplified model memory.
+ */
+static u64 read_phys(u64 addr)
+{
+	return __read_phys(addr, false);
+}
+
 //////////////////////
 // pagetable traversal
 
@@ -218,9 +193,9 @@ static u64 read_phys(u64 addr)
 #define PTE_BITS_TABLE_POINTER GENMASK(47, 12)
 #define PTE_BIT_OA_MSB 47
 
-#define KiB_SHIFT 10
-#define MiB_SHIFT 20
-#define GiB_SHIFT 30
+#define KiB_SHIFT 10ULL
+#define MiB_SHIFT 20ULL
+#define GiB_SHIFT 30ULL
 
 #define KiB(n) ((n) << KiB_SHIFT)
 #define MiB(n) ((n) << MiB_SHIFT)
@@ -374,7 +349,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		desc = read_phys(pte_phys);
 		GHOST_LOG(desc, u64);
 
-		loc = phys_location(pte_phys);
+		loc = location(pte_phys);
 
 		ctxt.pte_phys_addr = pte_phys;
 		ctxt.loc = loc;
@@ -521,14 +496,14 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 		return true;
 
 	// if we have a pte, find it in the parent tree
-	pte = find_pte(loc->addr);
+	pte = find_pte(loc->phys_addr);
 	if (! pte.found) {
 		// TODO: BS: probably on invalidating with children need to un-is_pte them.
 		GHOST_WARN("loc.is_pte should imply existence in pgtable");
 		ghost_assert(false);
 	}
 
-	desc = deconstruct_pte(read_phys_pre(loc->addr), pte.level, pte.s2);
+	desc = deconstruct_pte(read_phys_pre(loc->phys_addr), pte.level, pte.s2);
 	if (desc.kind != PTE_KIND_TABLE) {
 		return true;
 	}
@@ -553,14 +528,12 @@ void marker_cb(struct pgtable_traverse_context *ctxt)
 		// initialise it and copy in the value
 		loc->initialised = true;
 		loc->val = ctxt->descriptor;
-		loc->is_pte = false;
-	}
-
-	if (loc->is_pte) {
+	} else if (loc->is_pte) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("double-use pte");
 	}
 
-
+	// mark that this location is now an active pte
+	// and start following the automata
 	loc->is_pte = true;
 	loc->owner_root = ctxt->root;
 	loc->state = initial_state(ctxt->descriptor, ctxt->level, ctxt->s2);
@@ -657,7 +630,7 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	loc->state.kind = STATE_PTE_INVALID_UNCLEAN;
 	loc->state.invalid_unclean_state = (struct aut_invalid) {
 		.invalidator_tid = cpu_id(),
-		.old_valid_desc = read_phys_pre(location_to_phys(loc)),
+		.old_valid_desc = read_phys_pre(loc->phys_addr),
 	};
 
 	// TODO: BS: this really can't be written in the compound literal above?
@@ -672,7 +645,7 @@ static void step_write(struct ghost_simplified_model_transition trans)
 	u64 val = trans.write_data.val;
 
 	// look inside memory at `addr`
-	struct sm_location *loc = location(trans.write_data.hyp_va);
+	struct sm_location *loc = location(trans.write_data.phys_addr);
 
 	if (!loc->is_pte) {
 		goto done;
@@ -703,12 +676,12 @@ done:
 
 static void step_read(struct ghost_simplified_model_transition trans)
 {
-	struct sm_location *loc = location(trans.write_data.hyp_va);
+	struct sm_location *loc = location(trans.write_data.phys_addr);
 
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
 	// (the read_phys already does this check, but it's never bad to double check).
-	ghost_assert(read_phys(location_to_phys(loc)) != loc->val);
+	ghost_assert(read_phys(loc->phys_addr) != loc->val);
 }
 
 /////////////////
@@ -887,7 +860,7 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 	the_ghost_state.base_addr = phys;
 	the_ghost_state.size = size;
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		the_ghost_state.memory[i].valid = false;
+		the_ghost_state.memory.blobs[i].valid = false;
 	}
 	register_s1_root(extract_s1_root(read_sysreg(ttbr0_el2)));
 	is_initialised = true;
@@ -907,7 +880,7 @@ void print_write_trans(struct trans_write_data *write_data)
 		hyp_putsp("rel");
 	}
 	hyp_putsp(" ");
-	hyp_putx64((u64)write_data->hyp_va);
+	hyp_putx64((u64)write_data->phys_addr);
 	hyp_putsp(" ");
 	hyp_putx64(write_data->val);
 }
@@ -916,7 +889,7 @@ void print_read_trans(struct trans_read_data *read_data)
 {
 	hyp_putsp("R");
 	hyp_putsp(" ");
-	hyp_putx64((u64)read_data->hyp_va);
+	hyp_putx64((u64)read_data->phys_addr);
 	hyp_putsp(" (=");
 	hyp_putx64(read_data->val);
 	hyp_putsp(")");

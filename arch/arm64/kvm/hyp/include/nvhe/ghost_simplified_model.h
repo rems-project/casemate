@@ -94,16 +94,17 @@ struct sm_pte_state {
 
 
 /**
- * struct sm_location - State for a doubleword of memory.
+ * struct sm_location - A (64-bit) Location in the simplified model memory.
  * @initialised: whether this mem block has been initialised.
- * @val: if initialised, current value.
- * @is_pte: if initialised, whether this location is currently being tracked and treated as a PTE.
- * @state: if initialised and is_pte, the current automata state for this location.
- * @owner_root: if initialised, the root of the logical tree that owns this location.
+ * @phys_addr: the physical address of this location.
+ * @val: if initialised, value stored by model for this location.
+ * @is_pte: if initialised, whether this location is tracked as a PTE.
+ * @state: if initialised and is_pte, the automata state for this location.
+ * @owner_root: if initialised, the root of the tree that owns this location.
  */
 struct sm_location {
 	bool initialised;
-	u64 addr;
+	u64 phys_addr;
 	u64 val;
 	bool is_pte;
 	struct sm_pte_state state;
@@ -132,6 +133,12 @@ struct sm_location {
 
 /**
  * struct ghost_memory_blob - An arbitrary (aligned) blob of memory.
+ * @valid: whether this blob is being used.
+ * @phys: if valid, the physical address of the start of this region.
+ * @slots: if valid, the array of memory locations within this region.
+ *
+ * Each blob is a aligned and contiguous 2MiB (1 << BLOB_SHIFT) region of memory
+ * and the whole simplified model memory is a set of blobs.
  */
 struct ghost_memory_blob {
 	bool valid;
@@ -140,10 +147,23 @@ struct ghost_memory_blob {
 };
 
 /**
+ * struct ghost_simplified_memory - simplfiied model memory.
+ * @blobs: the set of memory blobs.
+ */
+struct ghost_simplified_memory {
+	struct ghost_memory_blob blobs[MAX_BLOBS];
+};
+
+/**
+ * location() - Retrieve the simplified-model memory for a given physical address
+ */
+struct sm_location *location(u64 phys);
+
+/**
  * struct ghost_simplified_model_state - Top-level simplified model state.
  * @base_addr: the physical address of the start of the (simplified) memory.
  * @size: the number of bytes in the simplified memory to track.
- * @memory: ghost memory.
+ * @memory: the actual simplified model memory.
  * @nr_s1_roots: number of EL2 stage1 pagetable roots being tracked.
  * @s1_roots: set of known EL2 stage1 pagetable roots.
  * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
@@ -152,7 +172,7 @@ struct ghost_memory_blob {
 struct ghost_simplified_model_state {
 	u64 base_addr;
 	u64 size;
-	struct ghost_memory_blob memory[MAX_BLOBS];
+	struct ghost_simplified_memory memory;
 
 	u64 nr_s2_roots;
 	u64 s2_roots[MAX_ROOTS];
@@ -160,12 +180,6 @@ struct ghost_simplified_model_state {
 	u64 nr_s1_roots;
 	u64 s1_roots[MAX_ROOTS];
 };
-
-
-/**
- * phys_location() - Retrieve the simplified-model memory for a given physical address
- */
-struct sm_location *phys_location(u64 phys);
 
 enum memory_order_t {
 	WMO_plain,
@@ -228,12 +242,12 @@ struct ghost_simplified_model_transition {
 	union {
 		struct trans_write_data {
 			enum memory_order_t mo;
-			u64 *hyp_va;
+			u64 phys_addr;
 			u64 val;
 		} write_data;
 
 		struct trans_read_data {
-			u64 *hyp_va;
+			u64 phys_addr;
 			u64 val;
 		} read_data;
 
@@ -267,24 +281,24 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 //////////////
 // Step helpers
 
-static inline void ghost_simplified_model_step_write(enum memory_order_t mo, kvm_pte_t *pte, u64 val)
+static inline void ghost_simplified_model_step_write(enum memory_order_t mo, phys_addr_t phys, u64 val)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.kind = TRANS_MEM_WRITE,
 		.write_data = (struct trans_write_data){
 			.mo = mo,
-			.hyp_va = (u64 *)pte,
+			.phys_addr = phys,
 			.val = val,
 		},
 	});
 }
 
-static inline void ghost_simplified_model_step_read(u64 *addr, u64 val)
+static inline void ghost_simplified_model_step_read(phys_addr_t phys, u64 val)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.kind = TRANS_MEM_READ,
 		.read_data = (struct trans_read_data){
-			.hyp_va = addr,
+			.phys_addr = phys,
 			.val = val,
 		},
 	});
