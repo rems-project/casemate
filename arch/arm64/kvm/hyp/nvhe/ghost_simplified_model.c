@@ -372,7 +372,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		default:
 			;
 		}
-		GHOST_LOG_CONTEXT_EXIT();
+		GHOST_LOG_CONTEXT_EXIT_INNER("loop");
 	}
 	GHOST_LOG_CONTEXT_EXIT();
 }
