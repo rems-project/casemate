@@ -629,6 +629,17 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 		// if this was the first time we saw it
 		// initialise it and copy in the value
 		loc->initialised = true;
+
+		// we didn't see a previous write transition for this location
+		// (otherwise it'd have been marked as initialised)
+		// so attach the value now.
+
+		// sanity check: we really aren't writing to it ...
+		if (current_transition.kind == TRANS_MEM_WRITE && current_transition.write_data.phys_addr == loc->phys_addr)
+			ghost_assert(false);
+
+
+		loc->val = ctxt->descriptor;
 	} else if (loc->is_pte) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("double-use pte");
 	}
@@ -929,6 +940,8 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 		return;
 	}
 
+	GHOST_LOG_CONTEXT_ENTER();
+
 	aut = loc->state.invalid_unclean_state;
 	old = aut.old_valid_desc;
 	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.s2);
@@ -946,12 +959,16 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 
 		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.s2, unmark_cb, NULL);
 	}
+
+	GHOST_LOG_CONTEXT_EXIT();
 }
 
 
 static void step_pte_on_tlbi(struct sm_location *loc)
 {
 	thread_identifier this_cpu = cpu_id();
+
+	ghost_assert(loc->initialised);
 
 	// if this was a table entry
 	// there may have been children that we were still tracking
@@ -1007,10 +1024,13 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
+	GHOST_LOG_CONTEXT_ENTER();
+
 	if (should_perform_tlbi(ctxt)) {
 		step_pte_on_tlbi(loc);
 	}
 
+	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void step_tlbi(struct ghost_simplified_model_transition trans)
