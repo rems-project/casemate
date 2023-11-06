@@ -4,6 +4,8 @@
 #include <linux/types.h>
 #include <asm/kvm_pgtable.h>
 
+#include <nvhe/spinlock.h>
+
 #include <nvhe/ghost_asserts.h>
 
 
@@ -15,6 +17,14 @@
 #define ID_STRING(x) [x]=#x
 
 typedef int thread_identifier;
+
+/**
+ * typedef sm_owner_t - ID for ownership
+ *
+ * If two locations have the same owner,
+ * then they belong to the same pagetable.
+ */
+typedef u64 sm_owner_t;
 
 thread_identifier cpu_id(void);
 
@@ -100,7 +110,7 @@ struct sm_pte_state {
  * @val: if initialised, value stored by model for this location.
  * @is_pte: if initialised, whether this location is tracked as a PTE.
  * @state: if initialised and is_pte, the automata state for this location.
- * @owner_root: if initialised, the root of the tree that owns this location.
+ * @owner: if initialised, the root of the tree that owns this location.
  */
 struct sm_location {
 	bool initialised;
@@ -108,7 +118,7 @@ struct sm_location {
 	u64 val;
 	bool is_pte;
 	struct sm_pte_state state;
-	u64 owner_root;
+	sm_owner_t owner;
 };
 
 /*
@@ -161,6 +171,24 @@ struct ghost_simplified_memory {
  */
 struct sm_location *location(u64 phys);
 
+#define GHOST_SIMPLIFIED_MODEL_MAX_LOCKS 16
+
+/**
+ * struct owner_locks - Map of owner root to lock.
+ */
+struct owner_locks {
+	u64 len;
+	sm_owner_t owner_ids[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+	hyp_spinlock_t *locks[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+};
+
+/**
+ * owner_lock() - Get hyp spinlock for an owner.
+ *
+ * Returns NULL if no lock for that owner_id.
+ */
+hyp_spinlock_t *owner_lock(sm_owner_t owner_id);
+
 /**
  * struct ghost_simplified_model_state - Top-level simplified model state.
  * @base_addr: the physical address of the start of the (simplified) memory.
@@ -181,7 +209,22 @@ struct ghost_simplified_model_state {
 
 	u64 nr_s1_roots;
 	u64 s1_roots[MAX_ROOTS];
+
+	struct owner_locks locks;
 };
+
+/**
+ * struct ghost_simplified_model_options - Global configuration of simplified model behaviour
+ *
+ * Provides selective enabling/disabling of supported behaviours.
+ */
+struct ghost_simplified_model_options {
+	/**
+	 * @promote_DSB_nsh - Silently promote all DSB NSH to DSB ISH
+	 */
+	bool promote_DSB_nsh;
+};
+
 
 enum memory_order_t {
 	WMO_plain,
@@ -228,6 +271,14 @@ enum ghost_simplified_model_transition_kind {
 	TRANS_ISB,
 	TRANS_TLBI,
 	TRANS_MSR,
+
+	/**
+	 * @TRANS_HINT - A non-hardware-model transition
+	 * These generally provide additional information to the simplified model,
+	 * such as ownership,
+	 * to resolve otherwise unbounded non-determinism
+	 */
+	TRANS_HINT,
 };
 
 enum ghost_sysreg_kind {
@@ -238,6 +289,23 @@ static const char *sysreg_names[] = {
 	ID_STRING(SYSREG_VTTBR),
 	ID_STRING(SYSREG_TTBR_EL2),
 };
+
+enum ghost_hint_kind {
+	/**
+	 * @GHOST_HINT_SET_ROOT_LOCK - Set the hyp_spinlock_t* owning a pgtable root.
+	 */
+	GHOST_HINT_SET_ROOT_LOCK,
+
+	/**
+	 * @GHOST_HINT_SET_OWNER_ROOT - Set the pgtable root which owns a pte
+	 */
+	GHOST_HINT_SET_OWNER_ROOT,
+};
+static const char *hint_names[] = {
+	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
+	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
+};
+
 
 struct ghost_simplified_model_transition {
 	enum ghost_simplified_model_transition_kind kind;
@@ -265,15 +333,25 @@ struct ghost_simplified_model_transition {
 			enum ghost_sysreg_kind sysreg;
 			u64 val;
 		} msr_data;
+
+		struct trans_hint_data {
+			enum ghost_hint_kind hint_kind;
+			u64 location;
+			u64 value;
+		} hint_data;
 	};
 };
 void GHOST_transprinter(void *p);
 
 
 /**
- * initialise_ghost_ptes_memory() - One-shot initialisation of simplified model state.
+ * initialise_ghost_simplified_model() - One-shot initialisation of simplified model state.
+ * @phys: the start physical address of the memory given to pKVM.
+ * @size: the size of the region of physical address space given to pKVM.
+ *
+ * `phys` and `size` should be those passed to __pkvm_init
  */
-void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size);
+void initialise_ghost_simplified_model(phys_addr_t phys, u64 size);
 
 /**
  * ghost_simplified_model_step() - Take a step in the simplified model.
@@ -350,6 +428,18 @@ static inline void ghost_simplified_model_step_msr(enum ghost_sysreg_kind sysreg
 		.msr_data = (struct trans_msr_data){
 			.sysreg = sysreg,
 			.val = val,
+		},
+	});
+}
+
+static inline void ghost_simplified_model_step_hint(enum ghost_hint_kind kind, u64 location, u64 value)
+{
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.kind = TRANS_HINT,
+		.hint_data = (struct trans_hint_data){
+			.hint_kind = kind,
+			.location = location,
+			.value = value,
 		},
 	});
 }

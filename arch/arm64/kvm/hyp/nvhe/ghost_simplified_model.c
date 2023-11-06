@@ -15,6 +15,7 @@
  * the actual state
  */
 struct ghost_simplified_model_state the_ghost_state;
+struct ghost_simplified_model_options ghost_sm_options;
 struct ghost_simplified_model_transition current_transition;
 bool is_initialised = false;
 
@@ -471,7 +472,114 @@ struct sm_pte_state initial_state(u64 desc, u64 level, bool s2)
 	return state;
 }
 
+////////////////////
+// Locks
 
+hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
+{
+	for (int i = 0; i < the_ghost_state.locks.len; i++) {
+		if (the_ghost_state.locks.owner_ids[i] == owner_id) {
+			return the_ghost_state.locks.locks[i];
+		}
+	}
+
+	return NULL;
+}
+
+static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	struct owner_locks *locks = &the_ghost_state.locks;
+
+	if (! owner_lock(root)) {
+		ghost_assert(false);
+	}
+
+	for (int i = 0; i < the_ghost_state.locks.len; i++) {
+		if (locks->owner_ids[i] == root) {
+			locks->locks[i] = lock;
+			return;
+		}
+	}
+
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't change lock on unlocked location");
+}
+
+static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	u64 i;
+
+	if (owner_lock(root)) {
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't append lock on already locked location");
+		unreachable();
+	}
+
+	i = the_ghost_state.locks.len++;
+	the_ghost_state.locks.owner_ids[i] = root;
+	the_ghost_state.locks.locks[i] = lock;
+}
+
+static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	if (owner_lock(root)) {
+		swap_lock(root, lock);
+	} else {
+		append_lock(root, lock);
+	}
+}
+
+struct owner_check_data {
+	u64 phys;
+	sm_owner_t *out;
+	bool owned;
+};
+
+void check_owner_cb(struct pgtable_traverse_context *ctxt)
+{
+	struct owner_check_data *data = (struct owner_check_data*)ctxt->data;
+
+	if (ctxt->loc->phys_addr == data->phys) {
+		if (data->owned) {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("double-use pte");
+		}
+
+		data->owned = true;
+		*data->out = ctxt->root;
+	}
+}
+
+/**
+ * owner() - Retrieve the current owner (if any)
+ * @phys: the physical address to retrieve the owner of.
+ * @out: pointer to write back owner id to.
+ *
+ * Returns true if the location is owned.
+ * When returning true, writes the owner id to the `out` location.
+ */
+bool owner(u64 phys, sm_owner_t *out)
+{
+	struct owner_check_data data = {.phys=phys, .out=out, .owned=false};
+	traverse_all_pgtables(check_owner_cb, &data);
+	return data.owned;
+}
+
+/**
+ * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
+ */
+void assert_owner_locked(u64 phys)
+{
+	sm_owner_t owner_id;
+	bool owned = owner(phys, &owner_id);
+
+	if (! owned) {
+		return;
+	} else {
+		hyp_spinlock_t *lock = owner_lock(owner_id);
+		ghost_assert(lock);  // can't have written without associating the owner.
+
+		if (!hyp_spin_is_locked(lock))
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
+	}
+}
 ////////////////////
 // Reachability
 
@@ -522,6 +630,8 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 	return all_clean;
 }
 
+
+
 ////////////////////
 // Step write sysreg
 
@@ -541,13 +651,36 @@ void marker_cb(struct pgtable_traverse_context *ctxt)
 	// mark that this location is now an active pte
 	// and start following the automata
 	loc->is_pte = true;
-	loc->owner_root = ctxt->root;
+	loc->owner = ctxt->root;
 	loc->state = initial_state(ctxt->descriptor, ctxt->level, ctxt->s2);
+}
+
+static bool s1_root_exists(phys_addr_t root)
+{
+	for (int i = 0; i < the_ghost_state.nr_s1_roots; i++) {
+		if (the_ghost_state.s1_roots[i] == root)
+			return true;
+	}
+
+	return false;
+}
+
+static bool s2_root_exists(phys_addr_t root)
+{
+	for (int i = 0; i < the_ghost_state.nr_s2_roots; i++) {
+		if (the_ghost_state.s2_roots[i] == root)
+			return true;
+	}
+
+	return false;
 }
 
 static void register_s2_root(phys_addr_t root)
 {
 	GHOST_LOG_CONTEXT_ENTER();
+	if (s1_root_exists(root) || s2_root_exists(root))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
+
 	// TODO: VMIDs
 	the_ghost_state.s2_roots[the_ghost_state.nr_s2_roots++] = root;
 	traverse_pgtable(root, true, marker_cb, NULL);
@@ -557,6 +690,9 @@ static void register_s2_root(phys_addr_t root)
 static void register_s1_root(phys_addr_t root)
 {
 	GHOST_LOG_CONTEXT_ENTER();
+	if (s1_root_exists(root) || s2_root_exists(root))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
+
 	the_ghost_state.s1_roots[the_ghost_state.nr_s1_roots++] = root;
 	traverse_pgtable(root, false, marker_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
@@ -577,19 +713,42 @@ static phys_addr_t extract_s1_root(u64 ttb)
 
 static void step_msr(struct ghost_simplified_model_transition trans)
 {
+	u64 root;
 	switch (trans.msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
-		register_s1_root(extract_s1_root(trans.msr_data.val));
+		root = extract_s1_root(trans.msr_data.val);
+
+		if (!s1_root_exists(root))
+			register_s1_root(root);
+
 		break;
 	case SYSREG_VTTBR:
-		register_s2_root(extract_s2_root(trans.msr_data.val));
+		root = extract_s2_root(trans.msr_data.val);
+
+		if (!s2_root_exists(root))
+			register_s2_root(root);
+
 		break;
 	}
-
 }
 
 ////////////////////////
 // Step on memory write
+
+/*
+ * when writing a new table entry
+ * must ensure that the child table(s) are all clean
+ */
+static void check_all_children_clean(struct sm_location *loc)
+{
+	struct pgtable_walk_result r = find_pte(loc->phys_addr);
+	if (r.found && r.deconstructed.kind == PTE_KIND_TABLE) {
+		if (! pre_all_reachable_clean(loc)) {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
+		}
+	}
+}
+
 
 static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
@@ -597,6 +756,10 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 		// overwrite invalid with another invalid is identity
 		return;
 	}
+
+	// check that if we're writing a TABLE entry
+	// that the new tables are all 'good'
+	check_all_children_clean(loc);
 
 	// invalid -> valid
 	loc->state.kind = STATE_PTE_VALID;
@@ -624,13 +787,6 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 {
 	if (is_desc_valid(val)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->valid");
-		return;
-	}
-
-  // TODO:JP: maybe this is too strong, and keeping the old "valid" value
-	// can only write 0 at level~N if level~N+1 children are clean
-	if (! pre_all_reachable_clean(loc)) {
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->invalid with unclean children");
 		return;
 	}
 
@@ -701,7 +857,13 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 	enum dsb_kind dsb_kind = *(enum dsb_kind *)ctxt->data;
 
 	if (dsb_kind == DSB_nsh) {
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("DSB NSH not supported");
+		if (ghost_sm_options.promote_DSB_nsh) {
+			// silence noisy warning...
+			// GHOST_WARN("DSB NSH not supported -- Assuming DSB ISH");
+			dsb_kind = DSB_ish;
+		} else {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Unsupported DSB NSH");
+		}
 	}
 
 	// we just did a DSB:
@@ -759,12 +921,10 @@ static void step_pte_on_tlbi(struct sm_location *loc)
 	}
 }
 
-static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
+static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 {
 	u64 tlbi_addr;
-	struct sm_location *loc = ctxt->loc;
 	struct trans_tlbi_data *tlbi_data = (struct trans_tlbi_data*)ctxt->data;
-
 
 	switch (tlbi_data->tlbi_kind) {
 	// if by VA
@@ -776,7 +936,7 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 		 * then don't try step the pte.
 		 */
 		if (! (ctxt->leaf && (ctxt->partial_ia <= tlbi_addr) && (tlbi_addr < ctxt->partial_ia + ctxt->ia_region_size))) {
-			return;
+			return false;
 		}
 
 		break;
@@ -785,7 +945,16 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 		;
 	}
 
-	step_pte_on_tlbi(loc);
+	return true;
+}
+
+static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+
+	if (should_perform_tlbi(ctxt)) {
+		step_pte_on_tlbi(loc);
+	}
 
 }
 
@@ -801,7 +970,10 @@ static void step_tlbi(struct ghost_simplified_model_transition trans)
 		break;
 	// TODO: other TLBIs
 	default:
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("unsupported TLBI");
+		GHOST_WARN("unsupported TLBI -- Defaulting to TLBI VMALLS12E1IS;TLBI ALLE2");
+		traverse_all_s1_pgtables(tlbi_visitor, &trans.tlbi_data);
+		traverse_all_s2_pgtables(tlbi_visitor, &trans.tlbi_data);
+		break;
 	}
 }
 
@@ -813,6 +985,42 @@ static void step_isb(struct ghost_simplified_model_transition trans)
 	// ISB is a NOP?
 }
 
+
+//////////////////////
+// HINT
+
+static void step_hint_set_root_lock(u64 root, hyp_spinlock_t *lock)
+{
+	// TODO: BS: on teardown a VM's lock might get disassociated,
+	// then re-associated later with a different lock.
+	//
+	// currently this just swaps the lock over without any safety checks.
+	associate_lock(root, lock);
+}
+
+static void step_hint_set_owner_root(u64 phys, sm_owner_t root)
+{
+	struct sm_location *loc = location(phys);
+
+	// TODO: BS: before letting us disassociate a pte with a given VM/tree,
+	// first we need to check that it's clean enough to forget about
+	// the association with the old VM
+	loc->owner = root;
+}
+
+static void step_hint(struct ghost_simplified_model_transition trans)
+{
+	switch (trans.hint_data.hint_kind) {
+	case GHOST_HINT_SET_ROOT_LOCK:
+		step_hint_set_root_lock(trans.hint_data.location, (hyp_spinlock_t *)trans.hint_data.value);
+		break;
+	case GHOST_HINT_SET_OWNER_ROOT:
+		step_hint_set_owner_root(trans.hint_data.location, (sm_owner_t)trans.hint_data.value);
+		break;
+	default:
+		;
+	}
+}
 
 ///////////////////////////
 /// Generic Step
@@ -849,6 +1057,9 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 	case TRANS_MSR:
 		step_msr(trans);
 		break;
+	case TRANS_HINT:
+		step_hint(trans);
+		break;
 	};
 
 	GHOST_LOG_CONTEXT_EXIT();
@@ -861,21 +1072,73 @@ unlock:
 //////////////////////////
 // Initialisation
 
-void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
-	lock_sm();
+static void initialise_ghost_simplified_model_options(void)
+{
+	ghost_sm_options.promote_DSB_nsh = true;
+}
+
+static void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 	GHOST_LOG_CONTEXT_ENTER();
 	the_ghost_state.base_addr = phys;
 	the_ghost_state.size = size;
 	for (int i = 0; i < MAX_BLOBS; i++) {
 		the_ghost_state.memory.blobs[i].valid = false;
 	}
-	register_s1_root(extract_s1_root(read_sysreg(ttbr0_el2)));
 	is_initialised = true;
 	GHOST_LOG_CONTEXT_EXIT();
-	unlock_sm();
+}
+
+/*
+ * one-time synchronisation between the concrete memory
+ * and the ghost simplified memory at the beginning of time.
+ */
+static void sync_simplified_model_memory(void)
+{
+	u64 pkvm_pgd;
+
+	GHOST_LOG_CONTEXT_ENTER();
+	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
+	register_s1_root(pkvm_pgd);
+	GHOST_LOG_CONTEXT_EXIT();
+}
+
+/*
+ * perform some first-time ghost hint transitions
+ */
+static void initialise_ghost_hint_transitions(void)
+{
+	u64 pkvm_pgd;
+	extern hyp_spinlock_t pkvm_pgd_lock;
+
+	GHOST_LOG_CONTEXT_ENTER();
+	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
+	step_hint((struct ghost_simplified_model_transition){
+		.kind = TRANS_HINT,
+		.hint_data = (struct trans_hint_data){
+			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
+			.location = pkvm_pgd,
+			.value = (u64)&pkvm_pgd_lock,
+		},
+	});
+	GHOST_LOG_CONTEXT_EXIT();
 }
 
 
+void initialise_ghost_simplified_model(phys_addr_t phys, u64 size)
+{
+	lock_sm();
+	GHOST_LOG_CONTEXT_ENTER();
+
+	initialise_ghost_simplified_model_options();
+	initialise_ghost_ptes_memory(phys, size);
+
+	/* we can now start taking model steps */
+	initialise_ghost_hint_transitions();
+	sync_simplified_model_memory();
+
+	GHOST_LOG_CONTEXT_EXIT();
+	unlock_sm();
+}
 
 //////////////////////////////
 //// MISC
@@ -934,6 +1197,24 @@ void print_msr_trans(struct trans_msr_data *msr_data)
 	hyp_putx64(msr_data->val);
 }
 
+void print_hint_trans(struct trans_hint_data *hint_data)
+{
+	hyp_putsp("HINT");
+	hyp_putsp(" ");
+	hyp_putsp((char *)hint_names[hint_data->hint_kind]);
+
+	switch (hint_data->hint_kind) {
+	case GHOST_HINT_SET_ROOT_LOCK:
+		hyp_putsp(" ");
+		hyp_putx64(hint_data->location);
+		hyp_putsp(" ");
+		hyp_putx64(hint_data->value);
+		break;
+	default:
+		;
+	}
+}
+
 // A helper for the GHOST_LOG and GHOST_WARN macros
 // to print out a whole simplified model transition
 void GHOST_transprinter(void *data)
@@ -957,6 +1238,9 @@ void GHOST_transprinter(void *data)
 		break;
 	case TRANS_MSR:
 		print_msr_trans(&trans->msr_data);
+		break;
+	case TRANS_HINT:
+		print_hint_trans(&trans->hint_data);
 		break;
 	};
 }
