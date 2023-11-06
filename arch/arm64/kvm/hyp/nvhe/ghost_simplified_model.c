@@ -245,27 +245,6 @@ static u64 discover_start_level(bool s2)
 	}
 }
 
-
-enum pte_kind {
-	PTE_KIND_TABLE,
-	PTE_KIND_MAP,  /* BLOCK,PAGE */
-	PTE_KIND_INVALID,
-};
-
-struct pte_deconstructed {
-	enum pte_kind kind;
-	union {
-		struct {
-			u64 next_level_table_addr;
-		} table_data;
-
-		struct {
-			u64 region_start;
-			u64 region_size;
-		} map_data;
-	};
-};
-
 static bool is_desc_valid(u64 descriptor)
 {
 	return (descriptor & PTE_BIT_VALID) == PTE_BIT_VALID;
@@ -290,9 +269,17 @@ static u64 extract_table_address(u64 desc)
 	return desc & PTE_BITS_TABLE_POINTER;
 }
 
-struct pte_deconstructed deconstruct_pte(u64 desc, u64 level, bool s2)
+struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, bool s2)
 {
-	struct pte_deconstructed deconstructed;
+	struct ghost_exploded_descriptor deconstructed;
+
+	deconstructed.ia_region = (struct ghost_addr_range){
+		.range_start = partial_ia,
+		.range_size = MAP_SIZES[level],
+	};
+	deconstructed.level = level;
+	deconstructed.s2 = s2;
+
 
 	if (! is_desc_valid(desc)) {
 		deconstructed.kind = PTE_KIND_INVALID;
@@ -303,8 +290,10 @@ struct pte_deconstructed deconstruct_pte(u64 desc, u64 level, bool s2)
 		return deconstructed;
 	} else {
 		deconstructed.kind = PTE_KIND_MAP;
-		deconstructed.map_data.region_start = extract_output_address(desc, level);
-		deconstructed.map_data.region_size = MAP_SIZES[level];
+		deconstructed.map_data.oa_region = (struct ghost_addr_range){
+			.range_start = extract_output_address(desc, level),
+			.range_size = MAP_SIZES[level],
+		};
 		return deconstructed;
 	}
 }
@@ -316,9 +305,7 @@ struct pgtable_traverse_context {
 	u64 level;
 	bool leaf;
 
-	u64 partial_ia;
-	u64 ia_region_size;
-	struct pte_deconstructed deconstructed;
+	struct ghost_exploded_descriptor exploded_descriptor;
 
 	u64 root;
 	bool s2;
@@ -358,15 +345,13 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 		ctxt.loc = loc;
 		ctxt.descriptor = desc;
-		ctxt.deconstructed = deconstruct_pte(desc, level, s2);
-		ctxt.leaf = ctxt.deconstructed.kind != PTE_KIND_TABLE;
-		ctxt.ia_region_size = MAP_SIZES[level];
-		ctxt.partial_ia = partial_ia + i*ctxt.ia_region_size;
+		ctxt.exploded_descriptor = deconstruct_pte(partial_ia, desc, level, s2);
+		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
 
-		switch (ctxt.deconstructed.kind) {
+		switch (ctxt.exploded_descriptor.kind) {
 		case PTE_KIND_TABLE:
-			traverse_pgtable_from(root, ctxt.deconstructed.table_data.next_level_table_addr, ctxt.partial_ia, level+1, s2, visitor_cb, data);
+			traverse_pgtable_from(root, ctxt.exploded_descriptor.table_data.next_level_table_addr, ctxt.exploded_descriptor.ia_region.range_size, level+1, s2, visitor_cb, data);
 			break;
 		case PTE_KIND_MAP:
 		case PTE_KIND_INVALID:
@@ -415,7 +400,7 @@ struct pgtable_walk_result {
 	u64 requested_pte;
 	bool found;
 
-	struct pte_deconstructed deconstructed;
+	struct ghost_exploded_descriptor descriptor;
 
 	u64 root;
 	bool s2;
@@ -429,7 +414,7 @@ void finder_cb(struct pgtable_traverse_context *ctxt)
 	if (ctxt->loc->phys_addr == result->requested_pte) {
 		result->found = true;
 		result->root = ctxt->root;
-		result->deconstructed = ctxt->deconstructed;
+		result->descriptor = ctxt->exploded_descriptor;
 		result->s2 = ctxt->s2;
 		result->level = ctxt->level;
 	}
@@ -449,10 +434,10 @@ struct pgtable_walk_result find_pte(u64 pte)
 /**
  * initial_state() - Construct an initial sm_pte_state for a clean descriptor.
  */
-struct sm_pte_state initial_state(u64 desc, u64 level, bool s2)
+struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, bool s2)
 {
 	struct sm_pte_state state;
-	struct pte_deconstructed deconstructed = deconstruct_pte(desc, level, s2);
+	struct ghost_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, s2);
 	switch (deconstructed.kind) {
 	case PTE_KIND_INVALID:
 		state.kind = STATE_PTE_INVALID;
@@ -602,40 +587,42 @@ static void clean_reachability_checker_cb(struct pgtable_traverse_context *ctxt)
  */
 static bool pre_all_reachable_clean(struct sm_location *loc)
 {
-	struct pgtable_walk_result pte;
-	struct pte_deconstructed desc;
 	bool all_clean;
 
 	if (! loc->is_pte)
 		return true;
 
-	// if we have a pte, find it in the parent tree
-	pte = find_pte(loc->phys_addr);
-	if (! pte.found) {
-		// TODO: BS: probably on invalidating with children need to un-is_pte them.
-		GHOST_WARN("loc.is_pte should imply existence in pgtable");
-		ghost_assert(false);
+	// sanity check: it's actually in a tree somewhere...
+	{
+		struct pgtable_walk_result pte = find_pte(loc->phys_addr);
+		if (! pte.found) {
+			GHOST_WARN("loc.is_pte should imply existence in pgtable");
+			ghost_assert(false);
+		}
 	}
 
-	desc = deconstruct_pte(read_phys_pre(loc->phys_addr), pte.level, pte.s2);
-	if (desc.kind != PTE_KIND_TABLE) {
+	if (loc->descriptor.kind != PTE_KIND_TABLE) {
 		return true;
 	}
 
 	// if the old value was a table, then traverse it from here.
 	all_clean = true;
-	traverse_pgtable_from(pte.root, desc.table_data.next_level_table_addr, 0, pte.level + 1, pte.s2, clean_reachability_checker_cb, &all_clean);
+	traverse_pgtable_from(
+		loc->owner,
+		loc->descriptor.table_data.next_level_table_addr,
+		loc->descriptor.ia_region.range_start,
+		loc->descriptor.level + 1,
+		loc->descriptor.s2,
+		clean_reachability_checker_cb,
+		&all_clean
+	);
 
 	// NOTE: the traversal may have unset all_clean.
 	return all_clean;
 }
 
 
-
-////////////////////
-// Step write sysreg
-
-void marker_cb(struct pgtable_traverse_context *ctxt)
+void mark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
@@ -643,7 +630,6 @@ void marker_cb(struct pgtable_traverse_context *ctxt)
 		// if this was the first time we saw it
 		// initialise it and copy in the value
 		loc->initialised = true;
-		loc->val = ctxt->descriptor;
 	} else if (loc->is_pte) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("double-use pte");
 	}
@@ -652,8 +638,30 @@ void marker_cb(struct pgtable_traverse_context *ctxt)
 	// and start following the automata
 	loc->is_pte = true;
 	loc->owner = ctxt->root;
-	loc->state = initial_state(ctxt->descriptor, ctxt->level, ctxt->s2);
+	loc->descriptor = ctxt->exploded_descriptor;
+	loc->state = initial_state(ctxt->exploded_descriptor.ia_region.range_start, ctxt->descriptor, ctxt->level, ctxt->s2);
 }
+
+void unmark_cb(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+
+	if (! loc->initialised) {
+		// if this was the first time we saw it
+		// initialise it and copy in the value
+		loc->initialised = true;
+	} else if (! loc->is_pte) {
+		// TODO: BS: is this catch-fire or simply unreachable?
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("unmark non-PTE");
+	}
+
+	// mark that this location is no longer an active pte
+	// and stop following the automata
+	loc->is_pte = false;
+}
+
+////////////////////
+// Step write sysreg
 
 static bool s1_root_exists(phys_addr_t root)
 {
@@ -683,7 +691,7 @@ static void register_s2_root(phys_addr_t root)
 
 	// TODO: VMIDs
 	the_ghost_state.s2_roots[the_ghost_state.nr_s2_roots++] = root;
-	traverse_pgtable(root, true, marker_cb, NULL);
+	traverse_pgtable(root, true, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -694,7 +702,7 @@ static void register_s1_root(phys_addr_t root)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
 
 	the_ghost_state.s1_roots[the_ghost_state.nr_s1_roots++] = root;
-	traverse_pgtable(root, false, marker_cb, NULL);
+	traverse_pgtable(root, false, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -738,14 +746,17 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 /*
  * when writing a new table entry
  * must ensure that the child table(s) are all clean
+ * and not owned by another pgtable
+ * then mark them as owned
  */
-static void check_all_children_clean(struct sm_location *loc)
+static void step_write_table_mark_children(struct sm_location *loc)
 {
-	struct pgtable_walk_result r = find_pte(loc->phys_addr);
-	if (r.found && r.deconstructed.kind == PTE_KIND_TABLE) {
+	if (loc->descriptor.kind == PTE_KIND_TABLE) {
 		if (! pre_all_reachable_clean(loc)) {
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
 		}
+
+		traverse_pgtable_from(loc->owner, loc->descriptor.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.s2, mark_cb, NULL);
 	}
 }
 
@@ -759,7 +770,7 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 
 	// check that if we're writing a TABLE entry
 	// that the new tables are all 'good'
-	check_all_children_clean(loc);
+	step_write_table_mark_children(loc);
 
 	// invalid -> valid
 	loc->state.kind = STATE_PTE_VALID;
@@ -903,9 +914,50 @@ static void step_dsb(struct ghost_simplified_model_transition trans)
 ///////////////////
 // Step on a TLBI
 
+/*
+ * when invalidating a zeroed table entry
+ * unmark them as now no longer owned by the parent
+ *
+ * TODO: BS: is this correct?
+ */
+static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
+{
+	u64 old;
+	struct aut_invalid aut;
+	struct ghost_exploded_descriptor old_desc;
+
+	if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
+		return;
+	}
+
+	aut = loc->state.invalid_unclean_state;
+	old = aut.old_valid_desc;
+	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.s2);
+
+
+	// look at the old entry, and see if it was a table.
+	if (old_desc.kind == PTE_KIND_TABLE) {
+		// if we zero child entry, then zero the table entry
+		// require that the child entries were TLBI'd first.
+		// this means we don't have to recursively check the olds all the way down...
+		// TODO: BS: is this too strong?
+		if (! pre_all_reachable_clean(loc)) {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
+		}
+
+		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.s2, unmark_cb, NULL);
+	}
+}
+
+
 static void step_pte_on_tlbi(struct sm_location *loc)
 {
 	thread_identifier this_cpu = cpu_id();
+
+	// if this was a table entry
+	// there may have been children that we were still tracking
+	// so go clear those.
+	step_tlbi_invalid_unclean_unmark_children(loc);
 
 	switch (loc->state.kind) {
 	case STATE_PTE_INVALID_UNCLEAN:
@@ -926,6 +978,10 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	u64 tlbi_addr;
 	struct trans_tlbi_data *tlbi_data = (struct trans_tlbi_data*)ctxt->data;
 
+	// input-address range of the PTE we're visiting
+	u64 ia_start = ctxt->exploded_descriptor.ia_region.range_start;
+	u64 ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
+
 	switch (tlbi_data->tlbi_kind) {
 	// if by VA
 	case TLBI_vae2is:
@@ -935,7 +991,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		 * if this pte is not a leaf which maps the page the TLBI asked for
 		 * then don't try step the pte.
 		 */
-		if (! (ctxt->leaf && (ctxt->partial_ia <= tlbi_addr) && (tlbi_addr < ctxt->partial_ia + ctxt->ia_region_size))) {
+		if (! (ctxt->leaf && (ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
 			return false;
 		}
 

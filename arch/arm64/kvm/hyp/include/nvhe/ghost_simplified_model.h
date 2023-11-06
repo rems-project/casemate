@@ -102,6 +102,44 @@ struct sm_pte_state {
 	};
 };
 
+/**
+ * struct ghost_addr_range - A range start+size
+ */
+struct ghost_addr_range {
+	u64 range_start;
+	u64 range_size;
+};
+
+enum pte_kind {
+	PTE_KIND_TABLE,
+	PTE_KIND_MAP,  /* BLOCK,PAGE */
+	PTE_KIND_INVALID,
+};
+
+/**
+ * struct  ghost_exploded_descriptor - Information about a PTE.
+ * @kind: Whether the descriptor is invalid/a table/a block or page mapping.
+ * @region: the input-address region this PTE covers.
+ * @level: the level within the pgtable this entry is at.
+ * @s2: whether this descriptor is for a Stage2 table.
+ * @table_data: if kind is PTE_KIND_TABLE, the table descriptor data (next level table address).
+ * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range).
+ */
+struct ghost_exploded_descriptor {
+	enum pte_kind kind;
+	struct ghost_addr_range ia_region;
+	u64 level;
+	bool s2;
+	union {
+		struct {
+			u64 next_level_table_addr;
+		} table_data;
+
+		struct {
+			struct ghost_addr_range oa_region;
+		} map_data;
+	};
+};
 
 /**
  * struct sm_location - A (64-bit) Location in the simplified model memory.
@@ -109,6 +147,7 @@ struct sm_pte_state {
  * @phys_addr: the physical address of this location.
  * @val: if initialised, value stored by model for this location.
  * @is_pte: if initialised, whether this location is tracked as a PTE.
+ * @descriptor: if initialised and is_pte, the value as an exploded descriptor.
  * @state: if initialised and is_pte, the automata state for this location.
  * @owner: if initialised, the root of the tree that owns this location.
  */
@@ -117,6 +156,7 @@ struct sm_location {
 	u64 phys_addr;
 	u64 val;
 	bool is_pte;
+	struct ghost_exploded_descriptor descriptor;
 	struct sm_pte_state state;
 	sm_owner_t owner;
 };
