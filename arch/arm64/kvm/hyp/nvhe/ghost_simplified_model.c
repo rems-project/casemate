@@ -26,8 +26,7 @@ bool is_initialised = false;
 
 thread_identifier cpu_id(void)
 {
-	// TODO: can't seem to use hyp_smp_processor_id() due to linking issues
-	return read_sysreg(tpidr_el1);
+	return hyp_smp_processor_id();
 }
 
 ///////////
