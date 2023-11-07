@@ -50,6 +50,16 @@ static void unlock_sm(void)
  * Each simplified model transition should be atomic,
  * that means that all the locks of pKVM must be taken
  * ensuring that the simplified model has total ownership.
+ *
+ * In practice this isn't what we want:
+ * pKVM assumes a lock order host->hyp->vm
+ * so we can't just take locks out-of-order in here,
+ * but right now there's no other solution...
+ *
+ * In future we will want a global reentrant (reader-writer?) lock,
+ * where all other threads can interleave freely up until a simplified model step,
+ * at which point all other threads must wait for the simplified model step to finish.
+ * Doing this without the minor possibility of deadlocks seems difficult...
  */
 extern hyp_spinlock_t pkvm_pgd_lock;
 extern struct host_mmu host_mmu;
