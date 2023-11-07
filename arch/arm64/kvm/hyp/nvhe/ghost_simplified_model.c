@@ -645,11 +645,8 @@ bool owner(u64 phys, sm_owner_t *out)
 void assert_owner_locked(u64 phys)
 {
 	sm_owner_t owner_id;
-	bool owned = owner(phys, &owner_id);
 
-	if (! owned) {
-		return;
-	} else {
+	if (owner(phys, &owner_id)) {
 		hyp_spinlock_t *lock = owner_lock(owner_id);
 		ghost_assert(lock);  // can't have written without associating the owner.
 
