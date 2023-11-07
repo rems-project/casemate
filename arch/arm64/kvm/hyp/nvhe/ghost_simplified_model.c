@@ -1300,6 +1300,15 @@ static void initialise_ghost_hint_transitions(void)
 			.value = (u64)&pkvm_pgd_lock,
 		},
 	});
+	step_hint((struct ghost_simplified_model_transition){
+		.src_loc = SRC_LOC, // report as coming from _here_
+		.kind = TRANS_HINT,
+		.hint_data = (struct trans_hint_data){
+			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
+			.location = (u64)host_mmu.pgt.pgd,
+			.value = (u64)&host_mmu.lock,
+		},
+	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
