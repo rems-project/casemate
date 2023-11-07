@@ -860,7 +860,15 @@ static void step_write_table_mark_children(struct sm_location *loc)
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
 		}
 
-		traverse_pgtable_from(loc->owner, loc->descriptor.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.s2, mark_cb, NULL);
+		traverse_pgtable_from(
+			loc->owner,
+			loc->descriptor.table_data.next_level_table_addr,
+			loc->descriptor.ia_region.range_start,
+			loc->descriptor.level + 1,
+			loc->descriptor.s2,
+			mark_cb,
+			NULL
+		);
 	}
 }
 
