@@ -937,6 +937,9 @@ static void step_write(struct ghost_simplified_model_transition trans)
 		goto done;
 	}
 
+	// must own the lock on the pgtable this pte is in.
+	assert_owner_locked(loc->phys_addr);
+
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
 	case STATE_PTE_VALID:
@@ -1070,6 +1073,9 @@ static void step_pte_on_tlbi(struct sm_location *loc)
 {
 	thread_identifier this_cpu = cpu_id();
 
+	// sanity check: if doing a TLBI on a tree with a root we know about
+	// then all the children in that tree must have been marked by the (V)TTBR registration
+	// or the writes of table entries...
 	ghost_assert(loc->initialised);
 
 	// if this was a table entry
