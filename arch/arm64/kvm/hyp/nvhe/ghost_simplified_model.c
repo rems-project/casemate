@@ -1293,7 +1293,6 @@ static void sync_simplified_model_memory(void)
 static void initialise_ghost_hint_transitions(void)
 {
 	u64 pkvm_pgd;
-	extern hyp_spinlock_t pkvm_pgd_lock;
 
 	GHOST_LOG_CONTEXT_ENTER();
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
@@ -1311,7 +1310,7 @@ static void initialise_ghost_hint_transitions(void)
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
 			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
-			.location = (u64)host_mmu.pgt.pgd,
+			.location = (u64)hyp_virt_to_phys(host_mmu.pgt.pgd),
 			.value = (u64)&host_mmu.lock,
 		},
 	});
