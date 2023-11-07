@@ -6,6 +6,8 @@
 
 #include <nvhe/spinlock.h>
 #include <nvhe/memory.h>
+#include <nvhe/mem_protect.h>
+#include <nvhe/pkvm.h>
 
 #include <hyp/ghost_extra_debug-pl011.h>
 #include <nvhe/ghost_asserts.h>
@@ -43,6 +45,87 @@ static void unlock_sm(void)
 {
 	hyp_spin_unlock(&ghost_sm_lock);
 }
+
+/*
+ * Each simplified model transition should be atomic,
+ * that means that all the locks of pKVM must be taken
+ * ensuring that the simplified model has total ownership.
+ */
+extern hyp_spinlock_t pkvm_pgd_lock;
+extern struct host_mmu host_mmu;
+extern hyp_spinlock_t vm_table_lock;
+extern struct pkvm_hyp_vm **vm_table;
+
+bool pkvm_locked;
+bool host_locked;
+bool vm_table_locked;
+bool vms_locked[KVM_MAX_PVMS];
+
+static void ensure_atomic_lock(void)
+{
+	if (! hyp_spin_is_locked(&host_mmu.lock)) {
+		hyp_spin_lock(&host_mmu.lock);
+		host_locked = true;
+	} else {
+		host_locked = false;
+	}
+
+	if (! hyp_spin_is_locked(&pkvm_pgd_lock)) {
+		hyp_spin_lock(&pkvm_pgd_lock);
+		pkvm_locked = true;
+	} else {
+		pkvm_locked = false;
+	}
+
+	if (! hyp_spin_is_locked(&vm_table_lock)) {
+		hyp_spin_lock(&vm_table_lock);
+		vm_table_locked = true;
+	} else {
+		vm_table_locked = false;
+	}
+
+	if (! vm_table)
+		return;
+
+	for (u64 i=0; i < KVM_MAX_PVMS; i++) {
+		struct pkvm_hyp_vm *vm = vm_table[i];
+		if (vm && !hyp_spin_is_locked(&vm->lock)) {
+			hyp_spin_lock(&vm->lock);
+			vms_locked[i] = true;
+		} else {
+			vms_locked[i] = false;
+		}
+	}
+}
+
+static void ensure_atomic_unlock(void)
+{
+	if (! vm_table)
+		goto unlock_vm_table;
+
+	for (u64 i = KVM_MAX_PVMS; i > 0; i--) {
+		struct pkvm_hyp_vm *vm = vm_table[i - 1];
+		if (vm && vms_locked[i - 1]) {
+			hyp_spin_unlock(&vm->lock);
+		}
+	}
+
+unlock_vm_table:
+	if (vm_table_locked) {
+		hyp_spin_unlock(&vm_table_lock);
+	}
+
+	if (pkvm_locked) {
+		hyp_spin_unlock(&pkvm_pgd_lock);
+	}
+
+	if (host_locked) {
+		hyp_spin_unlock(&host_mmu.lock);
+	}
+}
+
+///////////
+// Memory
 
 
 static bool in_simplified_memory(u64 phys)
@@ -1102,6 +1185,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
+	ensure_atomic_lock();
 	lock_sm();
 
 	if (! is_initialised) {
@@ -1141,6 +1225,7 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 
 unlock:
 	unlock_sm();
+	ensure_atomic_unlock();
 }
 
 
