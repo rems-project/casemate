@@ -657,6 +657,7 @@ void assert_owner_locked(u64 phys)
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 	}
 }
+
 ////////////////////
 // Reachability
 
@@ -1283,6 +1284,7 @@ static void initialise_ghost_hint_transitions(void)
 	GHOST_LOG_CONTEXT_ENTER();
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
 	step_hint((struct ghost_simplified_model_transition){
+		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
 			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
@@ -1385,11 +1387,25 @@ void print_hint_trans(struct trans_hint_data *hint_data)
 	}
 }
 
+void print_src_loc(struct src_loc *src_loc)
+{
+	hyp_putsp("at ");
+	hyp_putsp((char *)src_loc->file);
+	hyp_putsp(":");
+	hyp_putn(src_loc->lineno);
+	hyp_putsp(" in ");
+	hyp_puts((char *)src_loc->func);
+}
+
 // A helper for the GHOST_LOG and GHOST_WARN macros
 // to print out a whole simplified model transition
 void GHOST_transprinter(void *data)
 {
 	struct ghost_simplified_model_transition *trans = (struct ghost_simplified_model_transition *)data;
+
+	print_src_loc(&trans->src_loc);
+	hyp_putsp(" ");
+
 	switch (trans->kind) {
 	case TRANS_MEM_WRITE:
 		print_write_trans(&trans->write_data);

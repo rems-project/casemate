@@ -347,7 +347,20 @@ static const char *hint_names[] = {
 };
 
 
+struct src_loc {
+	const char *file;
+	const char *func;
+	int lineno;
+};
+
 struct ghost_simplified_model_transition {
+	/**
+	 * @src_loc: string location (path, function name, lineno etc)
+	 *           of where the transition happens in the source code.
+	 *           For debugging/pretty printing.
+	 */
+	struct src_loc src_loc;
+
 	enum ghost_simplified_model_transition_kind kind;
 	union {
 		struct trans_write_data {
@@ -401,9 +414,13 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 //////////////
 // Step helpers
 
-static inline void ghost_simplified_model_step_write(enum memory_order_t mo, phys_addr_t phys, u64 val)
+#define SRC_LOC (struct src_loc){.file=__FILE__, .lineno=__LINE__, .func=__func__}
+
+#define ghost_simplified_model_step_write(...) __ghost_simplified_model_step_write(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_write(struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_MEM_WRITE,
 		.write_data = (struct trans_write_data){
 			.mo = mo,
@@ -413,9 +430,11 @@ static inline void ghost_simplified_model_step_write(enum memory_order_t mo, phy
 	});
 }
 
-static inline void ghost_simplified_model_step_read(phys_addr_t phys, u64 val)
+#define ghost_simplified_model_step_read(...) __ghost_simplified_model_step_read(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_read(struct src_loc src_loc, phys_addr_t phys, u64 val)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_MEM_READ,
 		.read_data = (struct trans_read_data){
 			.phys_addr = phys,
@@ -424,24 +443,30 @@ static inline void ghost_simplified_model_step_read(phys_addr_t phys, u64 val)
 	});
 }
 
-static inline void ghost_simplified_model_step_dsb(enum dsb_kind kind)
+#define ghost_simplified_model_step_dsb(...) __ghost_simplified_model_step_dsb(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_dsb(struct src_loc src_loc, enum dsb_kind kind)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_DSB,
 		.dsb_data = kind,
 	});
 }
 
-static inline void ghost_simplified_model_step_isb(void)
+#define ghost_simplified_model_step_isb() __ghost_simplified_model_step_isb(SRC_LOC)
+static inline void __ghost_simplified_model_step_isb(struct src_loc src_loc)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_ISB,
 	});
 }
 
-static inline void ghost_simplified_model_step_tlbi3(enum tlbi_kind kind, u64 page, int level)
+#define ghost_simplified_model_step_tlbi3(...) __ghost_simplified_model_step_tlbi3(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_tlbi3(struct src_loc src_loc, enum tlbi_kind kind, u64 page, int level)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_TLBI,
 		.tlbi_data = (struct trans_tlbi_data){
 			.tlbi_kind = kind,
@@ -451,9 +476,11 @@ static inline void ghost_simplified_model_step_tlbi3(enum tlbi_kind kind, u64 pa
 	});
 }
 
-static inline void ghost_simplified_model_step_tlbi1(enum tlbi_kind kind)
+#define ghost_simplified_model_step_tlbi1(...) __ghost_simplified_model_step_tlbi1(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_tlbi1(struct src_loc src_loc, enum tlbi_kind kind)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_TLBI,
 		.tlbi_data = (struct trans_tlbi_data){
 			.tlbi_kind = kind,
@@ -461,9 +488,11 @@ static inline void ghost_simplified_model_step_tlbi1(enum tlbi_kind kind)
 	});
 }
 
-static inline void ghost_simplified_model_step_msr(enum ghost_sysreg_kind sysreg, u64 val)
+#define ghost_simplified_model_step_msr(...) __ghost_simplified_model_step_msr(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_msr(struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_MSR,
 		.msr_data = (struct trans_msr_data){
 			.sysreg = sysreg,
@@ -472,9 +501,11 @@ static inline void ghost_simplified_model_step_msr(enum ghost_sysreg_kind sysreg
 	});
 }
 
-static inline void ghost_simplified_model_step_hint(enum ghost_hint_kind kind, u64 location, u64 value)
+#define ghost_simplified_model_step_hint(...) __ghost_simplified_model_step_hint(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_hint(struct src_loc src_loc, enum ghost_hint_kind kind, u64 location, u64 value)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
 			.hint_kind = kind,
