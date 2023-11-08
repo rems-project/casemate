@@ -150,6 +150,9 @@ struct ghost_exploded_descriptor {
  * @descriptor: if initialised and is_pte, the value as an exploded descriptor.
  * @state: if initialised and is_pte, the automata state for this location.
  * @owner: if initialised, the root of the tree that owns this location.
+ *
+ * The owner and descriptor are here as helpful cached values,
+ * and could be computed by doing translation table walks.
  */
 struct sm_location {
 	bool initialised;

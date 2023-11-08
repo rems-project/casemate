@@ -598,55 +598,16 @@ static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	}
 }
 
-struct owner_check_data {
-	u64 phys;
-	sm_owner_t *out;
-	bool owned;
-};
-
-void check_owner_cb(struct pgtable_traverse_context *ctxt)
-{
-	struct owner_check_data *data = (struct owner_check_data*)ctxt->data;
-
-	if (ctxt->loc->phys_addr == data->phys) {
-		if (data->owned) {
-			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("double-use pte");
-		}
-
-		data->owned = true;
-		*data->out = ctxt->root;
-	}
-}
-
-/**
- * owner() - Retrieve the current owner (if any)
- * @phys: the physical address to retrieve the owner of.
- * @out: pointer to write back owner id to.
- *
- * Returns true if the location is owned.
- * When returning true, writes the owner id to the `out` location.
- */
-bool owner(u64 phys, sm_owner_t *out)
-{
-	struct owner_check_data data = {.phys=phys, .out=out, .owned=false};
-	traverse_all_pgtables(check_owner_cb, &data);
-	return data.owned;
-}
-
 /**
  * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
  */
-void assert_owner_locked(u64 phys)
+void assert_owner_locked(struct sm_location *loc)
 {
-	sm_owner_t owner_id;
-
-	if (owner(phys, &owner_id)) {
-		hyp_spinlock_t *lock = owner_lock(owner_id);
-		ghost_assert(lock);  // can't have written without associating the owner.
-
-		if (!hyp_spin_is_locked(lock))
-			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
-	}
+	sm_owner_t owner_id = loc->owner;
+	hyp_spinlock_t *lock = owner_lock(owner_id);
+	ghost_assert(lock);  // can't have written without associating the owner.
+	if (!hyp_spin_is_locked(lock))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
 
 ////////////////////
@@ -929,7 +890,7 @@ static void step_write(struct ghost_simplified_model_transition trans)
 	}
 
 	// must own the lock on the pgtable this pte is in.
-	assert_owner_locked(loc->phys_addr);
+	assert_owner_locked(loc);
 
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
