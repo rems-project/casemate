@@ -52,9 +52,13 @@ static void unlock_sm(void)
  * ensuring that the simplified model has total ownership.
  *
  * In practice this isn't what we want:
- * pKVM assumes a lock order host->hyp->vm
- * so we can't just take locks out-of-order in here,
- * but right now there's no other solution...
+ * pKVM assumes a partial lock order:
+ * - host (on its own)
+ * - host->hyp
+ * - host->vm
+ * - vm_table->vm
+ *
+ * We can linearise this to vm_table->host->hyp->vm
  *
  * In future we will want a global reentrant (reader-writer?) lock,
  * where all other threads can interleave freely up until a simplified model step,
@@ -71,47 +75,40 @@ bool host_locked;
 bool vm_table_locked;
 bool vms_locked[KVM_MAX_PVMS];
 
+static bool try_lock(hyp_spinlock_t *lock)
+{
+	if (! hyp_spin_is_locked(lock)) {
+		hyp_spin_lock(lock);
+		return true;
+	} else {
+		return false;
+	}
+}
+
 static void ensure_atomic_lock(void)
 {
-	if (! hyp_spin_is_locked(&host_mmu.lock)) {
-		hyp_spin_lock(&host_mmu.lock);
-		host_locked = true;
-	} else {
-		host_locked = false;
-	}
-
-	if (! hyp_spin_is_locked(&pkvm_pgd_lock)) {
-		hyp_spin_lock(&pkvm_pgd_lock);
-		pkvm_locked = true;
-	} else {
-		pkvm_locked = false;
-	}
-
-	if (! hyp_spin_is_locked(&vm_table_lock)) {
-		hyp_spin_lock(&vm_table_lock);
-		vm_table_locked = true;
-	} else {
-		vm_table_locked = false;
-	}
+	vm_table_locked = try_lock(&vm_table_lock);
+	host_locked = try_lock(&host_mmu.lock);
+	pkvm_locked = try_lock(&pkvm_pgd_lock);
 
 	if (! vm_table)
 		return;
 
+	// Note: no lock order between VMs (?)
+	// so we impose one going in order of vm_table index
 	for (u64 i=0; i < KVM_MAX_PVMS; i++) {
 		struct pkvm_hyp_vm *vm = vm_table[i];
-		if (vm && !hyp_spin_is_locked(&vm->lock)) {
-			hyp_spin_lock(&vm->lock);
-			vms_locked[i] = true;
-		} else {
-			vms_locked[i] = false;
-		}
+		if (vm)
+			vms_locked[i] = try_lock(&vm->lock);
 	}
 }
 
 static void ensure_atomic_unlock(void)
 {
+	/* undo all the locks we took earlier */
+
 	if (! vm_table)
-		goto unlock_vm_table;
+		goto unlock_pkvm;
 
 	for (u64 i = KVM_MAX_PVMS; i > 0; i--) {
 		struct pkvm_hyp_vm *vm = vm_table[i - 1];
@@ -120,18 +117,15 @@ static void ensure_atomic_unlock(void)
 		}
 	}
 
-unlock_vm_table:
-	if (vm_table_locked) {
-		hyp_spin_unlock(&vm_table_lock);
-	}
-
-	if (pkvm_locked) {
+unlock_pkvm:
+	if (pkvm_locked)
 		hyp_spin_unlock(&pkvm_pgd_lock);
-	}
 
-	if (host_locked) {
+	if (host_locked)
 		hyp_spin_unlock(&host_mmu.lock);
-	}
+
+	if (vm_table_locked)
+		hyp_spin_unlock(&vm_table_lock);
 }
 
 ///////////
