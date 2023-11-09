@@ -419,13 +419,13 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		struct sm_location *loc;
 
 		GHOST_LOG_CONTEXT_ENTER_INNER("loop");
-		GHOST_LOG(i, u32);
+		GHOST_LOG_INNER("loop", i, u32);
 
 		pte_phys = table_start + i*sizeof(u64);
-		GHOST_LOG(pte_phys, u64);
+		GHOST_LOG_INNER("loop", pte_phys, u64);
 
 		desc = read_phys(pte_phys);
-		GHOST_LOG(desc, u64);
+		GHOST_LOG_INNER("loop", desc, u64);
 
 		loc = location(pte_phys);
 
