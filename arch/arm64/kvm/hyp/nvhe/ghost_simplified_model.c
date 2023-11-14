@@ -177,7 +177,7 @@ static void ensure_blob(u64 phys)
 	// the slots are intentionally uninitialised;
 	// as of yet, they haven't been "seen" by the simplified model
 	// so let the first-seen checks initialise them.
-	for (int i = 0; i < SLOTS_PER_PAGE*PAGES_PER_BLOB; i++) {
+	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
 		struct sm_location *slot = &first_free->slots[i];
 		slot->initialised = false;
 		slot->phys_addr = blob_phys + i*sizeof(u64);
@@ -1474,7 +1474,7 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 	if (ret)
 		return ret;
 
-	for (u64 i = 0; i < PAGES_PER_BLOB*SLOTS_PER_PAGE; i++) {
+	for (u64 i = 0; i < SLOTS_PER_PAGE; i++) {
 		struct sm_location *loc = &b->slots[i];
 		// only show those that are ptes we're tracking
 		if (!loc->is_pte)

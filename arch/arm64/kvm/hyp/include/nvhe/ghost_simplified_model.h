@@ -177,11 +177,9 @@ struct sm_location {
 #define SLOTS_PER_PAGE (512)
 
 #define SLOT_SHIFT 3
-#define BLOB_SHIFT (12+9)
 
-#define PAGES_PER_BLOB (((1UL) << BLOB_SHIFT) >> PAGE_SHIFT)
-
-#define MAX_BLOBS (0x10)
+#define BLOB_SHIFT 12
+#define MAX_BLOBS (0x2000)
 #define MAX_ROOTS 10
 
 #define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
@@ -190,18 +188,17 @@ struct sm_location {
 #define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
 
 /**
- * struct ghost_memory_blob - An arbitrary (aligned) blob of memory.
+ * struct ghost_memory_blob - A page of memory.
  * @valid: whether this blob is being used.
  * @phys: if valid, the physical address of the start of this region.
  * @slots: if valid, the array of memory locations within this region.
  *
- * Each blob is a aligned and contiguous (1 << BLOB_SHIFT) region of memory
- * and the whole simplified model memory is a set of blobs.
+ * Each blob is a aligned and contiguous page of memory.
  */
 struct ghost_memory_blob {
 	bool valid;
 	u64 phys;
-	struct sm_location slots[PAGES_PER_BLOB*SLOTS_PER_PAGE];
+	struct sm_location slots[SLOTS_PER_PAGE];
 };
 
 /**
