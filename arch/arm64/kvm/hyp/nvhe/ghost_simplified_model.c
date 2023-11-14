@@ -9,14 +9,22 @@
 #include <nvhe/mem_protect.h>
 #include <nvhe/pkvm.h>
 
-#include <hyp/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost_control.h>
 #include <nvhe/ghost_asserts.h>
+#include <hyp/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost_printer.h>
+#include <nvhe/ghost_abstraction_diff.h>
 #include <nvhe/ghost_simplified_model.h>
+
 
 /*
  * the actual state
+ *
+ * We keep two, for diffing and debugging purposes.
  */
-struct ghost_simplified_model_state the_ghost_state;
+struct ghost_simplified_model_state *the_ghost_state;
+struct ghost_simplified_model_state *the_ghost_state_pre;
+
 struct ghost_simplified_model_options ghost_sm_options;
 struct ghost_simplified_model_transition current_transition;
 bool is_initialised = false;
@@ -131,10 +139,12 @@ unlock_pkvm:
 ///////////
 // Memory
 
+void copy_sm_state_into(struct ghost_simplified_model_state *out);
+
 
 static bool in_simplified_memory(u64 phys)
 {
-	return ((the_ghost_state.base_addr <= phys) && (phys <= the_ghost_state.base_addr + the_ghost_state.size));
+	return ((the_ghost_state->base_addr <= phys) && (phys <= the_ghost_state->base_addr + the_ghost_state->size));
 }
 
 static void ensure_blob(u64 phys)
@@ -144,7 +154,7 @@ static void ensure_blob(u64 phys)
 
 	// just iterate, try find the blob
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *this = &the_ghost_state.memory.blobs[i];
+		struct ghost_memory_blob *this = &the_ghost_state->memory.blobs[i];
 		if (!this->valid) {
 			if (first_free == NULL) {
 				first_free = this;
@@ -185,7 +195,7 @@ struct sm_location *location(u64 phys)
 
 	// just iterate, try to find the blob
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *blob = &the_ghost_state.memory.blobs[i];
+		struct ghost_memory_blob *blob = &the_ghost_state->memory.blobs[i];
 		if (blob->valid && blob->phys == blob_phys) {
 			struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
 			return loc;
@@ -247,11 +257,13 @@ static u64 __read_phys(u64 addr, bool pre)
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
 	if (hyp_val != value) {
+		GHOST_LOG_CONTEXT_ENTER();
 		GHOST_WARN("the simplified model detected a PTE that changed under it");
 		GHOST_LOG(hyp_va, u64);
 		GHOST_LOG(value, u64);
 		GHOST_LOG(hyp_val, u64);
 		ghost_assert(false);
+		GHOST_LOG_CONTEXT_EXIT();
 	}
 
 	return value;
@@ -463,15 +475,15 @@ static void traverse_pgtable(u64 root, bool s2, pgtable_traverse_cb visitor_cb, 
 
 static void traverse_all_s1_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
-	for (int i = 0; i < the_ghost_state.nr_s1_roots; i++) {
-		traverse_pgtable(the_ghost_state.s1_roots[i], false, visitor_cb, data);
+	for (int i = 0; i < the_ghost_state->nr_s1_roots; i++) {
+		traverse_pgtable(the_ghost_state->s1_roots[i], false, visitor_cb, data);
 	}
 }
 
 static void traverse_all_s2_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
-	for (int i = 0; i < the_ghost_state.nr_s2_roots; i++) {
-		traverse_pgtable(the_ghost_state.s2_roots[i], true, visitor_cb, data);
+	for (int i = 0; i < the_ghost_state->nr_s2_roots; i++) {
+		traverse_pgtable(the_ghost_state->s2_roots[i], true, visitor_cb, data);
 	}
 }
 
@@ -548,9 +560,9 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, bool s2)
 
 hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
 {
-	for (int i = 0; i < the_ghost_state.locks.len; i++) {
-		if (the_ghost_state.locks.owner_ids[i] == owner_id) {
-			return the_ghost_state.locks.locks[i];
+	for (int i = 0; i < the_ghost_state->locks.len; i++) {
+		if (the_ghost_state->locks.owner_ids[i] == owner_id) {
+			return the_ghost_state->locks.locks[i];
 		}
 	}
 
@@ -559,13 +571,13 @@ hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
 
 static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
 {
-	struct owner_locks *locks = &the_ghost_state.locks;
+	struct owner_locks *locks = &the_ghost_state->locks;
 
 	if (! owner_lock(root)) {
 		ghost_assert(false);
 	}
 
-	for (int i = 0; i < the_ghost_state.locks.len; i++) {
+	for (int i = 0; i < the_ghost_state->locks.len; i++) {
 		if (locks->owner_ids[i] == root) {
 			locks->locks[i] = lock;
 			return;
@@ -584,9 +596,9 @@ static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
 		unreachable();
 	}
 
-	i = the_ghost_state.locks.len++;
-	the_ghost_state.locks.owner_ids[i] = root;
-	the_ghost_state.locks.locks[i] = lock;
+	i = the_ghost_state->locks.len++;
+	the_ghost_state->locks.owner_ids[i] = root;
+	the_ghost_state->locks.locks[i] = lock;
 }
 
 static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
@@ -721,8 +733,8 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 
 static bool s1_root_exists(phys_addr_t root)
 {
-	for (int i = 0; i < the_ghost_state.nr_s1_roots; i++) {
-		if (the_ghost_state.s1_roots[i] == root)
+	for (int i = 0; i < the_ghost_state->nr_s1_roots; i++) {
+		if (the_ghost_state->s1_roots[i] == root)
 			return true;
 	}
 
@@ -731,8 +743,8 @@ static bool s1_root_exists(phys_addr_t root)
 
 static bool s2_root_exists(phys_addr_t root)
 {
-	for (int i = 0; i < the_ghost_state.nr_s2_roots; i++) {
-		if (the_ghost_state.s2_roots[i] == root)
+	for (int i = 0; i < the_ghost_state->nr_s2_roots; i++) {
+		if (the_ghost_state->s2_roots[i] == root)
 			return true;
 	}
 
@@ -746,7 +758,7 @@ static void register_s2_root(phys_addr_t root)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
 
 	// TODO: VMIDs
-	the_ghost_state.s2_roots[the_ghost_state.nr_s2_roots++] = root;
+	the_ghost_state->s2_roots[the_ghost_state->nr_s2_roots++] = root;
 	traverse_pgtable(root, true, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
@@ -757,7 +769,7 @@ static void register_s1_root(phys_addr_t root)
 	if (s1_root_exists(root) || s2_root_exists(root))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
 
-	the_ghost_state.s1_roots[the_ghost_state.nr_s1_roots++] = root;
+	the_ghost_state->s1_roots[the_ghost_state->nr_s1_roots++] = root;
 	traverse_pgtable(root, false, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
@@ -1174,6 +1186,9 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 
 	current_transition = trans;
 
+	if (ghost_print_on("sm_diff_trans"))
+		copy_sm_state_into(the_ghost_state_pre);
+
 	switch (trans.kind) {
 	case TRANS_MEM_WRITE:
 		step_write(trans);
@@ -1198,6 +1213,12 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 		break;
 	};
 
+	if (ghost_print_on("sm_dump_trans"))
+		dump_sm_state(the_ghost_state);
+
+	if (ghost_print_on("sm_diff_trans"))
+		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
+
 	GHOST_LOG_CONTEXT_EXIT();
 
 unlock:
@@ -1216,10 +1237,10 @@ static void initialise_ghost_simplified_model_options(void)
 
 static void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 	GHOST_LOG_CONTEXT_ENTER();
-	the_ghost_state.base_addr = phys;
-	the_ghost_state.size = size;
+	the_ghost_state->base_addr = phys;
+	the_ghost_state->size = size;
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		the_ghost_state.memory.blobs[i].valid = false;
+		the_ghost_state->memory.blobs[i].valid = false;
 	}
 	is_initialised = true;
 	GHOST_LOG_CONTEXT_EXIT();
@@ -1270,10 +1291,13 @@ static void initialise_ghost_hint_transitions(void)
 }
 
 
-void initialise_ghost_simplified_model(phys_addr_t phys, u64 size)
+void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
+
+	the_ghost_state = (struct ghost_simplified_model_state*)sm_virt;
+	the_ghost_state_pre = the_ghost_state + 1;
 
 	initialise_ghost_simplified_model_options();
 	initialise_ghost_ptes_memory(phys, size);
@@ -1287,88 +1311,96 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size)
 }
 
 //////////////////////////////
-//// MISC
+//// Printers
 
-void print_write_trans(struct trans_write_data *write_data)
+int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 {
-	hyp_putsp("W");
+	char *kind = "";
 	if (write_data->mo == WMO_release) {
-		hyp_putsp("rel");
+		kind = "rel";
 	}
-	hyp_putsp(" ");
-	hyp_putx64((u64)write_data->phys_addr);
-	hyp_putsp(" ");
-	hyp_putx64(write_data->val);
+
+	return ghost_sprintf(out, "W%s %p %lx", kind, write_data->phys_addr, write_data->val);
 }
 
-void print_read_trans(struct trans_read_data *read_data)
+int gp_print_read_trans(gp_stream_t *out, struct trans_read_data *read_data)
 {
-	hyp_putsp("R");
-	hyp_putsp(" ");
-	hyp_putx64((u64)read_data->phys_addr);
-	hyp_putsp(" (=");
-	hyp_putx64(read_data->val);
-	hyp_putsp(")");
+	return ghost_sprintf(out, "Rs %p (=%lx)", read_data->phys_addr, read_data->val);
 }
 
-void print_dsb_trans(enum dsb_kind *dsb_data)
+int gp_print_dsb_trans(gp_stream_t *out, enum dsb_kind *dsb_data)
 {
-	hyp_putsp((char *)dsb_kind_names[*dsb_data]);
+	return ghost_sprintf(out, "%s", dsb_kind_names[*dsb_data]);
 }
 
-void print_tlbi_trans(struct trans_tlbi_data *tlbi_data)
+int gp_print_tlbi_trans(gp_stream_t *out, struct trans_tlbi_data *tlbi_data)
 {
-	hyp_putsp((char *)tlbi_kind_names[tlbi_data->tlbi_kind]);
-	hyp_putsp(" ");
+	const char *tlbi_kind = tlbi_kind_names[tlbi_data->tlbi_kind];
 	switch (tlbi_data->tlbi_kind) {
 		case TLBI_vale2is:
 		case TLBI_vae2is:
 		case TLBI_ipas2e1is:
-			hyp_putsp("pfn=");
-			hyp_putx64(tlbi_data->page);
-			hyp_putsp("level=");
-			hyp_putx64(tlbi_data->level);
-			break;
+			return ghost_sprintf(out, "%s pfn=%lx level=%ld", tlbi_kind, tlbi_data->page, tlbi_data->level);
 		default:
-			;
+			return ghost_sprintf(out, "%s", tlbi_kind);
 	}
+
 }
 
-void print_msr_trans(struct trans_msr_data *msr_data)
+int gp_print_msr_trans(gp_stream_t *out, struct trans_msr_data *msr_data)
 {
-	hyp_putsp("MSR");
-	hyp_putsp(" ");
-	hyp_putsp((char *)sysreg_names[msr_data->sysreg]);
-	hyp_putsp(" ");
-	hyp_putx64(msr_data->val);
+	return ghost_sprintf(out, "MSR %s %lx", sysreg_names[msr_data->sysreg], msr_data->val);
 }
 
-void print_hint_trans(struct trans_hint_data *hint_data)
+int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 {
-	hyp_putsp("HINT");
-	hyp_putsp(" ");
-	hyp_putsp((char *)hint_names[hint_data->hint_kind]);
+	const char *hint_name = hint_names[hint_data->hint_kind];
 
 	switch (hint_data->hint_kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
-		hyp_putsp(" ");
-		hyp_putx64(hint_data->location);
-		hyp_putsp(" ");
-		hyp_putx64(hint_data->value);
+		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_data->location, hint_data->value);
 		break;
 	default:
+		return ghost_sprintf(out, "HINT %s", hint_name);
 		;
 	}
 }
 
-void print_src_loc(struct src_loc *src_loc)
+int gp_print_src_loc(gp_stream_t *out, struct src_loc *src_loc)
 {
-	hyp_putsp("at ");
-	hyp_putsp((char *)src_loc->file);
-	hyp_putsp(":");
-	hyp_putn(src_loc->lineno);
-	hyp_putsp(" in ");
-	hyp_puts((char *)src_loc->func);
+	return ghost_sprintf(out, "at %s:%d in %s", src_loc->file, src_loc->file, src_loc->func);
+}
+
+int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition *trans)
+{
+	int ret;
+
+	ret = gp_print_src_loc(out, &trans->src_loc);
+	if (ret)
+		return ret;
+
+	ret = ghost_sprintf(out, " ");
+	if (ret)
+		return ret;
+
+	switch (trans->kind) {
+	case TRANS_MEM_WRITE:
+		return gp_print_write_trans(out, &trans->write_data);
+	case TRANS_MEM_READ:
+		return gp_print_read_trans(out, &trans->read_data);
+	case TRANS_DSB:
+		return gp_print_dsb_trans(out, &trans->dsb_data);
+	case TRANS_ISB:
+		return ghost_sprintf(out, "ISB");
+	case TRANS_TLBI:
+		return gp_print_tlbi_trans(out, &trans->tlbi_data);
+	case TRANS_MSR:
+		return gp_print_msr_trans(out, &trans->msr_data);
+	case TRANS_HINT:
+		return gp_print_hint_trans(out, &trans->hint_data);
+	default:
+		BUG();
+	};
 }
 
 // A helper for the GHOST_LOG and GHOST_WARN macros
@@ -1376,31 +1408,216 @@ void print_src_loc(struct src_loc *src_loc)
 void GHOST_transprinter(void *data)
 {
 	struct ghost_simplified_model_transition *trans = (struct ghost_simplified_model_transition *)data;
+	ghost_printf("%g(sm_trans)", trans);
+}
 
-	print_src_loc(&trans->src_loc);
-	hyp_putsp(" ");
+static const char *lis_names[] = {
+	[LIS_unguarded] = "x",
+	[LIS_dsbed] = "dsb'd",
+	[LIS_dsb_tlbi_all] = "tlbi'd",
+};
 
-	switch (trans->kind) {
-	case TRANS_MEM_WRITE:
-		print_write_trans(&trans->write_data);
-		break;
-	case TRANS_MEM_READ:
-		print_read_trans(&trans->read_data);
-		break;
-	case TRANS_DSB:
-		print_dsb_trans(&trans->dsb_data);
-		break;
-	case TRANS_ISB:
-		hyp_putsp("ISB");
-		break;
-	case TRANS_TLBI:
-		print_tlbi_trans(&trans->tlbi_data);
-		break;
-	case TRANS_MSR:
-		print_msr_trans(&trans->msr_data);
-		break;
-	case TRANS_HINT:
-		print_hint_trans(&trans->hint_data);
-		break;
-	};
+// Printers for sm state
+int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
+{
+	int ret;
+
+	ret = ghost_sprintf(out, "Iunclean");
+	if (ret)
+		return ret;
+
+	for (int i = 0; i < MAX_CPU; i++) {
+		ret = ghost_sprintf(out, " %s", lis_names[st->lis[i]]);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
+{
+	switch (st->kind) {
+	case STATE_PTE_INVALID:
+		return ghost_sprintf(out, "I %ld", st->invalid_clean_state.invalidator_tid);
+	case STATE_PTE_INVALID_UNCLEAN:
+		return gp_print_invalid_unclean_state(out, &st->invalid_unclean_state);
+	case STATE_PTE_VALID:
+		return ghost_sprintf(out, "V");
+	}
+}
+
+int gp_print_sm_loc(gp_stream_t *out, struct sm_location *loc)
+{
+	if (loc->is_pte) {
+		return ghost_sprintf(out, "%p (desc:%lx st:%g(sm_pte_state) owner:%p)", loc->phys_addr, loc->val, &loc->state, loc->owner);
+	} else {
+		return ghost_sprintf(out, "%p %lx", loc->phys_addr, loc->val);
+	}
+
+}
+
+int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
+{
+	int ret;
+
+	if (!b->valid)
+		return ghost_sprintf(out, "<invalid blob>");
+
+	ret = ghost_sprintf(out, "%Iblob %p", indent, b->phys);
+	if (ret)
+		return ret;
+
+	for (u64 i = 0; i < PAGES_PER_BLOB*SLOTS_PER_PAGE; i++) {
+		struct sm_location *loc = &b->slots[i];
+		// only show those that are ptes we're tracking
+		if (!loc->is_pte)
+			continue;
+
+		ret = ghost_sprintf(out, "%I%g(sm_loc)\n", indent+2, loc);
+		if (ret)
+			return ret;
+	}
+
+
+	return 0;
+}
+
+int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
+{
+	int ret;
+	ret = ghost_sprintf(out, "mem:\n");
+	if (ret)
+		return ret;
+
+	for (int bi = 0; bi < MAX_BLOBS; bi++) {
+		struct ghost_memory_blob *b = &mem->blobs[bi];
+		ret = gp_print_sm_blob(out, b, 0);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
+{
+	int ret;
+
+	ret = ghost_sprintf(out, "%s roots: [", name);
+	if (ret)
+		return ret;
+
+	if (len > 0) {
+		ret = ghost_sprintf(out, "%p", roots[0]);
+		if (ret)
+			return ret;
+
+		for (u64 i = 1; i < len; i++) {
+			ret = ghost_sprintf(out, ", %p", roots[i]);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return ghost_sprintf(out, "]");
+}
+
+int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
+{
+	int ret;
+	ret = ghost_sprintf(
+		out,
+	 	""
+		"base_addr:.......%p\n"
+		"size:............%lx\n"
+		"nr_s1_roots:.....%lx\n"
+		"nr_s2_roots:.....%lx\n",
+		s->base_addr,
+		s->size,
+		s->nr_s1_roots,
+		s->nr_s2_roots
+	);
+	if (ret)
+		return ret;
+
+	ret = gp_print_sm_roots(out, "s1", s->nr_s1_roots, s->s1_roots);
+	if (ret)
+		return ret;
+
+	ret = gp_print_sm_roots(out, "s2", s->nr_s2_roots, s->s2_roots);
+	if (ret)
+		return ret;
+
+	ret = gp_print_sm_mem(out, &s->memory);
+	if (ret)
+		return ret;
+
+	/* TODO: owner locks */
+	return 0;
+}
+
+void dump_sm_state(struct ghost_simplified_model_state *st)
+{
+	ghost_printf("%g(sm_state)\n", st);
+}
+
+/// Equality checks
+bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2)
+{
+	if (i1->invalidator_tid != i2->invalidator_tid)
+		return false;
+
+	if (i1->old_valid_desc != i2->old_valid_desc)
+		return false;
+
+	for (int i = 0; i < MAX_CPU; i++) {
+		if (i1->lis[i] != i2->lis[i])
+			return false;
+	}
+
+	return true;
+}
+
+bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2)
+{
+	if (s1->kind != s2->kind)
+		return false;
+
+	switch (s1->kind) {
+	case STATE_PTE_INVALID:
+		return (s1->invalid_clean_state.invalidator_tid == s2->invalid_clean_state.invalidator_tid);
+	case STATE_PTE_INVALID_UNCLEAN:
+		return sm_aut_invalid_eq(&s1->invalid_unclean_state, &s2->invalid_unclean_state);
+	case STATE_PTE_VALID:
+		// TODO: per-CPU LVS
+		return true;
+	}
+}
+
+bool sm_loc_eq(struct sm_location *loc1, struct sm_location *loc2)
+{
+	if (loc1->phys_addr != loc2->phys_addr)
+		return false;
+
+	if (loc1->initialised != loc2->initialised)
+		return false;
+
+	if (loc1->initialised && (loc1->val != loc2->val))
+		return false;
+
+	if (loc1->is_pte != loc2->is_pte)
+		return false;
+
+	if (!sm_pte_state_eq(&loc1->state, &loc2->state))
+		return false;
+
+	return true;
+}
+
+
+/// Copying
+void copy_sm_state_into(struct ghost_simplified_model_state *out)
+{
+	memcpy(out, the_ghost_state, sizeof(struct ghost_simplified_model_state));
 }

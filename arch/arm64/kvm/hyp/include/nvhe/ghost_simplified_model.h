@@ -124,6 +124,8 @@ enum pte_kind {
  * @s2: whether this descriptor is for a Stage2 table.
  * @table_data: if kind is PTE_KIND_TABLE, the table descriptor data (next level table address).
  * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range).
+ *
+ * TODO: replace with maplet_target...
  */
 struct ghost_exploded_descriptor {
 	enum pte_kind kind;
@@ -170,15 +172,16 @@ struct sm_location {
  * To not duplicate the entire machines memory,
  * we instead only track "blobs" (arbitrary aligned chunks)
  * of memory that the simplified model checking machinery is actually aware of.
- *
- * Each blob is a single 2MiB region.
  */
 
 #define SLOTS_PER_PAGE (512)
-#define PAGES_PER_BLOB (512)
-#define BLOB_SHIFT (12+9)
+
 #define SLOT_SHIFT 3
-#define MAX_BLOBS (0x20)
+#define BLOB_SHIFT (12+9)
+
+#define PAGES_PER_BLOB (((1UL) << BLOB_SHIFT) >> PAGE_SHIFT)
+
+#define MAX_BLOBS (0x10)
 #define MAX_ROOTS 10
 
 #define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
@@ -192,7 +195,7 @@ struct sm_location {
  * @phys: if valid, the physical address of the start of this region.
  * @slots: if valid, the array of memory locations within this region.
  *
- * Each blob is a aligned and contiguous 2MiB (1 << BLOB_SHIFT) region of memory
+ * Each blob is a aligned and contiguous (1 << BLOB_SHIFT) region of memory
  * and the whole simplified model memory is a set of blobs.
  */
 struct ghost_memory_blob {
@@ -255,6 +258,13 @@ struct ghost_simplified_model_state {
 
 	struct owner_locks locks;
 };
+
+
+/// Equality and printing
+bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2);
+bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2);
+bool sm_loc_eq(struct sm_location *loc1, struct sm_location *loc2);
+void dump_sm_state(struct ghost_simplified_model_state *st);
 
 /**
  * struct ghost_simplified_model_options - Global configuration of simplified model behaviour
@@ -404,10 +414,12 @@ void GHOST_transprinter(void *p);
  * initialise_ghost_simplified_model() - One-shot initialisation of simplified model state.
  * @phys: the start physical address of the memory given to pKVM.
  * @size: the size of the region of physical address space given to pKVM.
+ * @sm_virt: the start of the virtual address of the memory the ghost simplified model state can live in
+ * @sm_size: the space given for the ghost simplified model memory.
  *
  * `phys` and `size` should be those passed to __pkvm_init
  */
-void initialise_ghost_simplified_model(phys_addr_t phys, u64 size);
+void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size);
 
 /**
  * ghost_simplified_model_step() - Take a step in the simplified model.
