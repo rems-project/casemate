@@ -1256,6 +1256,7 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS
 	if (ghost_print_on("sm_diff_trans")) {
+		ghost_printf("on %g(sm_trans):\n", &trans);
 		ghost_printf("transition simplified model state diff: ");
 		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
 		ghost_printf("\n");
