@@ -147,66 +147,102 @@ static bool in_simplified_memory(u64 phys)
 	return ((the_ghost_state->base_addr <= phys) && (phys <= the_ghost_state->base_addr + the_ghost_state->size));
 }
 
-static void ensure_blob(u64 phys)
+#define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
+
+struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i)
 {
-	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
-	struct ghost_memory_blob *first_free = NULL;
+	return &mem->blobs_backing[BLOBINDX(mem, i)];
+}
 
-	// just iterate, try find the blob
+struct ghost_memory_blob *find_blob(struct ghost_simplified_memory *mem, u64 phys)
+{
+	u64 page = ALIGN_DOWN_TO_BLOB(phys);
+
+	// TODO: binary search or something to be faster...
+
+	for (int i = 0; i < mem->nr_allocated_blobs; i++) {
+		struct ghost_memory_blob *this = blob_of(mem, i);
+		ghost_assert(this->valid);
+		if (this->phys == page)
+			return this;
+
+		if (this->phys > page)
+			return NULL;
+	}
+
+	return NULL;
+}
+
+static int insert_blob(struct ghost_simplified_memory *mem, u64 b)
+{
+	int i;
+
+	// temporarily insert into end
+	mem->ordered_blob_list[mem->nr_allocated_blobs++] = b;
+
+	// bubble it down
+	i = mem->nr_allocated_blobs;
+	while (--i > 0 && blob_of(mem, i)->phys < blob_of(mem, i - 1)->phys) {
+		int j = BLOBINDX(mem, i);
+		BLOBINDX(mem, i) = BLOBINDX(mem, i - 1);
+		BLOBINDX(mem, i - 1) = j;
+	}
+
+	return i;
+}
+
+static int get_free_blob(void)
+{
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *this = &the_ghost_state->memory.blobs[i];
-		if (!this->valid) {
-			if (first_free == NULL) {
-				first_free = this;
-			}
-		} else if (this->phys == blob_phys) {
-			// found it
-			return;
-		}
+		struct ghost_memory_blob *this = &the_ghost_state->memory.blobs_backing[i];
+		if (!this->valid)
+			return i;
 	}
 
-	// have to grab a new blob
-	if (first_free == NULL) {
-		GHOST_WARN("simplified model ran out of free blobs");
-		ghost_assert(false);
-	}
+	GHOST_WARN("simplified model ran out of free blobs");
+	ghost_assert(false);
+	return 0;
+}
 
-	first_free->valid = true;
-	first_free->phys = blob_phys;
+static struct ghost_memory_blob *ensure_blob(u64 phys)
+{
+	int i;
+	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
+	struct ghost_memory_blob *this;
 
+	/* already one exists, done. */
+	this = find_blob(&the_ghost_state->memory, blob_phys);
+	if (this)
+		return this;
+
+	// otherwise, have to grab a new blob and insert it into the table
+	i = insert_blob(&the_ghost_state->memory, get_free_blob());
+	this = blob_of(&the_ghost_state->memory, i);
+
+	// and initialise it.
+	this->valid = true;
+	this->phys = blob_phys;
 	// the slots are intentionally uninitialised;
 	// as of yet, they haven't been "seen" by the simplified model
 	// so let the first-seen checks initialise them.
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
-		struct sm_location *slot = &first_free->slots[i];
+		struct sm_location *slot = &this->slots[i];
 		slot->initialised = false;
 		slot->phys_addr = blob_phys + i*sizeof(u64);
 	}
+
+	return this;
 }
 
 /**
  * location() - Read an address from the simplified model state.
  * @phys: the physical address.
  */
-struct sm_location *location(u64 phys)
+noinline struct sm_location *location(u64 phys)
 {
-	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
-	ensure_blob(phys);
-
-	// just iterate, try to find the blob
-	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *blob = &the_ghost_state->memory.blobs[i];
-		if (blob->valid && blob->phys == blob_phys) {
-			struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
-			return loc;
-		}
-	}
-
-	// we ensured there was a blob, so we must have found it.
-	GHOST_WARN("tried to access location that wasn't in a blob");
-	ghost_assert(false);
-	unreachable();
-	return NULL;
+	struct ghost_memory_blob *blob = ensure_blob(phys);
+	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
+	return loc;
 }
 
 /**
@@ -1245,8 +1281,10 @@ static void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 	GHOST_LOG_CONTEXT_ENTER();
 	the_ghost_state->base_addr = phys;
 	the_ghost_state->size = size;
+	the_ghost_state->memory.nr_allocated_blobs = 0;
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		the_ghost_state->memory.blobs[i].valid = false;
+		the_ghost_state->memory.blobs_backing[i].valid = false;
+		the_ghost_state->memory.ordered_blob_list[i] = 0xDEADDEADDEADDEAD;
 	}
 	is_initialised = true;
 	GHOST_LOG_CONTEXT_EXIT();
@@ -1496,8 +1534,8 @@ int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
 	if (ret)
 		return ret;
 
-	for (int bi = 0; bi < MAX_BLOBS; bi++) {
-		struct ghost_memory_blob *b = &mem->blobs[bi];
+	for (int bi = 0; bi < mem->nr_allocated_blobs; bi++) {
+		struct ghost_memory_blob *b = blob_of(mem, bi);
 		ret = gp_print_sm_blob(out, b, 0);
 		if (ret)
 			return ret;

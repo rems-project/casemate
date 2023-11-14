@@ -203,11 +203,28 @@ struct ghost_memory_blob {
 
 /**
  * struct ghost_simplified_memory - simplfiied model memory.
- * @blobs: the set of memory blobs.
+ * @blobs_backing: the set of memory blobs.
+ * @nr_allocated_blobs: the number of blobs created so far.
+ * @ordered_blob_list: an list of indexes of allocated blobs, in order of their physical addresses.
  */
 struct ghost_simplified_memory {
-	struct ghost_memory_blob blobs[MAX_BLOBS];
+	struct ghost_memory_blob blobs_backing[MAX_BLOBS];
+
+	u64 nr_allocated_blobs;
+	u64 ordered_blob_list[MAX_BLOBS];
 };
+
+/**
+ * find_blob() - Given a phys, find the blob containing it.
+ *
+ * Returns NULL if no blob is found.
+ */
+struct ghost_memory_blob *find_blob(struct ghost_simplified_memory *mem, u64 phys);
+
+/**
+ * blob_of() - Given an index in the ordered_blob_list return the corresponding blob
+ */
+struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i);
 
 /**
  * location() - Retrieve the simplified-model memory for a given physical address
