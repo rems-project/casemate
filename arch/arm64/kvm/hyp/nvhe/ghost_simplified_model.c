@@ -1186,8 +1186,10 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 
 	current_transition = trans;
 
+#ifdef CONFIG_NVHE_GHOST_DIFF
 	if (ghost_print_on("sm_diff_trans"))
 		copy_sm_state_into(the_ghost_state_pre);
+#endif /* CONFIG_NVHE_GHOST_DIFF */
 
 	switch (trans.kind) {
 	case TRANS_MEM_WRITE:
@@ -1216,8 +1218,10 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 	if (ghost_print_on("sm_dump_trans"))
 		dump_sm_state(the_ghost_state);
 
+#ifdef CONFIG_NVHE_GHOST_DIFF
 	if (ghost_print_on("sm_diff_trans"))
 		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
+#endif /* CONFIG_NVHE_GHOST_DIFF */
 
 	GHOST_LOG_CONTEXT_EXIT();
 
