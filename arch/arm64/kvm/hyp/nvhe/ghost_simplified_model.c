@@ -295,7 +295,7 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
  * location() - Read an address from the simplified model state.
  * @phys: the physical address.
  */
-noinline struct sm_location *location(u64 phys)
+struct sm_location *location(u64 phys)
 {
 	struct ghost_memory_blob *blob = ensure_blob(phys);
 	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
