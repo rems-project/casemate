@@ -1414,14 +1414,39 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 
 int gp_print_src_loc(gp_stream_t *out, struct src_loc *src_loc)
 {
-	return ghost_sprintf(out, "at %s:%d in %s", src_loc->file, src_loc->file, src_loc->func);
+	return ghost_sprintf(out, "at %s:%d in %s", src_loc->file, src_loc->lineno, src_loc->func);
 }
 
 int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition *trans)
 {
 	int ret;
 
-	ret = gp_print_src_loc(out, &trans->src_loc);
+	switch (trans->kind) {
+	case TRANS_MEM_WRITE:
+		ret = gp_print_write_trans(out, &trans->write_data);
+		break;
+	case TRANS_MEM_READ:
+		ret = gp_print_read_trans(out, &trans->read_data);
+		break;
+	case TRANS_DSB:
+		ret = gp_print_dsb_trans(out, &trans->dsb_data);
+		break;
+	case TRANS_ISB:
+		ret = ghost_sprintf(out, "ISB");
+		break;
+	case TRANS_TLBI:
+		ret = gp_print_tlbi_trans(out, &trans->tlbi_data);
+		break;
+	case TRANS_MSR:
+		ret = gp_print_msr_trans(out, &trans->msr_data);
+		break;
+	case TRANS_HINT:
+		ret = gp_print_hint_trans(out, &trans->hint_data);
+		break;
+	default:
+		BUG();
+	};
+
 	if (ret)
 		return ret;
 
@@ -1429,24 +1454,7 @@ int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition
 	if (ret)
 		return ret;
 
-	switch (trans->kind) {
-	case TRANS_MEM_WRITE:
-		return gp_print_write_trans(out, &trans->write_data);
-	case TRANS_MEM_READ:
-		return gp_print_read_trans(out, &trans->read_data);
-	case TRANS_DSB:
-		return gp_print_dsb_trans(out, &trans->dsb_data);
-	case TRANS_ISB:
-		return ghost_sprintf(out, "ISB");
-	case TRANS_TLBI:
-		return gp_print_tlbi_trans(out, &trans->tlbi_data);
-	case TRANS_MSR:
-		return gp_print_msr_trans(out, &trans->msr_data);
-	case TRANS_HINT:
-		return gp_print_hint_trans(out, &trans->hint_data);
-	default:
-		BUG();
-	};
+	return gp_print_src_loc(out, &trans->src_loc);
 }
 
 // A helper for the GHOST_LOG and GHOST_WARN macros
@@ -1457,10 +1465,10 @@ void GHOST_transprinter(void *data)
 	ghost_printf("%g(sm_trans)", trans);
 }
 
-static const char *lis_names[] = {
-	[LIS_unguarded] = "x",
-	[LIS_dsbed] = "dsb'd",
-	[LIS_dsb_tlbi_all] = "tlbi'd",
+static const char lis_names[] = {
+	[LIS_unguarded] = 'n',
+	[LIS_dsbed] = 'd',
+	[LIS_dsb_tlbi_all] = 't',
 };
 
 // Printers for sm state
@@ -1468,12 +1476,12 @@ int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
 {
 	int ret;
 
-	ret = ghost_sprintf(out, "Iunclean");
+	ret = ghost_sprintf(out, "IU");
 	if (ret)
 		return ret;
 
 	for (int i = 0; i < MAX_CPU; i++) {
-		ret = ghost_sprintf(out, " %s", lis_names[st->lis[i]]);
+		ret = ghost_sprintf(out, " %c", lis_names[st->lis[i]]);
 		if (ret)
 			return ret;
 	}
@@ -1483,22 +1491,26 @@ int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
 
 int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 {
+	/* invalid_unclean prints 10 chars, make sure the others pad to that, too. */
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
-		return ghost_sprintf(out, "I %ld", st->invalid_clean_state.invalidator_tid);
+		// TODO: invalidator_tid will only be 1 char as MAX_CPU is 4, maybe this could be less fragile.
+		return ghost_sprintf(out, "I %ld%I", st->invalid_clean_state.invalidator_tid, 10 - 3);
 	case STATE_PTE_INVALID_UNCLEAN:
 		return gp_print_invalid_unclean_state(out, &st->invalid_unclean_state);
 	case STATE_PTE_VALID:
-		return ghost_sprintf(out, "V");
+		return ghost_sprintf(out, "V %I", 10 - 2);
 	}
 }
 
 int gp_print_sm_loc(gp_stream_t *out, struct sm_location *loc)
 {
+	char *init = loc->initialised ? "*" : "!";
+
 	if (loc->is_pte) {
-		return ghost_sprintf(out, "%p (desc:%lx st:%g(sm_pte_state) owner:%p)", loc->phys_addr, loc->val, &loc->state, loc->owner);
+		return ghost_sprintf(out, "%s[%p]=%lx (pte_st:%g(sm_pte_state) root:%p)", init, loc->phys_addr, loc->val, &loc->state, loc->owner);
 	} else {
-		return ghost_sprintf(out, "%p %lx", loc->phys_addr, loc->val);
+		return ghost_sprintf(out, "%s[%p]=%lx", init, loc->phys_addr, loc->val);
 	}
 
 }
@@ -1510,7 +1522,7 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 	if (!b->valid)
 		return ghost_sprintf(out, "<invalid blob>");
 
-	ret = ghost_sprintf(out, "%Iblob %p", indent, b->phys);
+	ret = ghost_sprintf(out, "%I%g(sm_blob)\n", indent, b);
 	if (ret)
 		return ret;
 
@@ -1520,14 +1532,44 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 		if (!loc->is_pte)
 			continue;
 
-		ret = ghost_sprintf(out, "%I%g(sm_loc)\n", indent+2, loc);
+		// don't waste energy printing 'clean' entries...
+		if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
+			ret = ghost_sprintf(out, " %I%g(sm_loc)\n", indent+2, loc);
 		if (ret)
 			return ret;
+		}
 	}
 
 
 	return 0;
 }
+
+int gp_print_sm_blob_info(gp_stream_t *out, struct ghost_memory_blob *b)
+{
+	if (b->valid) {
+		int tracked = 0;
+		int invalid = 0;
+		int invalid_unclean = 0;
+
+		for (u64 i = 0; i < SLOTS_PER_PAGE; i++) {
+			struct sm_location *loc = &b->slots[i];
+			// only show those that are ptes we're tracking
+			if (!loc->is_pte)
+				continue;
+			++tracked;
+			if (loc->state.kind == STATE_PTE_INVALID)
+				invalid++;
+			else if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
+				invalid_unclean++;
+		}
+
+		return ghost_sprintf(out, "<blob %p->%p, %d tracked, %d invalid (clean), %d invalid (unclean)>", b->phys, b->phys + BLOB_SIZE, tracked, invalid, invalid_unclean);
+	} else {
+		return ghost_sprintf(out, "<invalid blob>");
+	}
+}
+
+
 
 int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
 {
@@ -1591,7 +1633,15 @@ int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 	if (ret)
 		return ret;
 
+	ret = ghost_sprintf(out, "\n");
+	if (ret)
+		return ret;
+
 	ret = gp_print_sm_roots(out, "s2", s->nr_s2_roots, s->s2_roots);
+	if (ret)
+		return ret;
+
+	ret = ghost_sprintf(out, "\n");
 	if (ret)
 		return ret;
 
