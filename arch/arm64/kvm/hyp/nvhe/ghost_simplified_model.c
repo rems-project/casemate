@@ -147,6 +147,46 @@ static bool in_simplified_memory(u64 phys)
 	return ((the_ghost_state->base_addr <= phys) && (phys <= the_ghost_state->base_addr + the_ghost_state->size));
 }
 
+#ifdef CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS
+/*
+ * A simple and slow, but very robust, sanity check over the blobs.
+ */
+static bool check_sanity_of_blobs(void)
+{
+	int c = 0;
+
+	for (int i = 1; i < the_ghost_state->memory.nr_allocated_blobs; i++) {
+		if (! (blob_of(&the_ghost_state->memory, i - 1)->phys < blob_of(&the_ghost_state->memory, i)->phys))
+			return false;
+	}
+
+
+	for (int i = 0; i < MAX_BLOBS; i++) {
+		if (the_ghost_state->memory.blobs_backing[i].valid)
+			c++;
+	}
+
+	if (c != the_ghost_state->memory.nr_allocated_blobs)
+		return false;
+
+	return true;
+}
+
+static bool check_sanity_of_no_blob(u64 phys)
+{
+	u64 page = ALIGN_DOWN_TO_BLOB(phys);
+
+	for (int i = 0; i < MAX_BLOBS; i++) {
+		struct ghost_memory_blob *b = &the_ghost_state->memory.blobs_backing[i];
+		if (b->valid && b->phys == page) {
+			return false;
+		}
+	}
+
+	return true;
+}
+#endif /* CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS */
+
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
 
 struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i)
@@ -156,31 +196,41 @@ struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i)
 
 struct ghost_memory_blob *find_blob(struct ghost_simplified_memory *mem, u64 phys)
 {
+	int l, r;
+	struct ghost_memory_blob *this;
 	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
-	// TODO: binary search or something to be faster...
+	l = 0;
+	r = mem->nr_allocated_blobs - 1;
 
-	for (int i = 0; i < mem->nr_allocated_blobs; i++) {
-		struct ghost_memory_blob *this = blob_of(mem, i);
-		ghost_assert(this->valid);
-		if (this->phys == page)
+	/*
+	 * as usual with binary search, it's easy until you need to stop
+	 * going to m+1 or m-1 ensures we always make progress towards one end
+	 */
+	while (l <= r) {
+		int m = (l + r) >> 1;
+		this = blob_of(mem, m);
+
+		if (this->phys < page) {
+			l = m + 1;
+		} else if (page == this->phys) {
 			return this;
-
-		if (this->phys > page)
-			return NULL;
+		} else if (page < this->phys) {
+			r = m - 1;
+		}
 	}
 
 	return NULL;
 }
 
-static int insert_blob(struct ghost_simplified_memory *mem, u64 b)
+static void insert_blob_at_end(struct ghost_simplified_memory *mem, u64 b)
+{
+	mem->ordered_blob_list[mem->nr_allocated_blobs++] = b;
+}
+
+static int bubble_blob_down(struct ghost_simplified_memory *mem)
 {
 	int i;
-
-	// temporarily insert into end
-	mem->ordered_blob_list[mem->nr_allocated_blobs++] = b;
-
-	// bubble it down
 	i = mem->nr_allocated_blobs;
 	while (--i > 0 && blob_of(mem, i)->phys < blob_of(mem, i - 1)->phys) {
 		int j = BLOBINDX(mem, i);
@@ -206,7 +256,6 @@ static int get_free_blob(void)
 
 static struct ghost_memory_blob *ensure_blob(u64 phys)
 {
-	int i;
 	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
 	struct ghost_memory_blob *this;
 
@@ -215,9 +264,12 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
 	if (this)
 		return this;
 
+	ghost_safety_check(check_sanity_of_no_blob(phys));
+
 	// otherwise, have to grab a new blob and insert it into the table
-	i = insert_blob(&the_ghost_state->memory, get_free_blob());
-	this = blob_of(&the_ghost_state->memory, i);
+	insert_blob_at_end(&the_ghost_state->memory, get_free_blob());
+	this = blob_of(&the_ghost_state->memory, the_ghost_state->memory.nr_allocated_blobs - 1);
+	ghost_assert(!this->valid);
 
 	// and initialise it.
 	this->valid = true;
@@ -230,6 +282,11 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
 		slot->initialised = false;
 		slot->phys_addr = blob_phys + i*sizeof(u64);
 	}
+
+	// finally, we bubble it down in the ordered list
+	// to maintain the sorted order
+	bubble_blob_down(&the_ghost_state->memory);
+	ghost_safety_check(check_sanity_of_blobs());
 
 	return this;
 }

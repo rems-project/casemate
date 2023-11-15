@@ -182,6 +182,7 @@ struct sm_location {
 #define MAX_BLOBS (0x2000)
 #define MAX_ROOTS 10
 
+#define BLOB_SIZE ((1UL) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
 #define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
 #define OFFSET_IN_BLOB(x) ((x) & BLOB_OFFSET_MASK)
