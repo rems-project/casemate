@@ -485,7 +485,15 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 		switch (ctxt.exploded_descriptor.kind) {
 		case PTE_KIND_TABLE:
-			traverse_pgtable_from(root, ctxt.exploded_descriptor.table_data.next_level_table_addr, ctxt.exploded_descriptor.ia_region.range_size, level+1, s2, visitor_cb, data);
+			traverse_pgtable_from(
+				root,
+				ctxt.exploded_descriptor.table_data.next_level_table_addr,
+				ctxt.exploded_descriptor.ia_region.range_start + i*ctxt.exploded_descriptor.ia_region.range_size,
+				level+1,
+				s2,
+				visitor_cb,
+				data
+			);
 			break;
 		case PTE_KIND_MAP:
 		case PTE_KIND_INVALID:
