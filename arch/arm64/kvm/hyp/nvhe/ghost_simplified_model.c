@@ -1208,19 +1208,14 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 ///////////////////////////
 /// Generic Step
 
-void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
+static void step(struct ghost_simplified_model_transition trans)
 {
-	ensure_atomic_lock();
-	lock_sm();
-
-	if (! is_initialised) {
-		goto unlock;
-	}
-
 	GHOST_LOG_CONTEXT_ENTER();
 	GHOST_LOG(trans, trans);
 
 	current_transition = trans;
+	if (ghost_print_on(__func__))
+		ghost_printf(GHOST_WHITE_ON_CYAN "%g(sm_trans)" GHOST_NORMAL "\n", &trans);
 
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS
 	if (ghost_print_on("sm_diff_trans"))
@@ -1256,7 +1251,6 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS
 	if (ghost_print_on("sm_diff_trans")) {
-		ghost_printf("on %g(sm_trans):\n", &trans);
 		ghost_printf("transition simplified model state diff: ");
 		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
 		ghost_printf("\n");
@@ -1264,6 +1258,18 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS */
 
 	GHOST_LOG_CONTEXT_EXIT();
+}
+
+void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
+{
+	ensure_atomic_lock();
+	lock_sm();
+
+	if (! is_initialised) {
+		goto unlock;
+	}
+
+	step(trans);
 
 unlock:
 	unlock_sm();
@@ -1299,8 +1305,9 @@ static void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 static void sync_simplified_model_memory(void)
 {
 	u64 pkvm_pgd;
-
 	GHOST_LOG_CONTEXT_ENTER();
+	/* don't step() a MSR-like transition
+	 * because there is not a current TTBR0_EL2 in effect. */
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
 	register_s1_root(pkvm_pgd);
 	GHOST_LOG_CONTEXT_EXIT();
@@ -1315,7 +1322,7 @@ static void initialise_ghost_hint_transitions(void)
 
 	GHOST_LOG_CONTEXT_ENTER();
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-	step_hint((struct ghost_simplified_model_transition){
+	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
@@ -1324,7 +1331,7 @@ static void initialise_ghost_hint_transitions(void)
 			.value = (u64)&pkvm_pgd_lock,
 		},
 	});
-	step_hint((struct ghost_simplified_model_transition){
+	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
