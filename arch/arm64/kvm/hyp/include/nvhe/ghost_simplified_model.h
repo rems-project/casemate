@@ -228,6 +228,11 @@ struct ghost_memory_blob *find_blob(struct ghost_simplified_memory *mem, u64 phy
 struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i);
 
 /**
+ * blob_unclean() - Returns whether any slot in the blob is in an unclean state.
+ */
+bool blob_unclean(struct ghost_memory_blob *blob);
+
+/**
  * location() - Retrieve the simplified-model memory for a given physical address
  */
 struct sm_location *location(u64 phys);

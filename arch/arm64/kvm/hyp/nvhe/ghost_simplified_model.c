@@ -291,6 +291,16 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
 	return this;
 }
 
+bool blob_unclean(struct ghost_memory_blob *blob)
+{
+	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
+		if (blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
+			return true;
+	}
+
+	return false;
+}
+
 /**
  * location() - Read an address from the simplified model state.
  * @phys: the physical address.
