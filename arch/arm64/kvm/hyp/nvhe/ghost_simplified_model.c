@@ -992,8 +992,12 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	loc->state.invalid_unclean_state = (struct aut_invalid) {
 		.invalidator_tid = cpu_id(),
 		.old_valid_desc = read_phys_pre(loc->phys_addr),
-		.lis = LIS_unguarded
 	};
+
+	// TODO: BS: this really can't be written in the compound literal above?
+	for (int i = 0; i < MAX_CPU; i++) {
+		loc->state.invalid_unclean_state.lis[i] = LIS_unguarded;
+	}
 }
 
 static void step_write(struct ghost_simplified_model_transition trans)
@@ -1071,10 +1075,10 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 			break;
 		}
 
-		if (loc->state.invalid_unclean_state.lis == LIS_unguarded) {
-			// if not yet DSBd, then tick it forward
-			loc->state.invalid_unclean_state.lis = LIS_dsbed;
-		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbi_all) {
+		if (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_unguarded) {
+			// if not yet DSBd, then tick it forward for this cpu
+			loc->state.invalid_unclean_state.lis[this_cpu] = LIS_dsbed;
+		} else if (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_dsb_tlbi_all) {
 			// if DSB+TLBI'd already, this DSB then propagates that TLBI everywhere,
 			// but only if it's the right kind of DSB
 			if (dsb_kind == DSB_ish) {
@@ -1158,9 +1162,9 @@ static void step_pte_on_tlbi(struct sm_location *loc)
 	case STATE_PTE_INVALID_UNCLEAN:
 		if (
 			   (loc->state.invalid_unclean_state.invalidator_tid == this_cpu)
-			&& (loc->state.invalid_unclean_state.lis == LIS_dsbed)
+			&& (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_dsbed)
 		) {
-			loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_all;
+			loc->state.invalid_unclean_state.lis[this_cpu] = LIS_dsb_tlbi_all;
 		}
 		break;
 	default:
@@ -1558,9 +1562,11 @@ int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
 	if (ret)
 		return ret;
 
-	ret = ghost_sprintf(out, " %c", lis_names[st->lis]);
-	if (ret)
-		return ret;
+	for (int i = 0; i < MAX_CPU; i++) {
+		ret = ghost_sprintf(out, " %c", lis_names[st->lis[i]]);
+		if (ret)
+			return ret;
+	}
 
 	return 0;
 }
@@ -1743,7 +1749,8 @@ bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2)
 	if (i1->old_valid_desc != i2->old_valid_desc)
 		return false;
 
-	if (i1->lis != i2->lis) {
+	for (int i = 0; i < MAX_CPU; i++) {
+		if (i1->lis[i] != i2->lis[i])
 			return false;
 	}
 

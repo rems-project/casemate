@@ -73,7 +73,7 @@ enum LIS {
 struct aut_invalid {
 	thread_identifier invalidator_tid;
 	int old_valid_desc;
-	enum LIS lis;
+	enum LIS lis[MAX_CPU];
 };
 
 /**
