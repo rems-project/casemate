@@ -68,12 +68,12 @@ enum LIS {
  * struct aut_invalid - Automata state for an invalid PTE
  * @invalidator_tid: thread id of the thread which wrote invalid.
  * @old_valid_desc: the descriptor which got overwritten.
- * @lis: per-CPU local-invalid-state.
+ * @lis: sub-invalid-state, for thread with tid invalidator_tid.
  */
 struct aut_invalid {
 	thread_identifier invalidator_tid;
 	int old_valid_desc;
-	enum LIS lis[MAX_CPU];
+	enum LIS lis;
 };
 
 /**

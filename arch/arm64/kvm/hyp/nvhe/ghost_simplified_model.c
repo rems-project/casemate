@@ -992,12 +992,8 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	loc->state.invalid_unclean_state = (struct aut_invalid) {
 		.invalidator_tid = cpu_id(),
 		.old_valid_desc = read_phys_pre(loc->phys_addr),
+		.lis = LIS_unguarded
 	};
-
-	// TODO: BS: this really can't be written in the compound literal above?
-	for (int i = 0; i < MAX_CPU; i++) {
-		loc->state.invalid_unclean_state.lis[i] = LIS_unguarded;
-	}
 }
 
 static void step_write(struct ghost_simplified_model_transition trans)
@@ -1075,10 +1071,10 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 			break;
 		}
 
-		if (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_unguarded) {
-			// if not yet DSBd, then tick it forward for this cpu
-			loc->state.invalid_unclean_state.lis[this_cpu] = LIS_dsbed;
-		} else if (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_dsb_tlbi_all) {
+		if (loc->state.invalid_unclean_state.lis == LIS_unguarded) {
+			// if not yet DSBd, then tick it forward
+			loc->state.invalid_unclean_state.lis = LIS_dsbed;
+		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbi_all) {
 			// if DSB+TLBI'd already, this DSB then propagates that TLBI everywhere,
 			// but only if it's the right kind of DSB
 			if (dsb_kind == DSB_ish) {
@@ -1162,9 +1158,9 @@ static void step_pte_on_tlbi(struct sm_location *loc)
 	case STATE_PTE_INVALID_UNCLEAN:
 		if (
 			   (loc->state.invalid_unclean_state.invalidator_tid == this_cpu)
-			&& (loc->state.invalid_unclean_state.lis[this_cpu] == LIS_dsbed)
+			&& (loc->state.invalid_unclean_state.lis == LIS_dsbed)
 		) {
-			loc->state.invalid_unclean_state.lis[this_cpu] = LIS_dsb_tlbi_all;
+			loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_all;
 		}
 		break;
 	default:
@@ -1556,32 +1552,21 @@ static const char lis_names[] = {
 // Printers for sm state
 int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
 {
-	int ret;
-
-	ret = ghost_sprintf(out, "IU");
-	if (ret)
-		return ret;
-
-	for (int i = 0; i < MAX_CPU; i++) {
-		ret = ghost_sprintf(out, " %c", lis_names[st->lis[i]]);
-		if (ret)
-			return ret;
-	}
-
-	return 0;
+	// prints 6 chars
+	return ghost_sprintf(out, "IU %c %ld", lis_names[st->lis], st->invalidator_tid);
 }
 
 int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 {
-	/* invalid_unclean prints 10 chars, make sure the others pad to that, too. */
+	/* invalid_unclean prints 6 chars, make sure the others pad to that, too. */
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
 		// TODO: invalidator_tid will only be 1 char as MAX_CPU is 4, maybe this could be less fragile.
-		return ghost_sprintf(out, "I %ld%I", st->invalid_clean_state.invalidator_tid, 10 - 3);
+		return ghost_sprintf(out, "I    %ld", st->invalid_clean_state.invalidator_tid);
 	case STATE_PTE_INVALID_UNCLEAN:
 		return gp_print_invalid_unclean_state(out, &st->invalid_unclean_state);
 	case STATE_PTE_VALID:
-		return ghost_sprintf(out, "V %I", 10 - 2);
+		return ghost_sprintf(out, "V%I", 6 - 1);
 	}
 }
 
@@ -1749,8 +1734,7 @@ bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2)
 	if (i1->old_valid_desc != i2->old_valid_desc)
 		return false;
 
-	for (int i = 0; i < MAX_CPU; i++) {
-		if (i1->lis[i] != i2->lis[i])
+	if (i1->lis != i2->lis) {
 			return false;
 	}
 
