@@ -204,10 +204,10 @@ struct ghost_memory_blob {
 };
 
 /**
- * struct ghost_simplified_memory - simplfiied model memory.
+ * struct ghost_simplified_memory - simplified model memory.
  * @blobs_backing: the set of memory blobs.
  * @nr_allocated_blobs: the number of blobs created so far.
- * @ordered_blob_list: an list of indexes of allocated blobs, in order of their physical addresses.
+ * @ordered_blob_list: a list of indices of allocated blobs, in order of their physical addresses.
  */
 struct ghost_simplified_memory {
 	struct ghost_memory_blob blobs_backing[MAX_BLOBS];
@@ -224,12 +224,12 @@ struct ghost_simplified_memory {
 struct ghost_memory_blob *find_blob(struct ghost_simplified_memory *mem, u64 phys);
 
 /**
- * blob_of() - Given an index in the ordered_blob_list return the corresponding blob
+ * blob_of() - Given an index in the ordered_blob_list, return the corresponding blob
  */
 struct ghost_memory_blob *blob_of(struct ghost_simplified_memory *mem, u64 i);
 
 /**
- * blob_unclean() - Returns whether any slot in the blob is in an unclean state.
+ * blob_unclean() - Is any slot in the blob in an unclean state.
  */
 bool blob_unclean(struct ghost_memory_blob *blob);
 
@@ -380,7 +380,9 @@ static const char *hint_names[] = {
 	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
 };
 
-
+/**
+ * Source location info
+ */
 struct src_loc {
 	const char *file;
 	const char *func;
