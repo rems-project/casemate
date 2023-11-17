@@ -1586,6 +1586,9 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 {
 	int ret;
 
+	if (sm_print_condensed() && !blob_unclean(b))
+		return 0;
+
 	if (!b->valid)
 		return ghost_sprintf(out, "<invalid blob>");
 
@@ -1600,13 +1603,12 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 			continue;
 
 		// don't waste energy printing 'clean' entries...
-		if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
+		if (!sm_print_condensed() || loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
 			ret = ghost_sprintf(out, " %I%g(sm_loc)\n", indent+2, loc);
 		if (ret)
 			return ret;
 		}
 	}
-
 
 	return 0;
 }
@@ -1641,13 +1643,25 @@ int gp_print_sm_blob_info(gp_stream_t *out, struct ghost_memory_blob *b)
 int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
 {
 	int ret;
+	bool empty = true;
+
 	ret = ghost_sprintf(out, "mem:\n");
 	if (ret)
 		return ret;
 
 	for (int bi = 0; bi < mem->nr_allocated_blobs; bi++) {
 		struct ghost_memory_blob *b = blob_of(mem, bi);
+
+		if (!sm_print_condensed() || blob_unclean(b))
+			empty = false;
+
 		ret = gp_print_sm_blob(out, b, 0);
+		if (ret)
+			return ret;
+	}
+
+	if (empty) {
+		ret = ghost_sprintf(out, "<clean>\n", 0);
 		if (ret)
 			return ret;
 	}

@@ -7,6 +7,7 @@
 #include <nvhe/spinlock.h>
 
 #include <nvhe/ghost_asserts.h>
+#include <nvhe/ghost_control.h>
 
 
 #define MAX_CPU 4 // TODO: JP
@@ -429,6 +430,10 @@ struct ghost_simplified_model_transition {
 };
 void GHOST_transprinter(void *p);
 
+static inline bool sm_print_condensed(void)
+{
+	return ghost_control_print_enabled("sm_condensed");
+}
 
 /**
  * initialise_ghost_simplified_model() - One-shot initialisation of simplified model state.
