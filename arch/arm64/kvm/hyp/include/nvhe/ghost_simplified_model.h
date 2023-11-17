@@ -48,6 +48,8 @@ enum LVS {
  * @lvs: per-CPU local-valid-state.
  */
 struct aut_valid {
+	// TODO:JP: this feel fishy, especially given the comments for LVS
+	// I think we should we remember the writer, and treat it specially
 	enum LVS lvs[MAX_CPU];
 };
 
