@@ -750,7 +750,7 @@ static void clean_reachability_checker_cb(struct pgtable_traverse_context *ctxt)
 }
 
 /*
- * if mem (was) a table entry, traverse the old children
+ * if loc (was) a table entry, traverse the old children
  * and check they were all clean (VALID or INVALID, but not INVALID_UNCLEAN).
  */
 static bool pre_all_reachable_clean(struct sm_location *loc)
