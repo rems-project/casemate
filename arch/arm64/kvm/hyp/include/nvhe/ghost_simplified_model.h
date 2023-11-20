@@ -92,6 +92,11 @@ enum automaton_state_kind {
 	STATE_PTE_INVALID_UNCLEAN,
 	STATE_PTE_INVALID,
 };
+static const char *automaton_state_names[] = {
+	ID_STRING(STATE_PTE_VALID),
+	ID_STRING(STATE_PTE_INVALID_UNCLEAN),
+	ID_STRING(STATE_PTE_INVALID)
+};
 
 /**
  * struct pte_state - Automata state of a single PTE location.
