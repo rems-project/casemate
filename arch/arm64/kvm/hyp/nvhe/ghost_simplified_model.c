@@ -294,7 +294,7 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
 bool blob_unclean(struct ghost_memory_blob *blob)
 {
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
-		if (blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
+		if (blob->slots[i].is_pte && blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
 			return true;
 	}
 
