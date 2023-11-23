@@ -1449,7 +1449,7 @@ int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 
 int gp_print_read_trans(gp_stream_t *out, struct trans_read_data *read_data)
 {
-	return ghost_sprintf(out, "Rs %p (=%lx)", read_data->phys_addr, read_data->val);
+	return ghost_sprintf(out, "R %p (=%lx)", read_data->phys_addr, read_data->val);
 }
 
 int gp_print_dsb_trans(gp_stream_t *out, enum dsb_kind *dsb_data)
