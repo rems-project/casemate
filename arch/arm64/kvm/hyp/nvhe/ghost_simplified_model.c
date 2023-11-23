@@ -922,6 +922,11 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 ////////////////////////
 // Step on memory write
 
+static void __update_descriptor_on_write(struct sm_location *loc, u64 val)
+{
+	loc->descriptor = deconstruct_pte(loc->descriptor.ia_region.range_size, val, loc->descriptor.level, loc->descriptor.s2);
+}
+
 /*
  * when writing a new table entry
  * must ensure that the child table(s) are all clean
@@ -1010,6 +1015,9 @@ static void step_write(struct ghost_simplified_model_transition trans)
 
 	// must own the lock on the pgtable this pte is in.
 	assert_owner_locked(loc);
+
+	// since it's a pte, we can deconstruct the descriptor
+	__update_descriptor_on_write(loc, val);
 
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
