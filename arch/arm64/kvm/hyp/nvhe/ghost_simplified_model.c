@@ -1036,12 +1036,12 @@ done:
 
 static void step_read(struct ghost_simplified_model_transition trans)
 {
-	struct sm_location *loc = location(trans.write_data.phys_addr);
+	struct sm_location *loc = location(trans.read_data.phys_addr);
 
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
 	// (the read_phys already does this check, but it's never bad to double check).
-	ghost_assert(read_phys(loc->phys_addr) != loc->val);
+	ghost_assert(read_phys(loc->phys_addr) == loc->val);
 }
 
 /////////////////
