@@ -868,6 +868,11 @@ static void register_s2_root(phys_addr_t root)
 	if (s1_root_exists(root) || s2_root_exists(root))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
 
+	if (the_ghost_state->nr_s2_roots == MAX_ROOTS) {
+		GHOST_WARN("Too many s2 roots, cannot register");
+		return;
+	}
+
 	// TODO: VMIDs
 	the_ghost_state->s2_roots[the_ghost_state->nr_s2_roots++] = root;
 	traverse_pgtable(root, true, mark_cb, NULL);
@@ -879,6 +884,11 @@ static void register_s1_root(phys_addr_t root)
 	GHOST_LOG_CONTEXT_ENTER();
 	if (s1_root_exists(root) || s2_root_exists(root))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
+
+	if (the_ghost_state->nr_s1_roots == MAX_ROOTS) {
+		GHOST_WARN("Too many s1 roots, cannot register");
+		return;
+	}
 
 	the_ghost_state->s1_roots[the_ghost_state->nr_s1_roots++] = root;
 	traverse_pgtable(root, false, mark_cb, NULL);
