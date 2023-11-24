@@ -424,6 +424,7 @@ static const u64 OA_shift[] = {
 
 
 #define TCR_EL2_T0SZ_SHIFT	0
+
 static u64 read_start_level(u64 tcr)
 {
 	u64 t0sz = (tcr & TCR_EL2_T0SZ_MASK) >> TCR_EL2_T0SZ_SHIFT;
@@ -435,6 +436,7 @@ static u64 read_start_level(u64 tcr)
 	return (48 - ia_bits) / 9;
 }
 
+
 static u64 discover_start_level(bool s2)
 {
 	if (s2) {
@@ -443,6 +445,62 @@ static u64 discover_start_level(bool s2)
 	} else {
 		u64 tcr = read_sysreg(tcr_el2);
 		return read_start_level(tcr);
+	}
+}
+
+static u64 discover_page_size(bool s2)
+{
+	u64 tcr;
+	u64 tg0;
+
+	if (s2) {
+		tcr = read_sysreg(vtcr_el2);
+	} else {
+		tcr = read_sysreg(tcr_el2);
+	}
+
+	tg0 = (tcr & TCR_TG0_MASK) >> TCR_TG0_SHIFT;
+
+	if (tg0 == 0) {
+		return 4*1024;
+	} else if (tg0 == 1) {
+		return 64*1024;
+	} else if (tg0 == 2) {
+		return 16*1024;
+	} else {
+		unreachable();
+	}
+}
+
+static u64 discover_nr_concatenated_pgtables(bool s2)
+{
+	/* stage1 is never concatenated */
+	if (! s2)
+		return 1;
+
+	/* as per J.a D8-5832 */
+
+	// assume pkvm has 4k graule
+	ghost_assert(discover_page_size(true) == PAGE_SIZE);
+
+	// assume stage2 translations starting at level 0
+	ghost_assert(discover_start_level(true) == 0);
+
+	u64 t0sz = (read_sysreg(vtcr_el2) & 0b111111);
+
+	// now we know t0sz must be between 24 and 12.
+	if (t0sz >= 16) {
+		return 1;
+	} else if (t0sz == 15) {
+		return 2;
+	} else if (t0sz == 14) {
+		return 4;
+	} else if (t0sz == 13) {
+		return 8;
+	} else if (t0sz == 12) {
+		return 16;
+	} else {
+		unreachable();
 	}
 }
 
@@ -576,10 +634,16 @@ static void traverse_pgtable(u64 root, bool s2, pgtable_traverse_cb visitor_cb, 
 {
 	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
-	// TODO: concatenated s2 pagetables
+
 	start_level = discover_start_level(s2);
 	GHOST_LOG(root, u64);
 	GHOST_LOG(start_level, u64);
+
+	// assume uses 4k granule, starting from level 0, without multiple concatenated pagetables
+	ghost_assert(start_level == 0);
+	ghost_assert(discover_page_size(s2) == PAGE_SIZE);
+	ghost_assert(discover_nr_concatenated_pgtables(s2) == 1);
+
 	traverse_pgtable_from(root, root, 0, start_level, s2, visitor_cb, data);
 	GHOST_LOG_CONTEXT_EXIT();
 }
