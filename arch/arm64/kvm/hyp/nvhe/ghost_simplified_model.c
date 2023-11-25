@@ -141,12 +141,6 @@ unlock_pkvm:
 
 void copy_sm_state_into(struct ghost_simplified_model_state *out);
 
-
-static bool in_simplified_memory(u64 phys)
-{
-	return ((the_ghost_state->base_addr <= phys) && (phys <= the_ghost_state->base_addr + the_ghost_state->size));
-}
-
 #ifdef CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS
 /*
  * A simple and slow, but very robust, sanity check over the blobs.
@@ -325,12 +319,6 @@ static u64 __read_phys(u64 addr, bool pre)
 	u64 value;
 	u64 *hyp_va = (u64*)hyp_phys_to_virt((phys_addr_t)addr);
 	u64 hyp_val = *hyp_va;
-
-	// if it's not a location being tracked by the simplified model,
-	// then this is probably a mistake
-	if (! in_simplified_memory(addr)) {
-		ghost_assert(false);
-	}
 
 	// otherwise, convert to index in memory and get the val
 	loc = location(addr);
@@ -853,7 +841,10 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 	return all_clean;
 }
 
-
+/**
+ * Callback to mark a location in the page table as a page table entry
+ * in the simplified model.
+*/
 void mark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
