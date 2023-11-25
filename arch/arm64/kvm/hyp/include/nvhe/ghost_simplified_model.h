@@ -75,7 +75,7 @@ enum LIS {
  */
 struct aut_invalid {
 	thread_identifier invalidator_tid;
-	int old_valid_desc;
+	u64 old_valid_desc;
 	enum LIS lis;
 };
 
