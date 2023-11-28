@@ -1051,9 +1051,11 @@ static void step_write_on_invalid_unclean(enum memory_order_t mo, struct sm_loca
 	}
 }
 
+
+
 static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
-	if (is_desc_valid(val)) {
+	if (is_desc_valid(val) && extract_table_address(val) != extract_table_address(loc->val)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->valid");
 		return;
 	}
