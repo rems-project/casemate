@@ -1567,6 +1567,7 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 
 	switch (hint_data->hint_kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
+	case GHOST_HINT_SET_OWNER_ROOT:
 		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_data->location, hint_data->value);
 		break;
 	default:
@@ -1777,6 +1778,29 @@ int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
 	return ghost_sprintf(out, "]");
 }
 
+int gp_print_sm_locks(gp_stream_t *out, struct owner_locks *locks)
+{
+	int ret;
+
+	ret = ghost_sprintf(out, "%s", "locks: [");
+	if (ret)
+		return ret;
+
+	if (locks->len > 0) {
+		ret = ghost_sprintf(out, "(%p,%p)", locks->owner_ids[0], locks->locks[0]);
+		if (ret)
+			return ret;
+
+		for (u64 i = 1; i < locks->len; i++) {
+			ret = ghost_sprintf(out, ", (%p,%p)", locks->owner_ids[i], locks->locks[i]);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return ghost_sprintf(out, "]");
+}
+
 int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 {
 	int ret;
@@ -1804,6 +1828,14 @@ int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 		return ret;
 
 	ret = gp_print_sm_roots(out, "s2", s->nr_s2_roots, s->s2_roots);
+	if (ret)
+		return ret;
+
+	ret = ghost_sprintf(out, "\n");
+	if (ret)
+		return ret;
+
+	ret = gp_print_sm_locks(out, &s->locks);
 	if (ret)
 		return ret;
 
