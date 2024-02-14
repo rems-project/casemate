@@ -22,8 +22,7 @@ typedef int thread_identifier;
 /**
  * typedef sm_owner_t - ID for ownership
  *
- * If two locations have the same owner,
- * then they belong to the same pagetable.
+ * This is the physical address of the pagetable root.
  */
 typedef u64 sm_owner_t;
 

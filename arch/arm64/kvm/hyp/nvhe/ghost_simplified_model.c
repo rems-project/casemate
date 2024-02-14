@@ -779,8 +779,12 @@ static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
 void assert_owner_locked(struct sm_location *loc)
 {
 	sm_owner_t owner_id = loc->owner;
+	// assume 0 cannot be a valid owner id
+	if (!owner_id)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
 	hyp_spinlock_t *lock = owner_lock(owner_id);
-	ghost_assert(lock);  // can't have written without associating the owner.
+	if (!lock)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
 	if (!hyp_spin_is_locked(lock))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
@@ -871,7 +875,7 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 	// mark that this location is now an active pte
 	// and start following the automata
 	loc->is_pte = true;
-	loc->owner = ctxt->root;
+	loc->owner = (sm_owner_t)ctxt->root;
 	loc->descriptor = ctxt->exploded_descriptor;
 	loc->state = initial_state(ctxt->exploded_descriptor.ia_region.range_start, ctxt->descriptor, ctxt->level, ctxt->s2);
 }
@@ -1327,14 +1331,20 @@ static void step_hint_set_root_lock(u64 root, hyp_spinlock_t *lock)
 	associate_lock(root, lock);
 }
 
-static void step_hint_set_owner_root(u64 phys, sm_owner_t root)
+static void step_hint_set_owner_root(u64 phys, u64 root)
 {
-	struct sm_location *loc = location(phys);
+	// the whole page should be owned by the same owner
+	// but in the simplified model, the metadata is split by 64-bit location,
+	// so we iterate to set all in the same page.
+	for (u64 p = PAGE_ALIGN_DOWN(phys); p < PAGE_ALIGN(phys); p += sizeof(kvm_pte_t)) {
+		struct sm_location *loc = location(p);
 
-	// TODO: BS: before letting us disassociate a pte with a given VM/tree,
-	// first we need to check that it's clean enough to forget about
-	// the association with the old VM
-	loc->owner = root;
+		// TODO: BS: before letting us disassociate a pte with a given VM/tree,
+		// first we need to check that it's clean enough to forget about
+		// the association with the old VM
+
+		loc->owner = root;
+	}
 }
 
 static void step_hint(struct ghost_simplified_model_transition trans)
@@ -1344,7 +1354,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		step_hint_set_root_lock(trans.hint_data.location, (hyp_spinlock_t *)trans.hint_data.value);
 		break;
 	case GHOST_HINT_SET_OWNER_ROOT:
-		step_hint_set_owner_root(trans.hint_data.location, (sm_owner_t)trans.hint_data.value);
+		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
 		break;
 	default:
 		;
