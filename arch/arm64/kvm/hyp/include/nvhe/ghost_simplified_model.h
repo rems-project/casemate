@@ -56,14 +56,16 @@ struct aut_valid {
  * enum LIS - Local (this CPU) Invalid State of a single invalid PTE.
  * @LIS_unguarded: an invalid value has been written by this core, but not DSB'd.
  * @LIS_dsbed: an invalid value has been written by this core, and now DSB'd, but not TLBI'd.
- * @LIS_dsb_csed: an invalid value has been written by this core,
- *                a subsequent DSB has been performed,
- *                and also a TLBI on that location has been performed.
+ * @LIS_dsb_tlbi_ipa: the invalid write has been written by this core, DSB'd, and only a TLBI that hit the IPA mappings for this loc.
+ * @LIS_dsb_tlbi_ipa_dsb: the invalid write has been written by this core, DSB'd, and only a TLBI that hit the IPA mappings for this loc, and now a DSB has been performed.
+ * @LIS_dsb_tlbied: the invalid write has been written by this core, DSB'd, and now fully TLBI'd.
  */
 enum LIS {
 	LIS_unguarded,
 	LIS_dsbed,
-	LIS_dsb_tlbi_all
+	LIS_dsb_tlbi_ipa,
+	LIS_dsb_tlbi_ipa_dsb,
+	LIS_dsb_tlbied,
 };
 
 /**

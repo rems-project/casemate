@@ -1153,13 +1153,21 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 		if (loc->state.invalid_unclean_state.lis == LIS_unguarded) {
 			// if not yet DSBd, then tick it forward
 			loc->state.invalid_unclean_state.lis = LIS_dsbed;
-		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbi_all) {
+		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbied) {
 			// if DSB+TLBI'd already, this DSB then propagates that TLBI everywhere,
 			// but only if it's the right kind of DSB
 			if (dsb_kind == DSB_ish) {
 				loc->state.kind = STATE_PTE_INVALID;
 				loc->state.invalid_clean_state.invalidator_tid = this_cpu;
 			}
+		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbi_ipa) {
+			// if DSB+TLBI IPA, then advance the state locally so the next TLBI can happen.
+			// but only if it's the right kind of DSB
+			if (dsb_kind == DSB_ish) {
+				loc->state.invalid_unclean_state.invalidator_tid = LIS_dsb_tlbi_ipa_dsb;
+			}
+		} else {
+			// TODO: BS: check DSB on other states no-op?
 		}
 
 		break;
@@ -1218,9 +1226,36 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-
-static void step_pte_on_tlbi(struct sm_location *loc)
+static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, enum tlbi_kind tlbi_kind)
 {
+	switch (tlbi_kind) {
+	case TLBI_vmalls12e1is:
+		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
+		break;
+	case TLBI_ipas2e1is:
+		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_ipa;
+		break;
+	default:
+		BUG();  // TODO: BS: other TLBIs
+	}
+}
+
+static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, enum tlbi_kind tlbi_kind)
+{
+	switch (tlbi_kind) {
+	case TLBI_vmalle1is:
+		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
+		break;
+	default:
+		BUG();  // TODO: BS: other TLBIs
+	}
+}
+
+static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+	struct trans_tlbi_data *tlbi_data = (struct trans_tlbi_data*)ctxt->data;
+
 	thread_identifier this_cpu = cpu_id();
 
 	// sanity check: if doing a TLBI on a tree with a root we know about
@@ -1235,12 +1270,26 @@ static void step_pte_on_tlbi(struct sm_location *loc)
 
 	switch (loc->state.kind) {
 	case STATE_PTE_INVALID_UNCLEAN:
-		if (
-			   (loc->state.invalid_unclean_state.invalidator_tid == this_cpu)
-			&& (loc->state.invalid_unclean_state.lis == LIS_dsbed)
-		) {
-			loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_all;
+		// if the core that did the unclean write to this pte is not the core doing the tlbi
+		// then that tlbi has no effect in the simplified model
+		if (loc->state.invalid_unclean_state.invalidator_tid != this_cpu)
+			return;
+
+		// TODO: BS: finish dispatch on (loc LIS * TLBI kind)
+		switch (loc->state.invalid_unclean_state.lis) {
+		// trying to do a TLBI without having done a DSB has no effect
+		case LIS_unguarded:
+			return;
+		case LIS_dsbed:
+			step_pte_on_tlbi_after_dsb(loc, tlbi_data->tlbi_kind);
+			break;
+		case LIS_dsb_tlbi_ipa_dsb:
+			step_pte_on_tlbi_after_tlbi_ipa(loc, tlbi_data->tlbi_kind);
+			break;
+		default:
+			BUG();  // TODO: BS: other TLBIs
 		}
+
 		break;
 	default:
 		;
@@ -1257,8 +1306,9 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	u64 ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
 
 	switch (tlbi_data->tlbi_kind) {
-	// if by VA
+	// if by this stage's IA (Stage 1 and VA, or Stage 2 and IPA)
 	case TLBI_vae2is:
+	case TLBI_ipas2e1is:
 		tlbi_addr = tlbi_data->page << PAGE_SHIFT;
 
 		/*
@@ -1270,7 +1320,12 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		}
 
 		break;
-	// TODO: multi-step TLBIs
+
+	// if for any address
+	case TLBI_vmalle1is:
+	case TLBI_vmalls12e1is:
+		return true;
+
 	default:
 		;
 	}
@@ -1280,12 +1335,10 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 
 static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 {
-	struct sm_location *loc = ctxt->loc;
-
 	GHOST_LOG_CONTEXT_ENTER();
 
 	if (should_perform_tlbi(ctxt)) {
-		step_pte_on_tlbi(loc);
+		step_pte_on_tlbi(ctxt);
 	}
 
 	GHOST_LOG_CONTEXT_EXIT();
@@ -1294,12 +1347,16 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 static void step_tlbi(struct ghost_simplified_model_transition trans)
 {
 	switch (trans.tlbi_data.tlbi_kind) {
-	// if TLBI_ALL, have to hit all the ptes
-	case TLBI_vmalls12e1is:
-		traverse_all_s2_pgtables(tlbi_visitor, &trans.tlbi_data);
-		break;
+	/* TLBIs that hit pKVM's own pagetable */
 	case TLBI_vae2is:
 		traverse_all_s1_pgtables(tlbi_visitor, &trans.tlbi_data);
+		break;
+
+	/* TLBIs that hit host/guest tables */
+	case TLBI_vmalls12e1is:
+	case TLBI_ipas2e1is:
+	case TLBI_vmalle1is:
+		traverse_all_s2_pgtables(tlbi_visitor, &trans.tlbi_data);
 		break;
 	// TODO: other TLBIs
 	default:
@@ -1629,17 +1686,19 @@ void GHOST_transprinter(void *data)
 	ghost_printf("%g(sm_trans)", trans);
 }
 
-static const char lis_names[] = {
-	[LIS_unguarded] = 'n',
-	[LIS_dsbed] = 'd',
-	[LIS_dsb_tlbi_all] = 't',
+static const char* lis_names[] = {
+	[LIS_unguarded] = "n ",
+	[LIS_dsbed] = "d ",
+	[LIS_dsb_tlbi_ipa] = "ti",
+	[LIS_dsb_tlbi_ipa_dsb] = "td",
+	[LIS_dsb_tlbied] = "ta",
 };
 
 // Printers for sm state
 int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
 {
 	// prints 6 chars
-	return ghost_sprintf(out, "IU %c %ld", lis_names[st->lis], st->invalidator_tid);
+	return ghost_sprintf(out, "IU %s %ld", lis_names[st->lis], st->invalidator_tid);
 }
 
 int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
