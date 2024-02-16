@@ -1314,6 +1314,8 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		/*
 		 * if this pte is not a leaf which maps the page the TLBI asked for
 		 * then don't try step the pte.
+		 *
+		 * TODO: BS: this means we don't support invalidating table entries by looping to invalidate each IPA.
 		 */
 		if (! (ctxt->leaf && (ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
 			return false;
@@ -1322,6 +1324,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		break;
 
 	// if for any address
+	// TODO: BS: VMIDs
 	case TLBI_vmalle1is:
 	case TLBI_vmalls12e1is:
 		return true;
@@ -1686,7 +1689,15 @@ void GHOST_transprinter(void *data)
 	ghost_printf("%g(sm_trans)", trans);
 }
 
-static const char* lis_names[] = {
+static const int KIND_PREFIX_LEN = 2;
+static const char* KIND_PREFIX_NAMES[] = {
+	[STATE_PTE_INVALID] = "I ",
+	[STATE_PTE_INVALID_UNCLEAN] = "IU",
+	[STATE_PTE_VALID] = "V ",
+};
+
+static const int LIS_NAME_LEN = 2;
+static const char* LIS_NAMES[] = {
 	[LIS_unguarded] = "n ",
 	[LIS_dsbed] = "d ",
 	[LIS_dsb_tlbi_ipa] = "ti",
@@ -1694,24 +1705,25 @@ static const char* lis_names[] = {
 	[LIS_dsb_tlbied] = "ta",
 };
 
-// Printers for sm state
-int gp_print_invalid_unclean_state(gp_stream_t *out, struct aut_invalid *st)
-{
-	// prints 6 chars
-	return ghost_sprintf(out, "IU %s %ld", lis_names[st->lis], st->invalidator_tid);
-}
 
+// TODO: invalidator_tid will only be 1 char as MAX_CPU is 4, maybe this could be less fragile.
+static const int INVALIDATOR_TID_NAME_LEN = 1;
+
+// output needs to be long enough for at least "{prefix} {LIS} {INVALIDATOR_THREAD}"
+static const int PTE_STATE_LEN = KIND_PREFIX_LEN + 1 + LIS_NAME_LEN + 1 + INVALIDATOR_TID_NAME_LEN;
+
+// Printers for sm state
 int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 {
-	/* invalid_unclean prints 6 chars, make sure the others pad to that, too. */
+	const char *prefix = KIND_PREFIX_NAMES[st->kind];
+
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
-		// TODO: invalidator_tid will only be 1 char as MAX_CPU is 4, maybe this could be less fragile.
-		return ghost_sprintf(out, "I    %ld", st->invalid_clean_state.invalidator_tid);
+		return ghost_sprintf(out, "%s%I%ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN, st->invalid_clean_state.invalidator_tid);
 	case STATE_PTE_INVALID_UNCLEAN:
-		return gp_print_invalid_unclean_state(out, &st->invalid_unclean_state);
+		return ghost_sprintf(out, "%s%I%s %ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	case STATE_PTE_VALID:
-		return ghost_sprintf(out, "V%I", 6 - 1);
+		return ghost_sprintf(out, "%s%I", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN);
 	}
 }
 
