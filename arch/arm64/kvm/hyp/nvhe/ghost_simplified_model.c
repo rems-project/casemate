@@ -1235,8 +1235,11 @@ static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, enum tlbi_kind t
 	case TLBI_ipas2e1is:
 		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_ipa;
 		break;
+
+	// TODO: BS: other TLBIs
+
 	default:
-		BUG();  // TODO: BS: other TLBIs
+		// unknown TLBI has no effect.
 	}
 }
 
@@ -1246,8 +1249,11 @@ static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, enum tlbi_k
 	case TLBI_vmalle1is:
 		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
 		break;
+
+	// TODO: BS: other TLBIs
+
 	default:
-		BUG();  // TODO: BS: other TLBIs
+		// unknown TLBI has no effect.
 	}
 }
 
