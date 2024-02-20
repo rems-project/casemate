@@ -577,6 +577,8 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 	for (int i = 0; i < 512; i++) {
 		u64 pte_phys;
 		u64 desc;
+		u64 pte_ia;
+
 		struct sm_location *loc;
 
 		GHOST_LOG_CONTEXT_ENTER_INNER("loop");
@@ -590,9 +592,12 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 		loc = location(pte_phys);
 
+		/* this pte maps a region of MAP_SIZES[level] starting from here */
+		pte_ia = partial_ia + i*MAP_SIZES[level];
+
 		ctxt.loc = loc;
 		ctxt.descriptor = desc;
-		ctxt.exploded_descriptor = deconstruct_pte(partial_ia, desc, level, s2);
+		ctxt.exploded_descriptor = deconstruct_pte(pte_ia, desc, level, s2);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
 
@@ -601,7 +606,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 			traverse_pgtable_from(
 				root,
 				ctxt.exploded_descriptor.table_data.next_level_table_addr,
-				ctxt.exploded_descriptor.ia_region.range_start + i*ctxt.exploded_descriptor.ia_region.range_size,
+				pte_ia,
 				level+1,
 				s2,
 				visitor_cb,
