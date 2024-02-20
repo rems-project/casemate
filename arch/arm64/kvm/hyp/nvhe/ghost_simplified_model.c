@@ -1155,29 +1155,32 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 			break;
 		}
 
-		if (loc->state.invalid_unclean_state.lis == LIS_unguarded) {
+		switch (loc->state.invalid_unclean_state.lis) {
+		case LIS_unguarded:
 			// if not yet DSBd, then tick it forward
 			loc->state.invalid_unclean_state.lis = LIS_dsbed;
-		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbied) {
+			break;
+		case LIS_dsb_tlbied:
 			// if DSB+TLBI'd already, this DSB then propagates that TLBI everywhere,
 			// but only if it's the right kind of DSB
 			if (dsb_kind == DSB_ish) {
 				loc->state.kind = STATE_PTE_INVALID;
 				loc->state.invalid_clean_state.invalidator_tid = this_cpu;
 			}
-		} else if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbi_ipa) {
+			break;
+		case LIS_dsb_tlbi_ipa:
 			// if DSB+TLBI IPA, then advance the state locally so the next TLBI can happen.
 			// but only if it's the right kind of DSB
 			if (dsb_kind == DSB_ish) {
-				loc->state.invalid_unclean_state.invalidator_tid = LIS_dsb_tlbi_ipa_dsb;
+				loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_ipa_dsb;
 			}
-		} else {
-			// TODO: BS: check DSB on other states no-op?
+			break;
+		default:
+			break;
 		}
-
 		break;
 	default:
-		;
+		break;
 	}
 }
 
