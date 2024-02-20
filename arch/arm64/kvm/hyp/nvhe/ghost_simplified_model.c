@@ -1240,6 +1240,7 @@ static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, enum tlbi_kind t
 
 	default:
 		// unknown TLBI has no effect.
+		break;
 	}
 }
 
@@ -1254,6 +1255,7 @@ static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, enum tlbi_k
 
 	default:
 		// unknown TLBI has no effect.
+		break;
 	}
 }
 
