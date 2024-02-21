@@ -616,7 +616,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		case PTE_KIND_MAP:
 		case PTE_KIND_INVALID:
 		default:
-			;
+			unreachable();
 		}
 		GHOST_LOG_CONTEXT_EXIT_INNER("loop");
 	}
@@ -793,6 +793,153 @@ void assert_owner_locked(struct sm_location *loc)
 	if (!hyp_spin_is_locked(lock))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
+
+///////////////////
+// TLB maintenance
+
+enum sm_tlbi_op_method_kind decode_tlbi_method_kind(enum tlbi_kind k)
+{
+	switch (k) {
+	case TLBI_vmalls12e1:
+	case TLBI_vmalls12e1is:
+	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
+		return TLBI_OP_BY_ADDR_SPACE;
+
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+	case TLBI_ipas2e1is:
+		return TLBI_OP_BY_INPUT_ADDR;
+
+	case TLBI_alle1is:
+		return TLBI_OP_BY_ALL;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
+bool decode_tlbi_shootdown_kind(enum tlbi_kind k)
+{
+	switch (k) {
+	case TLBI_vmalls12e1is:
+	case TLBI_vmalle1is:
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+	case TLBI_ipas2e1is:
+	case TLBI_alle1is:
+		return true;
+
+	case TLBI_vmalls12e1:
+	case TLBI_vmalle1:
+		return false;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
+enum sm_tlbi_op_stage decode_tlbi_stage_kind(enum tlbi_kind k)
+{
+	switch (k) {
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
+		return TLBI_OP_STAGE1;
+
+	case TLBI_ipas2e1is:
+		return TLBI_OP_STAGE2;
+
+	case TLBI_vmalls12e1:
+	case TLBI_vmalls12e1is:
+	case TLBI_alle1is:
+		return TLBI_OP_BOTH_STAGES;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
+enum sm_tlbi_op_regime_kind decode_tlbi_regime_kind(enum tlbi_kind k)
+{
+	switch (k) {
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+		return TLBI_REGIME_EL2;
+
+	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
+	case TLBI_ipas2e1is:
+	case TLBI_vmalls12e1:
+	case TLBI_vmalls12e1is:
+	case TLBI_alle1is:
+		return TLBI_REGIME_EL10;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
+struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data data)
+{
+	struct tlbi_op_method_by_address_data decoded_data = {0};
+
+	decoded_data.page = data.page;
+
+	switch (data.tlbi_kind) {
+	case TLBI_vale2is:
+		decoded_data.affects_last_level_only = true;
+		break;
+	default:
+		decoded_data.affects_last_level_only = false;
+		break;
+	}
+
+	decoded_data.page = data.page;
+
+	if (data.level < 0b0100) {
+		decoded_data.has_level_hint = false;
+	} else {
+		decoded_data.has_level_hint = true;
+		decoded_data.level_hint = data.level & 0b11;
+	}
+
+	return decoded_data;
+}
+
+struct tlbi_op_method_by_address_space_id_data decode_tlbi_by_space_id(struct trans_tlbi_data data)
+{
+	struct tlbi_op_method_by_address_space_id_data decoded_data = {0};
+	decoded_data.asid_or_vmid = 0;
+	return decoded_data;
+}
+
+
+struct sm_tlbi_op decode_tlbi(struct trans_tlbi_data data)
+{
+	struct sm_tlbi_op tlbi;
+
+	tlbi.stage = decode_tlbi_stage_kind(data.tlbi_kind);
+	tlbi.regime = decode_tlbi_regime_kind(data.tlbi_kind);
+	tlbi.shootdown = decode_tlbi_shootdown_kind(data.tlbi_kind);
+	tlbi.method.kind = decode_tlbi_method_kind(data.tlbi_kind);
+	switch (tlbi.method.kind) {
+	case TLBI_OP_BY_INPUT_ADDR:
+		tlbi.method.by_address_data = decode_tlbi_by_addr(data);
+		break;
+
+	case TLBI_OP_BY_ADDR_SPACE:
+		tlbi.method.by_id_data = decode_tlbi_by_space_id(data);
+		break;
+
+	default:
+		BUG(); // TODO: missing kind (TLBI ALL?)
+	}
+
+	return tlbi;
+}
+
 
 /////////////////////
 // BBM requirements
@@ -1290,43 +1437,62 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, enum tlbi_kind tlbi_kind)
+static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, struct sm_tlbi_op *tlbi)
 {
-	switch (tlbi_kind) {
-	case TLBI_vmalls12e1is:
+	switch (tlbi->regime) {
+	case TLBI_REGIME_EL2:
 		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
 		break;
-	case TLBI_ipas2e1is:
-		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_ipa;
-		break;
 
-	// TODO: BS: other TLBIs
+	case TLBI_REGIME_EL10:
+		switch (tlbi->stage) {
+		case TLBI_OP_STAGE1:
+			/* stage1 invalidation before stage2 invalidation is ineffective */
+			break;
+
+		case TLBI_OP_STAGE2:
+			/* stage2 invalidation alone only invalidates those ipas */
+			loc->state.invalid_unclean_state.lis = LIS_dsb_tlbi_ipa;
+			break;
+
+		case TLBI_OP_BOTH_STAGES:
+			loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
+			break;
+
+		default:
+			unreachable();
+		}
+		break;
 
 	default:
-		// unknown TLBI has no effect.
-		break;
+		unreachable();
 	}
+
 }
 
-static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, enum tlbi_kind tlbi_kind)
+static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, struct sm_tlbi_op *tlbi)
 {
-	switch (tlbi_kind) {
-	case TLBI_vmalle1is:
+	ghost_assert(tlbi->regime == TLBI_REGIME_EL10);
+
+	switch (tlbi->stage) {
+	case TLBI_OP_STAGE1:
+	case TLBI_OP_BOTH_STAGES:
 		loc->state.invalid_unclean_state.lis = LIS_dsb_tlbied;
 		break;
 
-	// TODO: BS: other TLBIs
+	case TLBI_OP_STAGE2:
+		/* additional second-stage invalidation has no added effect */
+		break;
 
 	default:
-		// unknown TLBI has no effect.
-		break;
+		unreachable();
 	}
 }
 
 static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
-	struct trans_tlbi_data *tlbi_data = (struct trans_tlbi_data*)ctxt->data;
+	struct sm_tlbi_op *tlbi = (struct sm_tlbi_op*)ctxt->data;
 
 	thread_identifier this_cpu = cpu_id();
 
@@ -1334,11 +1500,6 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 	// then all the children in that tree must have been marked by the (V)TTBR registration
 	// or the writes of table entries...
 	ghost_assert(loc->initialised);
-
-	// if this was a table entry
-	// there may have been children that we were still tracking
-	// so go clear those.
-	step_tlbi_invalid_unclean_unmark_children(loc);
 
 	switch (loc->state.kind) {
 	case STATE_PTE_INVALID_UNCLEAN:
@@ -1353,10 +1514,10 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 		case LIS_unguarded:
 			return;
 		case LIS_dsbed:
-			step_pte_on_tlbi_after_dsb(loc, tlbi_data->tlbi_kind);
+			step_pte_on_tlbi_after_dsb(loc, tlbi);
 			break;
 		case LIS_dsb_tlbi_ipa_dsb:
-			step_pte_on_tlbi_after_tlbi_ipa(loc, tlbi_data->tlbi_kind);
+			step_pte_on_tlbi_after_tlbi_ipa(loc, tlbi);
 			break;
 		default:
 			BUG();  // TODO: BS: other TLBIs
@@ -1364,24 +1525,50 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 
 		break;
 	default:
-		;
+		unreachable();
+	}
+
+	// if we just finished cleaning a table entry
+	// there may have been children that we were still tracking
+	// so go clear those, too.
+	if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbied) {
+		step_tlbi_invalid_unclean_unmark_children(loc);
 	}
 }
 
 static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 {
 	u64 tlbi_addr;
-	struct trans_tlbi_data *tlbi_data = (struct trans_tlbi_data*)ctxt->data;
+	u64 ia_start;
+	u64 ia_end;
 
-	// input-address range of the PTE we're visiting
-	u64 ia_start = ctxt->exploded_descriptor.ia_region.range_start;
-	u64 ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
+	struct sm_tlbi_op *tlbi = (struct sm_tlbi_op*)ctxt->data;
 
-	switch (tlbi_data->tlbi_kind) {
-	// if by this stage's IA (Stage 1 and VA, or Stage 2 and IPA)
-	case TLBI_vae2is:
-	case TLBI_ipas2e1is:
-		tlbi_addr = tlbi_data->page << PAGE_SHIFT;
+	// TODO: BS: need to match up regime with which pgtable loc is in.
+	//           and broadcast and so on.
+
+	if (!tlbi->shootdown) {
+		if (ghost_sm_options.promote_TLBI_nsh) {
+			tlbi->shootdown = true;
+		} else {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Unsupported TLBI (expected broadcast)");
+		}
+	}
+
+	if (tlbi->method.kind == TLBI_OP_BY_ADDR_SPACE) {
+		if (ghost_sm_options.promote_TLBI_by_id) {
+			tlbi->method.kind = TLBI_OP_BY_ALL;
+		} else {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Unsupported TLBI-by-(AS/VM)ID");
+		}
+	}
+
+	switch (tlbi->method.kind) {
+	case TLBI_OP_BY_INPUT_ADDR:
+		// input-address range of the PTE we're visiting
+		ia_start = ctxt->exploded_descriptor.ia_region.range_start;
+		ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
+		tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
 
 		/*
 		 * if this pte is not a leaf which maps the page the TLBI asked for
@@ -1393,16 +1580,24 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 			return false;
 		}
 
+		/*
+		 * if it is a leaf, but not at the last level, and we asked for last-level-only invalidation
+		 * then nothing happens
+		 */
+		if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only) {
+			return false;
+		}
+
 		break;
 
-	// if for any address
-	// TODO: BS: VMIDs
-	case TLBI_vmalle1is:
-	case TLBI_vmalls12e1is:
+	case TLBI_OP_BY_ADDR_SPACE:
+		BUG(); // TODO: BS: by-VMID and by-ASID
+
+	case TLBI_OP_BY_ALL:
 		return true;
 
 	default:
-		;
+		unreachable();
 	}
 
 	return true;
@@ -1421,24 +1616,22 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 
 static void step_tlbi(struct ghost_simplified_model_transition trans)
 {
-	switch (trans.tlbi_data.tlbi_kind) {
-	/* TLBIs that hit pKVM's own pagetable */
-	case TLBI_vae2is:
-		traverse_all_s1_pgtables(tlbi_visitor, &trans.tlbi_data);
+	struct sm_tlbi_op decoded = decode_tlbi(trans.tlbi_data);
+	ghost_printf("tlbi=%g(sm_tlbi)\n", &decoded);
+
+	switch (decoded.regime) {
+	/* TLBIs that hit host/guest tables */
+	case TLBI_REGIME_EL10:
+		traverse_all_s2_pgtables(tlbi_visitor, &decoded);
 		break;
 
-	/* TLBIs that hit host/guest tables */
-	case TLBI_vmalls12e1is:
-	case TLBI_ipas2e1is:
-	case TLBI_vmalle1is:
-		traverse_all_s2_pgtables(tlbi_visitor, &trans.tlbi_data);
+	/* TLBIs that hit pKVM's own pagetable */
+	case TLBI_REGIME_EL2:
+		traverse_all_s1_pgtables(tlbi_visitor, &decoded);
 		break;
-	// TODO: other TLBIs
+
 	default:
-		GHOST_WARN("unsupported TLBI -- Defaulting to TLBI VMALLS12E1IS;TLBI ALLE2");
-		traverse_all_s1_pgtables(tlbi_visitor, &trans.tlbi_data);
-		traverse_all_s2_pgtables(tlbi_visitor, &trans.tlbi_data);
-		break;
+		unreachable();
 	}
 }
 
@@ -1489,7 +1682,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
 		break;
 	default:
-		;
+		unreachable();
 	}
 }
 
@@ -1571,6 +1764,8 @@ unlock:
 static void initialise_ghost_simplified_model_options(void)
 {
 	ghost_sm_options.promote_DSB_nsh = true;
+	ghost_sm_options.promote_TLBI_nsh = true;
+	ghost_sm_options.promote_TLBI_by_id = true;
 }
 
 static void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
@@ -1674,6 +1869,53 @@ int gp_print_dsb_trans(gp_stream_t *out, enum dsb_kind *dsb_data)
 	return ghost_sprintf(out, "%s", dsb_kind_names[*dsb_data]);
 }
 
+int gp_print_sm_decoded_tlbi(gp_stream_t *out, struct sm_tlbi_op *tlbi)
+{
+	int ret;
+
+	ret = ghost_sprintf(out, "(");
+	if (ret) return ret;
+
+	if (tlbi->shootdown) {
+		ret = ghost_sprintf(out, "broadcast ");
+		if (ret) return ret;
+	}
+
+	ret = ghost_sprintf(out, "%s", sm_tlbi_op_method_kind_names[tlbi->method.kind]);
+	if (ret) return ret;
+
+	ret = ghost_sprintf(out, " stage:%s", sm_tlbi_op_stage_names[tlbi->stage]);
+	if (ret) return ret;
+
+	ret = ghost_sprintf(out, " regime:%s", sm_tlbi_op_regime_kind_names[tlbi->regime]);
+	if (ret) return ret;
+
+	switch (tlbi->method.kind) {
+	case TLBI_OP_BY_INPUT_ADDR:
+		ret = ghost_sprintf(out, " ia_pfn:%p", tlbi->method.by_address_data.page);
+		if (ret) return ret;
+
+		if (tlbi->method.by_address_data.has_level_hint) {
+			ret = ghost_sprintf(out, " ttl:%d", tlbi->method.by_address_data.level_hint);
+			if (ret) return ret;
+		}
+
+		if (tlbi->method.by_address_data.affects_last_level_only) {
+			ret = ghost_sprintf(out, " last-level-only");
+			if (ret) return ret;
+		}
+
+		return ghost_sprintf(out, ")");
+
+	case TLBI_OP_BY_ADDR_SPACE:
+		return ghost_sprintf(out, " asid_or_vmid:%ld)", tlbi->method.by_id_data.asid_or_vmid);
+
+	case TLBI_OP_BY_ALL:
+		return ghost_sprintf(out, " ALL)");
+	}
+
+}
+
 int gp_print_tlbi_trans(gp_stream_t *out, struct trans_tlbi_data *tlbi_data)
 {
 	const char *tlbi_kind = tlbi_kind_names[tlbi_data->tlbi_kind];
@@ -1685,7 +1927,6 @@ int gp_print_tlbi_trans(gp_stream_t *out, struct trans_tlbi_data *tlbi_data)
 		default:
 			return ghost_sprintf(out, "%s", tlbi_kind);
 	}
-
 }
 
 int gp_print_msr_trans(gp_stream_t *out, struct trans_msr_data *msr_data)
@@ -1704,7 +1945,6 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 		break;
 	default:
 		return ghost_sprintf(out, "HINT %s", hint_name);
-		;
 	}
 }
 

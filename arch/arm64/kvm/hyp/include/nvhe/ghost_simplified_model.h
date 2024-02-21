@@ -132,7 +132,7 @@ enum pte_kind {
  * @level: the level within the pgtable this entry is at.
  * @s2: whether this descriptor is for a Stage2 table.
  * @table_data: if kind is PTE_KIND_TABLE, the table descriptor data (next level table address).
- * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range).
+ * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range, and other attributes).
  *
  * TODO: replace with maplet_target...
  */
@@ -305,6 +305,16 @@ struct ghost_simplified_model_options {
 	 * @promote_DSB_nsh - Silently promote all DSB NSH to DSB ISH
 	 */
 	bool promote_DSB_nsh;
+
+	/**
+	 * @promote_TLBI_nsh - Silently promote all TLBI to broadcast ones
+	 */
+	bool promote_TLBI_nsh;
+
+	/**
+	 * @promote_TLBI_by_id - Silently promote all TLBI-by-ASID and by-VMID to ALL
+	 */
+	bool promote_TLBI_by_id;
 };
 
 
@@ -312,6 +322,83 @@ enum memory_order_t {
 	WMO_plain,
 	WMO_release
 };
+
+/// Decoded TLBIs
+
+enum sm_tlbi_op_stage {
+	TLBI_OP_STAGE1 = 1,
+	TLBI_OP_STAGE2 = 2,
+	TLBI_OP_BOTH_STAGES = TLBI_OP_STAGE1 | TLBI_OP_STAGE2,
+};
+static const char *sm_tlbi_op_stage_names[] = {
+	ID_STRING(TLBI_OP_STAGE1),
+	ID_STRING(TLBI_OP_STAGE2),
+	ID_STRING(TLBI_OP_BOTH_STAGES),
+};
+
+enum sm_tlbi_op_method_kind {
+	TLBI_OP_BY_ALL        = 0, /* TLBI ALL* only */
+	TLBI_OP_BY_INPUT_ADDR = 1, /* by Input-Address */
+	TLBI_OP_BY_ADDR_SPACE = 2, /* by ASID/VMID */
+
+	TLBI_OP_BY_VA = TLBI_OP_BY_INPUT_ADDR,
+	TLBI_OP_BY_IPA = TLBI_OP_BY_INPUT_ADDR,
+
+	TLBI_OP_BY_VMID = TLBI_OP_BY_ADDR_SPACE,
+	TLBI_OP_BY_ASID = TLBI_OP_BY_ADDR_SPACE,
+};
+static const char *sm_tlbi_op_method_kind_names[] = {
+	ID_STRING(TLBI_OP_BY_ALL),
+	ID_STRING(TLBI_OP_BY_INPUT_ADDR),
+	ID_STRING(TLBI_OP_BY_ADDR_SPACE),
+};
+
+enum sm_tlbi_op_regime_kind {
+	TLBI_REGIME_EL10 = 1, /* EL1&0 regime */
+	TLBI_REGIME_EL2  = 2, /* EL2 regime */
+};
+static const char *sm_tlbi_op_regime_kind_names[] = {
+	ID_STRING(TLBI_REGIME_EL10),
+	ID_STRING(TLBI_REGIME_EL2),
+};
+
+/**
+ * struct sm_tlbi_op_method - Decoded TLBI by-method
+ * @kind: whether this is by address or address-space-identifier.
+ */
+struct sm_tlbi_op_method {
+	enum sm_tlbi_op_method_kind kind;
+	union {
+		struct tlbi_op_method_by_address_data {
+			u64 page;
+
+			bool has_level_hint;
+			u8 level_hint;
+
+			bool affects_last_level_only;
+		} by_address_data;
+
+		struct tlbi_op_method_by_address_space_id_data {
+			u64 asid_or_vmid;
+		} by_id_data;
+	};
+};
+
+/**
+ * struct sm_tlbi_op - A decoded TLB maintenance operation.
+ * @stage: whether this affects cached stage1 or stage2 translations, or both.
+ * @regime: cached entries used for which translation regime this TLB maintenance operation would affect.
+ * @method: whether this is by IPA or VA or VMID etc, and the address/vmid etc.
+ * @shootdown: whether to broadcast this TLB maintenance operation to other cores.
+ */
+struct sm_tlbi_op {
+	enum sm_tlbi_op_stage stage;
+	enum sm_tlbi_op_regime_kind regime;
+	struct sm_tlbi_op_method method;
+	bool shootdown;
+};
+
+/// Encoded TLBIs
 
 enum tlbi_kind {
 	TLBI_vmalls12e1,
