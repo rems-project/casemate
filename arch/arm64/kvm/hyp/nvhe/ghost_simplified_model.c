@@ -458,7 +458,7 @@ static u64 discover_page_size(ghost_stage_t stage)
 	} else if (tg0 == 2) {
 		return 16*1024;
 	} else {
-		unreachable();
+		BUG(); // unreachable;
 	}
 }
 
@@ -490,7 +490,7 @@ static u64 discover_nr_concatenated_pgtables(ghost_stage_t stage)
 	} else if (t0sz == 12) {
 		return 16;
 	} else {
-		unreachable();
+		BUG(); // unreachable;
 	}
 }
 
@@ -733,7 +733,7 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_sta
 		}
 		break;
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 
 	return state;
@@ -777,7 +777,7 @@ static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
 
 	if (owner_lock(root)) {
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't append lock on already locked location");
-		unreachable();
+		BUG(); // unreachable;
 	}
 
 	i = the_ghost_state->locks.len++;
@@ -1326,7 +1326,7 @@ static void step_write(struct ghost_simplified_model_transition trans)
 		step_write_on_invalid(mo, loc, val);
 		break;
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 
 done:
@@ -1476,12 +1476,12 @@ static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, struct sm_tlbi_o
 			break;
 
 		default:
-			unreachable();
+			BUG(); // unreachable;
 		}
 		break;
 
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 
 }
@@ -1501,7 +1501,7 @@ static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, struct sm_t
 		break;
 
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 }
 
@@ -1614,7 +1614,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		return true;
 
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 
 	return true;
@@ -1649,7 +1649,7 @@ static void step_tlbi(struct ghost_simplified_model_transition trans)
 		break;
 
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 }
 
@@ -1700,7 +1700,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
 		break;
 	default:
-		unreachable();
+		BUG(); // unreachable;
 	}
 }
 
