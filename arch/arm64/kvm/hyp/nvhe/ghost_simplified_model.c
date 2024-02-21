@@ -629,7 +629,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		case PTE_KIND_MAP:
 		case PTE_KIND_INVALID:
 		default:
-			unreachable();
+			break;
 		}
 		GHOST_LOG_CONTEXT_EXIT_INNER("loop");
 	}
@@ -1538,7 +1538,8 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 
 		break;
 	default:
-		unreachable();
+		/* if clean, no effect */
+		break;
 	}
 
 	// if we just finished cleaning a table entry
