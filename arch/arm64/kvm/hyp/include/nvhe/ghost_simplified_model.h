@@ -149,6 +149,7 @@ struct ghost_exploded_descriptor {
 
 		struct {
 			struct ghost_addr_range oa_region;
+			struct maplet_attributes attrs;
 		} map_data;
 	};
 };

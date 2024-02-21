@@ -14,6 +14,8 @@
 #include <hyp/ghost_extra_debug-pl011.h>
 #include <nvhe/ghost_printer.h>
 #include <nvhe/ghost_abstraction_diff.h>
+#include <nvhe/ghost_maplets.h>
+#include <nvhe/ghost_pgtable.h>
 #include <nvhe/ghost_simplified_model.h>
 
 
@@ -541,6 +543,17 @@ struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 			.range_start = extract_output_address(desc, level),
 			.range_size = MAP_SIZES[level],
 		};
+		ghost_mair_t mair;
+
+		// for pKVM's own Stage 1 tables, the memory attributes are actually stored
+		// in the indirection register (MAIR)
+		if (stage == GHOST_STAGE1)
+			// TODO: BS: read sysregs from simplified model not h/w
+			//           they should be part of s1_roots or something?
+			mair = read_mair(read_sysreg(mair_el2));
+		else
+			mair = no_mair();
+		deconstructed.map_data.attrs = parse_attrs(stage, mair, desc, (u8)level, DUMMY_AAL);
 		return deconstructed;
 	}
 }
