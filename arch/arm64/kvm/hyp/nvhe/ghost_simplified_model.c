@@ -1571,8 +1571,8 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
 
 		/*
-		 * if this pte is not a leaf which maps the page the TLBI asked for
-		 * then don't try step the pte.
+		 * if this pte is not a leaf which maps the page the TLBI asked for,
+		 * then don't try to step the pte.
 		 *
 		 * TODO: BS: this means we don't support invalidating table entries by looping to invalidate each IPA.
 		 */
@@ -1581,7 +1581,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		}
 
 		/*
-		 * if it is a leaf, but not at the last level, and we asked for last-level-only invalidation
+		 * if it is a leaf, but not at the last level, and we asked for last-level-only invalidation,
 		 * then nothing happens
 		 */
 		if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only) {
@@ -1616,8 +1616,9 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 
 static void step_tlbi(struct ghost_simplified_model_transition trans)
 {
+	ghost_assert(trans.kind == TRANS_TLBI);
+
 	struct sm_tlbi_op decoded = decode_tlbi(trans.tlbi_data);
-	ghost_printf("tlbi=%g(sm_tlbi)\n", &decoded);
 
 	switch (decoded.regime) {
 	/* TLBIs that hit host/guest tables */

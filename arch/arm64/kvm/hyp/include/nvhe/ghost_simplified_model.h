@@ -364,7 +364,7 @@ static const char *sm_tlbi_op_regime_kind_names[] = {
 
 /**
  * struct sm_tlbi_op_method - Decoded TLBI by-method
- * @kind: whether this is by address or address-space-identifier.
+ * @kind: whether this is "all", by address, or by address-space-identifier.
  */
 struct sm_tlbi_op_method {
 	enum sm_tlbi_op_method_kind kind;
@@ -386,10 +386,10 @@ struct sm_tlbi_op_method {
 
 /**
  * struct sm_tlbi_op - A decoded TLB maintenance operation.
- * @stage: whether this affects cached stage1 or stage2 translations, or both.
- * @regime: cached entries used for which translation regime this TLB maintenance operation would affect.
- * @method: whether this is by IPA or VA or VMID etc, and the address/vmid etc.
- * @shootdown: whether to broadcast this TLB maintenance operation to other cores.
+ * @stage: whether this affects cached stage1 translations, cached stage2 translations, or both.
+ * @regime: the translation regime that this TLB maintenance operation would affect the cached entries of.
+ * @method: whether this TLBI is by IPA, by VA, or by VMID, etc., and the relevant address/vmid, etc.
+ * @shootdown: whether this TLB maintenance operation is broadcast to other cores.
  */
 struct sm_tlbi_op {
 	enum sm_tlbi_op_stage stage;
