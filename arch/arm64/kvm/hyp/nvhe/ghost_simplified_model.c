@@ -425,9 +425,9 @@ static u64 read_start_level(u64 tcr)
 }
 
 
-static u64 discover_start_level(bool s2)
+static u64 discover_start_level(ghost_stage_t stage)
 {
-	if (s2) {
+	if (stage == GHOST_STAGE2) {
 		u64 vtcr = read_sysreg(vtcr_el2);
 		return read_start_level(vtcr);
 	} else {
@@ -436,12 +436,12 @@ static u64 discover_start_level(bool s2)
 	}
 }
 
-static u64 discover_page_size(bool s2)
+static u64 discover_page_size(ghost_stage_t stage)
 {
 	u64 tcr;
 	u64 tg0;
 
-	if (s2) {
+	if (stage == GHOST_STAGE2) {
 		tcr = read_sysreg(vtcr_el2);
 	} else {
 		tcr = read_sysreg(tcr_el2);
@@ -460,19 +460,19 @@ static u64 discover_page_size(bool s2)
 	}
 }
 
-static u64 discover_nr_concatenated_pgtables(bool s2)
+static u64 discover_nr_concatenated_pgtables(ghost_stage_t stage)
 {
 	/* stage1 is never concatenated */
-	if (! s2)
+	if (stage == GHOST_STAGE1)
 		return 1;
 
 	/* as per J.a D8-5832 */
 
 	// assume pkvm has 4k graule
-	ghost_assert(discover_page_size(true) == PAGE_SIZE);
+	ghost_assert(discover_page_size(GHOST_STAGE2) == PAGE_SIZE);
 
 	// assume stage2 translations starting at level 0
-	ghost_assert(discover_start_level(true) == 0);
+	ghost_assert(discover_start_level(GHOST_STAGE2) == 0);
 
 	u64 t0sz = (read_sysreg(vtcr_el2) & 0b111111);
 
@@ -497,7 +497,7 @@ static bool is_desc_valid(u64 descriptor)
 	return (descriptor & PTE_BIT_VALID) == PTE_BIT_VALID;
 }
 
-static bool is_desc_table(u64 descriptor, u64 level, bool s2)
+static bool is_desc_table(u64 descriptor, u64 level, ghost_stage_t stage)
 {
 	if (level == 3)
 		return false;
@@ -516,7 +516,7 @@ static u64 extract_table_address(u64 desc)
 	return desc & PTE_BITS_TABLE_POINTER;
 }
 
-struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, bool s2)
+struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage)
 {
 	struct ghost_exploded_descriptor deconstructed;
 
@@ -525,13 +525,13 @@ struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 		.range_size = MAP_SIZES[level],
 	};
 	deconstructed.level = level;
-	deconstructed.s2 = s2;
+	deconstructed.stage = stage;
 
 
 	if (! is_desc_valid(desc)) {
 		deconstructed.kind = PTE_KIND_INVALID;
 		return deconstructed;
-	} else if (is_desc_table(desc, level, s2)) {
+	} else if (is_desc_table(desc, level, stage)) {
 		deconstructed.kind = PTE_KIND_TABLE;
 		deconstructed.table_data.next_level_table_addr = extract_table_address(desc);
 		return deconstructed;
@@ -555,20 +555,20 @@ struct pgtable_traverse_context {
 	struct ghost_exploded_descriptor exploded_descriptor;
 
 	u64 root;
-	bool s2;
+	ghost_stage_t stage;
 
 	void* data;
 };
 
 typedef void (*pgtable_traverse_cb)(struct pgtable_traverse_context *ctxt);
 
-static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, bool s2, pgtable_traverse_cb visitor_cb, void *data)
+static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
 {
 	struct pgtable_traverse_context ctxt;
 
 	GHOST_LOG_CONTEXT_ENTER();
 	ctxt.root = root;
-	ctxt.s2 = s2;
+	ctxt.stage = stage;
 	ctxt.data = data;
 	ctxt.level = level;
 
@@ -597,7 +597,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 
 		ctxt.loc = loc;
 		ctxt.descriptor = desc;
-		ctxt.exploded_descriptor = deconstruct_pte(pte_ia, desc, level, s2);
+		ctxt.exploded_descriptor = deconstruct_pte(pte_ia, desc, level, stage);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
 
@@ -608,7 +608,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 				ctxt.exploded_descriptor.table_data.next_level_table_addr,
 				pte_ia,
 				level+1,
-				s2,
+				stage,
 				visitor_cb,
 				data
 			);
@@ -623,35 +623,35 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void traverse_pgtable(u64 root, bool s2, pgtable_traverse_cb visitor_cb, void *data)
+static void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
 {
 	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	start_level = discover_start_level(s2);
+	start_level = discover_start_level(stage);
 	GHOST_LOG(root, u64);
 	GHOST_LOG(start_level, u64);
 
 	// assume uses 4k granule, starting from level 0, without multiple concatenated pagetables
 	ghost_assert(start_level == 0);
-	ghost_assert(discover_page_size(s2) == PAGE_SIZE);
-	ghost_assert(discover_nr_concatenated_pgtables(s2) == 1);
+	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
+	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
 
-	traverse_pgtable_from(root, root, 0, start_level, s2, visitor_cb, data);
+	traverse_pgtable_from(root, root, 0, start_level, stage, visitor_cb, data);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void traverse_all_s1_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
 	for (int i = 0; i < the_ghost_state->nr_s1_roots; i++) {
-		traverse_pgtable(the_ghost_state->s1_roots[i], false, visitor_cb, data);
+		traverse_pgtable(the_ghost_state->s1_roots[i], GHOST_STAGE1, visitor_cb, data);
 	}
 }
 
 static void traverse_all_s2_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
 	for (int i = 0; i < the_ghost_state->nr_s2_roots; i++) {
-		traverse_pgtable(the_ghost_state->s2_roots[i], true, visitor_cb, data);
+		traverse_pgtable(the_ghost_state->s2_roots[i], GHOST_STAGE2, visitor_cb, data);
 	}
 }
 
@@ -669,7 +669,7 @@ struct pgtable_walk_result {
 	struct ghost_exploded_descriptor descriptor;
 
 	u64 root;
-	bool s2;
+	ghost_stage_t stage;
 
 	u64 level;
 };
@@ -681,7 +681,7 @@ void finder_cb(struct pgtable_traverse_context *ctxt)
 		result->found = true;
 		result->root = ctxt->root;
 		result->descriptor = ctxt->exploded_descriptor;
-		result->s2 = ctxt->s2;
+		result->stage = ctxt->stage;
 		result->level = ctxt->level;
 	}
 }
@@ -700,10 +700,10 @@ struct pgtable_walk_result find_pte(u64 pte)
 /**
  * initial_state() - Construct an initial sm_pte_state for a clean descriptor.
  */
-struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, bool s2)
+struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage)
 {
 	struct sm_pte_state state;
-	struct ghost_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, s2);
+	struct ghost_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, stage);
 	switch (deconstructed.kind) {
 	case PTE_KIND_INVALID:
 		state.kind = STATE_PTE_INVALID;
@@ -960,8 +960,8 @@ static bool is_only_update_to_sw_bits(u64 before, u64 after)
  */
 static bool requires_bbm(struct sm_location *loc, u64 before, u64 after)
 {
-	struct ghost_exploded_descriptor before_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, before, loc->descriptor.level, loc->descriptor.s2);
-	struct ghost_exploded_descriptor after_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, after, loc->descriptor.level, loc->descriptor.s2);
+	struct ghost_exploded_descriptor before_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, before, loc->descriptor.level, loc->descriptor.stage);
+	struct ghost_exploded_descriptor after_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, after, loc->descriptor.level, loc->descriptor.stage);
 
 	/* BBM is only a requirement between writes of valid PTEs */
 	if (before_descriptor.kind == PTE_KIND_INVALID || after_descriptor.kind == PTE_KIND_INVALID)
@@ -1041,7 +1041,7 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 		loc->descriptor.table_data.next_level_table_addr,
 		loc->descriptor.ia_region.range_start,
 		loc->descriptor.level + 1,
-		loc->descriptor.s2,
+		loc->descriptor.stage,
 		clean_reachability_checker_cb,
 		&all_clean
 	);
@@ -1082,7 +1082,7 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 	loc->is_pte = true;
 	loc->owner = (sm_owner_t)ctxt->root;
 	loc->descriptor = ctxt->exploded_descriptor;
-	loc->state = initial_state(ctxt->exploded_descriptor.ia_region.range_start, ctxt->descriptor, ctxt->level, ctxt->s2);
+	loc->state = initial_state(ctxt->exploded_descriptor.ia_region.range_start, ctxt->descriptor, ctxt->level, ctxt->stage);
 }
 
 void unmark_cb(struct pgtable_traverse_context *ctxt)
@@ -1139,7 +1139,7 @@ static void register_s2_root(phys_addr_t root)
 
 	// TODO: VMIDs
 	the_ghost_state->s2_roots[the_ghost_state->nr_s2_roots++] = root;
-	traverse_pgtable(root, true, mark_cb, NULL);
+	traverse_pgtable(root, GHOST_STAGE2, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -1155,7 +1155,7 @@ static void register_s1_root(phys_addr_t root)
 	}
 
 	the_ghost_state->s1_roots[the_ghost_state->nr_s1_roots++] = root;
-	traverse_pgtable(root, false, mark_cb, NULL);
+	traverse_pgtable(root, GHOST_STAGE1, mark_cb, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -1198,7 +1198,7 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 
 static void __update_descriptor_on_write(struct sm_location *loc, u64 val)
 {
-	loc->descriptor = deconstruct_pte(loc->descriptor.ia_region.range_size, val, loc->descriptor.level, loc->descriptor.s2);
+	loc->descriptor = deconstruct_pte(loc->descriptor.ia_region.range_size, val, loc->descriptor.level, loc->descriptor.stage);
 }
 
 /*
@@ -1219,7 +1219,7 @@ static void step_write_table_mark_children(struct sm_location *loc)
 			loc->descriptor.table_data.next_level_table_addr,
 			loc->descriptor.ia_region.range_start,
 			loc->descriptor.level + 1,
-			loc->descriptor.s2,
+			loc->descriptor.stage,
 			mark_cb,
 			NULL
 		);
@@ -1418,7 +1418,7 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 
 	aut = loc->state.invalid_unclean_state;
 	old = aut.old_valid_desc;
-	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.s2);
+	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.stage);
 
 
 	// look at the old entry, and see if it was a table.
@@ -1431,7 +1431,7 @@ static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
 		}
 
-		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.s2, unmark_cb, NULL);
+		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.stage, unmark_cb, NULL);
 	}
 
 	GHOST_LOG_CONTEXT_EXIT();

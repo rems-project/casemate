@@ -6,6 +6,7 @@
 
 #include <nvhe/spinlock.h>
 
+#include <nvhe/ghost_maplets.h>
 #include <nvhe/ghost_asserts.h>
 #include <nvhe/ghost_control.h>
 
@@ -140,7 +141,7 @@ struct ghost_exploded_descriptor {
 	enum pte_kind kind;
 	struct ghost_addr_range ia_region;
 	u64 level;
-	bool s2;
+	ghost_stage_t stage;
 	union {
 		struct {
 			u64 next_level_table_addr;
