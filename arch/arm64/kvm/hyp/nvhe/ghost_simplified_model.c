@@ -794,6 +794,59 @@ void assert_owner_locked(struct sm_location *loc)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
 
+/////////////////////
+// BBM requirements
+
+static bool is_only_update_to_sw_bits(u64 before, u64 after)
+{
+	return (before & ~PTE_FIELD_UPPER_ATTRS_SW_MASK) == (after & ~PTE_FIELD_UPPER_ATTRS_SW_MASK);
+}
+
+
+/**
+ * requires_bbm() - Whether a break-before-make sequence is architecturally required between two writes.
+ * @loc: the memory location.
+ * @before: the value of the first write.
+ * @after: the value of the second write.
+ *
+ * See ARM DDI 0487 J.a D8.14.1 ("Using break-before-make when updating translation table entries")
+ */
+static bool requires_bbm(struct sm_location *loc, u64 before, u64 after)
+{
+	struct ghost_exploded_descriptor before_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, before, loc->descriptor.level, loc->descriptor.s2);
+	struct ghost_exploded_descriptor after_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, after, loc->descriptor.level, loc->descriptor.s2);
+
+	/* BBM is only a requirement between writes of valid PTEs */
+	if (before_descriptor.kind == PTE_KIND_INVALID || after_descriptor.kind == PTE_KIND_INVALID)
+		return false;
+
+	/* if one is a table entry, really need to BBM between */
+	if (before_descriptor.kind == PTE_KIND_TABLE || after_descriptor.kind == PTE_KIND_TABLE)
+		return true;
+
+	ghost_assert(before_descriptor.kind == PTE_KIND_MAP);
+	ghost_assert(after_descriptor.kind == PTE_KIND_MAP);
+
+	/* if a change in OA */
+	if (before_descriptor.map_data.oa_region.range_size != after_descriptor.map_data.oa_region.range_size) {
+		// TODO: BS: this is overapproximate,
+		//           should be: "and if at least one is writeable, or memory contents different"
+		return true;
+	}
+
+	// TODO: BS: a change in memory type, shareability, or cacheability
+	// TODO: BS: FEAT_BBM (?)
+	// TODO: BS: global entries (?)
+	// over approximate all of the above, by checking everything same except maybe SW bits.
+	if (! is_only_update_to_sw_bits(before, after))
+		return true;
+
+	return false;
+}
+
+
+
+
 ////////////////////
 // Reachability
 
@@ -1060,19 +1113,22 @@ static void step_write_on_invalid_unclean(enum memory_order_t mo, struct sm_loca
 	}
 }
 
-
-
 static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc, u64 val)
 {
-	if (is_desc_valid(val) && extract_table_address(val) != extract_table_address(loc->val)) {
+	u64 old = read_phys_pre(loc->phys_addr);
+
+	if (is_desc_valid(val)) {
+		if (! requires_bbm(loc, old, val)) {
+			return;
+		}
+
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM valid->valid");
-		return;
 	}
 
 	loc->state.kind = STATE_PTE_INVALID_UNCLEAN;
 	loc->state.invalid_unclean_state = (struct aut_invalid) {
 		.invalidator_tid = cpu_id(),
-		.old_valid_desc = read_phys_pre(loc->phys_addr),
+		.old_valid_desc = old,
 		.lis = LIS_unguarded
 	};
 }
