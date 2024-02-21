@@ -125,6 +125,11 @@ enum pte_kind {
 	PTE_KIND_MAP,  /* BLOCK,PAGE */
 	PTE_KIND_INVALID,
 };
+static const char *pte_kind_names[] = {
+	ID_STRING(PTE_KIND_TABLE),
+	ID_STRING(PTE_KIND_MAP),
+	ID_STRING(PTE_KIND_INVALID),
+};
 
 /**
  * struct  ghost_exploded_descriptor - Information about a PTE.

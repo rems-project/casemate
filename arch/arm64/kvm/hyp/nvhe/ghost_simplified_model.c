@@ -614,6 +614,9 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
 
+		/* visitor can't have changed the actual descriptor ... */
+		ghost_safety_check(read_phys(pte_phys) == desc);
+
 		switch (ctxt.exploded_descriptor.kind) {
 		case PTE_KIND_TABLE:
 			traverse_pgtable_from(
