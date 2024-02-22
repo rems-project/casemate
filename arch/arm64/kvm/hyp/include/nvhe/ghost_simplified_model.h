@@ -327,7 +327,10 @@ struct ghost_simplified_model_options {
 
 enum memory_order_t {
 	WMO_plain,
-	WMO_release
+	WMO_release,
+
+	/** @GHOST_MEMSET_PAGE - A helpful wrapper around a full page-sized memset() */
+	GHOST_MEMSET_PAGE
 };
 
 /// Decoded TLBIs

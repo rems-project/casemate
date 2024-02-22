@@ -1345,7 +1345,7 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	};
 }
 
-static void step_write(struct ghost_simplified_model_transition trans)
+static void __step_write(struct ghost_simplified_model_transition trans)
 {
 	enum memory_order_t mo = trans.write_data.mo;
 	u64 val = trans.write_data.val;
@@ -1381,6 +1381,39 @@ static void step_write(struct ghost_simplified_model_transition trans)
 done:
 	loc->val = val;
 	return;
+}
+
+static void __step_write_memset(u64 phys_addr, u64 val)
+{
+	ghost_assert(IS_PAGE_ALIGNED(phys_addr));
+	for (int i = 0; i < 512; i++) {
+		__step_write((struct ghost_simplified_model_transition){
+			.kind = TRANS_MEM_WRITE,
+			.write_data = (struct trans_write_data){
+				.mo=WMO_plain,
+				.phys_addr=phys_addr+i*sizeof(u64),
+				.val=val
+			}
+		});
+	}
+
+}
+
+static void step_write(struct ghost_simplified_model_transition trans)
+{
+	switch (trans.write_data.mo) {
+	case GHOST_MEMSET_PAGE:
+		__step_write_memset(trans.write_data.phys_addr, trans.write_data.val);
+		break;
+
+	case WMO_plain:
+	case WMO_release:
+		__step_write(trans);
+		break;
+
+	default:
+		BUG(); // unreachable
+	}
 }
 
 ////////////////////////
@@ -1943,9 +1976,19 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 
 int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 {
-	char *kind = "";
-	if (write_data->mo == WMO_release) {
+	char *kind;
+	switch (write_data->mo) {
+	case WMO_plain:
+		kind = "";
+		break;
+	case WMO_release:
 		kind = "rel";
+		break;
+	case GHOST_MEMSET_PAGE:
+		kind="page";
+		break;
+	default:
+		BUG(); // unreachable?
 	}
 
 	return ghost_sprintf(out, "W%s %p %lx", kind, write_data->phys_addr, write_data->val);
