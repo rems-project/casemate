@@ -476,10 +476,16 @@ enum ghost_hint_kind {
 	 * @GHOST_HINT_SET_OWNER_ROOT - Set the pgtable root which owns a pte
 	 */
 	GHOST_HINT_SET_OWNER_ROOT,
+
+	/**
+	 * @GHOST_HINT_RELEASE_TABLE - Stop tracking a whole table (and subtables recursively)
+	 */
+	GHOST_HINT_RELEASE_TABLE,
 };
 static const char *hint_names[] = {
 	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
 	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
+	ID_STRING(GHOST_HINT_RELEASE_TABLE),
 };
 
 /**

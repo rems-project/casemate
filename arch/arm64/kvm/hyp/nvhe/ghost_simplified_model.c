@@ -349,13 +349,13 @@ static u64 __read_phys(u64 addr, bool pre)
 
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
-	if (hyp_val != value) {
+	// but we only need to check for locations we are supposedly tracking
+	if (loc->is_pte && hyp_val != value) {
 		GHOST_LOG_CONTEXT_ENTER();
-		GHOST_WARN("the simplified model detected a PTE that changed under it");
 		GHOST_LOG(hyp_va, u64);
 		GHOST_LOG(value, u64);
 		GHOST_LOG(hyp_val, u64);
-		ghost_assert(false);
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("the simplified model detected a PTE that changed under it");
 		GHOST_LOG_CONTEXT_EXIT();
 	}
 
@@ -657,18 +657,27 @@ static void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb 
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
+static void traverse_all_pgtables_for_stage(ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
+{
+	u64 *root_table =
+		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+
+	for (int i = 0; i < MAX_ROOTS; i++) {
+		u64 root = root_table[i];
+
+		if (root)
+			traverse_pgtable(root, stage, visitor_cb, data);
+	}
+}
+
 static void traverse_all_s1_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
-	for (int i = 0; i < the_ghost_state->nr_s1_roots; i++) {
-		traverse_pgtable(the_ghost_state->s1_roots[i], GHOST_STAGE1, visitor_cb, data);
-	}
+	traverse_all_pgtables_for_stage(GHOST_STAGE1, visitor_cb, data);
 }
 
 static void traverse_all_s2_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 {
-	for (int i = 0; i < the_ghost_state->nr_s2_roots; i++) {
-		traverse_pgtable(the_ghost_state->s2_roots[i], GHOST_STAGE2, visitor_cb, data);
-	}
+	traverse_all_pgtables_for_stage(GHOST_STAGE2, visitor_cb, data);
 }
 
 static void traverse_all_pgtables(pgtable_traverse_cb visitor_cb, void *data)
@@ -1119,61 +1128,94 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 	loc->is_pte = false;
 }
 
+///////////////////
+// Pagetable roots
+
+static bool root_exists_in(u64 *root_table, phys_addr_t root)
+{
+	for (int i = 0; i < MAX_ROOTS; i++) {
+		if (root_table[i] == root)
+			return true;
+	}
+
+	return false;
+}
+
+static bool root_exists(phys_addr_t root)
+{
+	return root_exists_in(the_ghost_state->s1_roots, root) || root_exists_in(the_ghost_state->s2_roots, root);
+}
+
+static void try_insert_root(u64 *root_table, u64 root)
+{
+	for (int i = 0; i < MAX_ROOTS; i++) {
+		if (root_table[i] == 0) {
+			root_table[i] = root;
+			return;
+		}
+	}
+
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+}
+
+static void try_remove_root(u64 *root_table, u64 root)
+{
+	for (int i = 0; i < MAX_ROOTS; i++) {
+		if (root_table[i] == root) {
+			root_table[i] = 0;
+			return;
+		}
+	}
+
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+}
+
+static void try_register_root(ghost_stage_t stage, phys_addr_t root)
+{
+	GHOST_LOG_CONTEXT_ENTER();
+	if (root_exists(root))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
+
+	u64 *root_table =
+		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+
+	// TODO: also associate ASID/VMID ?
+	try_insert_root(root_table, root);
+
+	if (stage == GHOST_STAGE1) {
+		the_ghost_state->nr_s1_roots++;
+	} else {
+		the_ghost_state->nr_s2_roots++;
+	}
+
+	traverse_pgtable(root, stage, mark_cb, NULL);
+	GHOST_LOG_CONTEXT_EXIT();
+}
+
+static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
+{
+	GHOST_LOG_CONTEXT_ENTER();
+
+	u64 *root_table =
+		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+
+	if (! root_exists_in(root_table, root))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root doesn't exist");
+
+	// TODO: also associate ASID/VMID ?
+	traverse_pgtable(root, stage, unmark_cb, NULL);
+	try_remove_root(root_table, root);
+	if (stage == GHOST_STAGE1) {
+		the_ghost_state->nr_s1_roots--;
+	} else {
+		the_ghost_state->nr_s2_roots--;
+	}
+	GHOST_LOG_CONTEXT_EXIT();
+}
+
+
 ////////////////////
 // Step write sysreg
-
-static bool s1_root_exists(phys_addr_t root)
-{
-	for (int i = 0; i < the_ghost_state->nr_s1_roots; i++) {
-		if (the_ghost_state->s1_roots[i] == root)
-			return true;
-	}
-
-	return false;
-}
-
-static bool s2_root_exists(phys_addr_t root)
-{
-	for (int i = 0; i < the_ghost_state->nr_s2_roots; i++) {
-		if (the_ghost_state->s2_roots[i] == root)
-			return true;
-	}
-
-	return false;
-}
-
-static void register_s2_root(phys_addr_t root)
-{
-	GHOST_LOG_CONTEXT_ENTER();
-	if (s1_root_exists(root) || s2_root_exists(root))
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
-
-	if (the_ghost_state->nr_s2_roots == MAX_ROOTS) {
-		GHOST_WARN("Too many s2 roots, cannot register");
-		return;
-	}
-
-	// TODO: VMIDs
-	the_ghost_state->s2_roots[the_ghost_state->nr_s2_roots++] = root;
-	traverse_pgtable(root, GHOST_STAGE2, mark_cb, NULL);
-	GHOST_LOG_CONTEXT_EXIT();
-}
-
-static void register_s1_root(phys_addr_t root)
-{
-	GHOST_LOG_CONTEXT_ENTER();
-	if (s1_root_exists(root) || s2_root_exists(root))
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root already exists");
-
-	if (the_ghost_state->nr_s1_roots == MAX_ROOTS) {
-		GHOST_WARN("Too many s1 roots, cannot register");
-		return;
-	}
-
-	the_ghost_state->s1_roots[the_ghost_state->nr_s1_roots++] = root;
-	traverse_pgtable(root, GHOST_STAGE1, mark_cb, NULL);
-	GHOST_LOG_CONTEXT_EXIT();
-}
 
 #define VTTBR_EL2_BADDR_MASK	(GENMASK(47, 1))
 #define TTBR0_EL2_BADDR_MASK	(GENMASK(47, 1))
@@ -1191,21 +1233,28 @@ static phys_addr_t extract_s1_root(u64 ttb)
 static void step_msr(struct ghost_simplified_model_transition trans)
 {
 	u64 root;
+	// TODO: BS: also remember which is current?
 	switch (trans.msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
 		root = extract_s1_root(trans.msr_data.val);
 
-		if (!s1_root_exists(root))
-			register_s1_root(root);
+		if (! root_exists_in(the_ghost_state->s1_roots, root)) {
+			try_register_root(GHOST_STAGE1, root);
+		}
+		// TODO: BS: else, at least check ASID/VMID match...
 
 		break;
 	case SYSREG_VTTBR:
 		root = extract_s2_root(trans.msr_data.val);
 
-		if (!s2_root_exists(root))
-			register_s2_root(root);
+		if (! root_exists_in(the_ghost_state->s2_roots, root)) {
+			try_register_root(GHOST_STAGE2, root);
+		}
+		// TODO: BS: else, at least check ASID/VMID match...
 
 		break;
+	default:
+		BUG(); // unreachable?
 	}
 }
 
@@ -1690,6 +1739,28 @@ static void step_hint_set_owner_root(u64 phys, u64 root)
 	}
 }
 
+void check_release_cb(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+
+	ghost_assert(loc->initialised);
+	ghost_assert(loc->is_pte);
+
+	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot release table where children are still unclean");
+}
+
+static void step_hint_release_table(u64 root)
+{
+	struct sm_location *loc = location(root);
+
+	// TODO: BS: also check that it's not currently in-use by someone
+
+	// need to check the table is clean.
+	traverse_pgtable_from(root, loc->owner, loc->descriptor.ia_region.range_size, loc->descriptor.level, loc->descriptor.stage, check_release_cb, NULL);
+	try_unregister_root(loc->descriptor.stage, root);
+}
+
 static void step_hint(struct ghost_simplified_model_transition trans)
 {
 	switch (trans.hint_data.hint_kind) {
@@ -1698,6 +1769,9 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		break;
 	case GHOST_HINT_SET_OWNER_ROOT:
 		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
+		break;
+	case GHOST_HINT_RELEASE_TABLE:
+		step_hint_release_table(trans.hint_data.location);
 		break;
 	default:
 		BUG(); // unreachable;
@@ -1810,7 +1884,7 @@ static void sync_simplified_model_memory(void)
 	/* don't step() a MSR-like transition
 	 * because there is not a current TTBR0_EL2 in effect. */
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-	register_s1_root(pkvm_pgd);
+	try_register_root(GHOST_STAGE1, pkvm_pgd);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -1961,8 +2035,11 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 	case GHOST_HINT_SET_OWNER_ROOT:
 		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_data->location, hint_data->value);
 		break;
+	case GHOST_HINT_RELEASE_TABLE:
+		return ghost_sprintf(out, "HINT %s %lx", hint_name, hint_data->location);
+		break;
 	default:
-		return ghost_sprintf(out, "HINT %s", hint_name);
+		BUG(); // unreachable?
 	}
 }
 
