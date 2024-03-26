@@ -271,6 +271,7 @@ Inductive ghost_simplified_model_transition_data :=
 
 Record ghost_simplified_model_transition := {
   gsmt_src_loc : option src_loc;
+  gsmt_thread_identifier : thread_identifier;
   gsmt_data : ghost_simplified_model_transition_data;
 }.
 
@@ -370,9 +371,8 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
     |> in
     Mreturn (update_loc_state loc' st).
 
-Definition step_write (wd : trans_write_data) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
+Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
   (* TODO *)
-  let tid := 0 (* TODO *) in
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let loc := location wd.(twd_phys_addr) st in
@@ -396,7 +396,7 @@ Definition step_write (wd : trans_write_data) (st : ghost_simplified_model_state
 Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
-    step_write wd st
+    step_write trans.(gsmt_thread_identifier) wd st
   | _ => (* TODO: and so on... *)
     {| gsmsr_log := nil;
       gsmsr_data := GSMSR_failure GSME_unimplemented |}
@@ -405,10 +405,10 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
 Definition ghost_simplified_model_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
   step trans st.
 
-
-Definition __ghost_simplified_model_step_write (src_loc : src_loc) (wmo : write_memory_order) (phys : phys_addr_t) (val : u64) :=
+Definition __ghost_simplified_model_step_write (src_loc : src_loc) (tid : thread_identifier) (wmo : write_memory_order) (phys : phys_addr_t) (val : u64) :=
   ghost_simplified_model_step {|
     gsmt_src_loc := Some src_loc;
+    gsmt_thread_identifier := tid;
     gsmt_data := GSMDT_TRANS_MEM_WRITE ({|
       twd_mo := wmo;
       twd_phys_addr := phys;
