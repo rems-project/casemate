@@ -4,17 +4,16 @@
 
 
 Require Import String.
+Require Import stdpp.unstable.bitvector.
 
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 
-Definition u64 := nat (* yuck *).
+Definition u64 := bv 64.
+Search (bv _ -> bv _ -> bool).
 Definition u64_eqb (x y : u64) : bool :=
-  Nat.eqb x y.
-Definition u64_andb (x y : u64) : u64 :=
-  (* TODO: fix!!! *)
-  x.
+  true (* TODO: fight typeclasses *).
 
 Definition phys_addr_t := u64.
 
@@ -332,10 +331,12 @@ Definition read_phys_pre (addr : u64) (st : ghost_simplified_model_state) : u64 
   __read_phys addr true st.
 
 (* TODO: move this *)
-Definition PTE_BIT_VALID := 1.
+Definition PTE_BIT_VALID : u64 :=
+  (* TODO: actually, should be 0000...0001 *)
+  bv_0 64.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
-  u64_eqb (u64_andb descriptor PTE_BIT_VALID) PTE_BIT_VALID.
+  bool_decide ((bv_and descriptor PTE_BIT_VALID) = PTE_BIT_VALID).
 
 (* TODO: there must be a better way... *)
 Definition update_loc_state_aux2 loc (blob : ghost_memory_blob) : ghost_memory_blob :=

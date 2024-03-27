@@ -1,0 +1,22 @@
+opam-version: "2.0"
+name: "simplified"
+maintainer: "? <?@?>"
+authors: "Jean Pichon"
+license: "BSD-3-Clause"
+homepage: "https://github.com/rems-project/xxx"
+bug-reports: "https://github.com/rems-project/xxx/issues"
+dev-repo: "git+https://github.com/rems-project/xxx.git"
+
+synopsis: "Simplified model"
+
+depends: [
+  "coq" { (= "8.19.0") | (= "dev") }
+  "coq-stdpp-unstable"
+  "coq-record-update" { (= "0.3.3") | (= "dev") }
+  "dune" {= "3.9.1"} # dune updates like to break things so we fix a version
+]
+
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]

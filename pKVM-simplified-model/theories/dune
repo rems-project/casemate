@@ -1,0 +1,6 @@
+(coq.theory
+  (name simplified)
+  (package simplified)
+  (flags :standard)
+  (synopsis "simplified")
+  (theories RecordUpdate stdpp stdpp.unstable))
