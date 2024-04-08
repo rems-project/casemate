@@ -6,9 +6,9 @@
 
 #include <nvhe/spinlock.h>
 
-#include <nvhe/ghost_maplets.h>
-#include <nvhe/ghost_asserts.h>
-#include <nvhe/ghost_control.h>
+#include <nvhe/ghost/ghost_maplets.h>
+#include <nvhe/ghost/ghost_asserts.h>
+#include <nvhe/ghost/ghost_control.h>
 
 
 #define MAX_CPU 4 // TODO: JP

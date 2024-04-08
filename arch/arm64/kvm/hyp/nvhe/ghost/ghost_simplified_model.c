@@ -9,14 +9,14 @@
 #include <nvhe/mem_protect.h>
 #include <nvhe/pkvm.h>
 
-#include <nvhe/ghost_control.h>
-#include <nvhe/ghost_asserts.h>
-#include <hyp/ghost_extra_debug-pl011.h>
-#include <nvhe/ghost_printer.h>
-#include <nvhe/ghost_abstraction_diff.h>
-#include <nvhe/ghost_maplets.h>
-#include <nvhe/ghost_pgtable.h>
-#include <nvhe/ghost_simplified_model.h>
+#include <nvhe/ghost/ghost_control.h>
+#include <nvhe/ghost/ghost_asserts.h>
+#include <hyp/ghost/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost/ghost_printer.h>
+#include <nvhe/ghost/ghost_abstraction_diff.h>
+#include <nvhe/ghost/ghost_maplets.h>
+#include <nvhe/ghost/ghost_pgtable.h>
+#include <nvhe/ghost/ghost_simplified_model.h>
 
 
 /*
