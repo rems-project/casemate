@@ -10,10 +10,15 @@ Require Import stdpp.unstable.bitvector.
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 
+Require Import stdpp.gmap.
+
+
 Definition u64 := bv 64.
 Search (bv _ -> bv _ -> bool).
 Definition u64_eqb (x y : u64) : bool :=
   true (* TODO: fight typeclasses *).
+
+Infix "=?" := u64_eqb.
 
 Definition phys_addr_t := u64.
 
@@ -31,6 +36,12 @@ Record aut_valid := {
   lvs : list LVS;
 }.
 
+
+
+(*****************************************************************************)
+(********                Automaton definition                        *********)
+(*****************************************************************************)
+
 Inductive LIS :=
 | LIS_unguarded
 | LIS_dsbed
@@ -47,13 +58,6 @@ Record aut_invalid_clean := {
   aic_invalidator_tid : thread_identifier;
 }.
 
-(* TODO: do we actually need to have this as a standalone thing? *)
-Inductive automaton_state_kind :=
-| STATE_PTE_VALID
-| STATE_PTE_INVALID_UNCLEAN
-| STATE_PTE_INVALID
-.
-(* TODO: this duplicates *)
 Inductive sm_pte_state :=
 | SPS_STATE_PTE_VALID (valid_state:aut_valid)
 | SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid)
@@ -64,13 +68,6 @@ Record ghost_addr_range := {
   range_start : u64;
   range_size : u64;
 }.
-
-(* same redundancy? *)
-Inductive pte_kind :=
-| PTE_KIND_TABLE
-| PTE_KIND_MAP
-| PTE_KIND_INVALID
-.
 
 Record table_data_t := {
   next_level_table_addr : u64;
@@ -87,7 +84,6 @@ Inductive pte_rec :=
 .
 
 Record ghost_exploded_descriptor := {
-  ged_kind : pte_kind;
   ged_ia_region : ghost_addr_range;
   ged_level : u64;
   ged_s2 : bool;
@@ -95,7 +91,7 @@ Record ghost_exploded_descriptor := {
 }.
 
 Record sm_location := mk_sm_location {
-  sl_initialised : bool;
+  (* sl_initialised : bool; *)
   sl_phys_addr : u64;
   sl_val : u64;
   sl_is_pte : bool;
@@ -103,38 +99,39 @@ Record sm_location := mk_sm_location {
   sl_state : sm_pte_state;
   sl_owner : sm_owner_t;
 }.
-#[export] Instance eta_sm_location : Settable _ := settable! mk_sm_location <sl_initialised; sl_phys_addr; sl_val; sl_is_pte; sl_descriptor; sl_state; sl_owner>.
+#[export] Instance eta_sm_location : Settable _ := settable! mk_sm_location < sl_phys_addr; sl_val; sl_is_pte; sl_descriptor; sl_state; sl_owner>.
 
-Record ghost_memory_blob := mk_ghost_memory_blob {
-  gmb_valid : bool;
-  gmb_phys : u64;
-  gmb_slots : list sm_location;
-}.
-#[export] Instance eta_ghost_memory_blob : Settable _ := settable! mk_ghost_memory_blob <gmb_valid; gmb_phys; gmb_slots>.
-
-Record ghost_simplified_memory := {
-  gsm_blobs : list ghost_memory_blob;
-}.
-
+(* Do we need locks? *)
 Record owner_locks := {
   ol_len : u64;
   ol_owner_ids : list sm_owner_t;
   ol_locks : unit (* TODO??? *);
 }.
 
-Record ghost_simplified_model_state := mk_ghost_simplified_model_state {
-  gsms_base_addr : u64;
-  gsms_size : u64;
-  gsms_memory : ghost_simplified_memory;
+(* The memory state is a map from address to simplified model location *)
+Definition ghost_simplified_model_state := gmap u64 sm_location.
 
-  gsms_s1_roots : list u64;
-  gsms_s2_roots : list u64;
+(* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
+Record pte_roots := {
+  pr_list : list u64 
 }.
-#[export] Instance eta_ghost_simplified_model_state : Settable _ := settable! mk_ghost_simplified_model_state <gsms_base_addr; gsms_size; gsms_memory; gsms_s1_roots; gsms_s2_roots>.
 
-Axiom location : ((*phys:*)u64) -> ghost_simplified_model_state -> sm_location.
-(* TODO: implement *)
+Record ghost_simplified_memory := mk_ghost_simplified_model {
+  gsm_roots : pte_roots;
+  gsm_memory : ghost_simplified_model_state
+}.
+#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory>.
 
+Definition initial_state := {|
+  gsm_roots := {| pr_list := []; |};
+  gsm_memory := gmap_empty;
+|}.
+
+
+(*****************************************************************************)
+(********               Transition definition                        *********)
+(*****************************************************************************)
+(* All those transitions will go in favor of ARM ISA description (except for hints) *)
 Inductive write_memory_order :=
 | WMO_plain
 | WMO_release
@@ -204,15 +201,6 @@ Inductive dsb_kind :=
 |	DSB_nsh
 .
 
-Inductive ghost_simplified_model_transition_kind :=
-|	TRANS_MEM_WRITE
-|	TRANS_MEM_READ
-|	TRANS_DSB
-|	TRANS_ISB
-|	TRANS_TLBI
-|	TRANS_MSR
-| TRANS_HINT
-.
 
 Inductive ghost_sysreg_kind :=
 |	SYSREG_VTTBR
@@ -274,6 +262,11 @@ Record ghost_simplified_model_transition := {
   gsmt_data : ghost_simplified_model_transition_data;
 }.
 
+
+(*****************************************************************************)
+(********               Error reporting datastructures               *********)
+(*****************************************************************************)
+
 Inductive ghost_simplified_model_error :=
 | GSME_bbm_valid_valid
 | GSME_unimplemented
@@ -282,7 +275,7 @@ Inductive ghost_simplified_model_error :=
 
 (* TODO: this type needs to be made nicer *)
 Inductive ghost_simplified_model_step_result_data :=
-| GSMSR_success (next : ghost_simplified_model_state)
+| GSMSR_success (next : ghost_simplified_memory)
 | GSMSR_failure (s : ghost_simplified_model_error).
 
 (* TODO: this type needs to be made nicer *)
@@ -291,11 +284,18 @@ Record ghost_simplified_model_step_result := {
   gsmsr_data : ghost_simplified_model_step_result_data
 }.
 
-Definition Mreturn (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
+
+
+(*****************************************************************************)
+(********                   Code of the transitions                  *********)
+(*****************************************************************************)
+
+
+Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   {| gsmsr_log := nil;
     gsmsr_data := GSMSR_success st |}.
 
-Definition Mbind (r : ghost_simplified_model_step_result) (f : ghost_simplified_model_state -> ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Definition Mbind (r : ghost_simplified_model_step_result) (f : ghost_simplified_memory -> ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match r.(gsmsr_data) with
   | GSMSR_failure s => r
   | GSMSR_success st =>
@@ -319,7 +319,7 @@ Definition Mlog (s : string) (r : ghost_simplified_model_step_result) : ghost_si
       gsmsr_data := GSMSR_success st |}
   end.
 
-Definition update_loc_val (loc : sm_location) (val : u64) (st : ghost_simplified_model_state) : ghost_simplified_model_state :=
+Definition update_loc_val (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_memory :=
   (* TODO: implement *)
   st.
 
@@ -338,63 +338,62 @@ Definition PTE_BIT_VALID : u64 :=
 Definition is_desc_valid (descriptor : u64) : bool :=
   bool_decide ((bv_and descriptor PTE_BIT_VALID) = PTE_BIT_VALID).
 
-(* TODO: there must be a better way... *)
-Definition update_loc_state_aux2 loc (blob : ghost_memory_blob) : ghost_memory_blob :=
-  blob <| gmb_slots := List.map (fun loc' =>
-    if u64_eqb loc.(sl_phys_addr) loc'.(sl_phys_addr) then loc
-    else loc') blob.(gmb_slots) |>.
 
-Definition update_loc_state_aux loc (mem : ghost_simplified_memory) : ghost_simplified_memory :=
-  {| gsm_blobs := List.map (update_loc_state_aux2 loc) mem.(gsm_blobs) |}.
 
-Definition update_loc_state (loc : sm_location) (st : ghost_simplified_model_state) : ghost_simplified_model_state :=
-  (* TODO *)
-  let mem' := update_loc_state_aux loc st.(gsms_memory) in
-  st <| gsms_memory := mem' |>.
 
 Definition requires_bbm (loc : sm_location) (before after : u64) : bool :=
   (* TODO *)
   true.
 
-Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
-  let old := read_phys_pre loc.(sl_phys_addr) st in
-  if is_desc_valid val then
-    if negb (requires_bbm loc old val) then Mreturn st
-    else
-      Merror GSME_bbm_valid_valid
-  else
-    let loc' := loc <|
-      sl_state := SPS_STATE_PTE_INVALID_UNCLEAN {|
-        ai_invalidator_tid := tid;
-        ai_old_valid_desc := old;
-        ai_lis := LIS_unguarded;
-      |}
-    |> in
-    Mreturn (update_loc_state loc' st).
 
-Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
+
+Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  let old := loc.(sl_val) in
+  if old =? val then
+   {| gsmsr_log := []; gsmsr_data := GSMSR_success st |}
+  else
+    if is_desc_valid val then
+      {| gsmsr_log := []; gsmsr_data := GSMSR_failure GSME_bbm_valid_valid |}
+    else
+    (
+      let new_loc := loc <| sl_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
+      {| gsmsr_log := []; 
+      gsmsr_data := GSMSR_success (st <| gsm_memory := (<[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory)) |> ) |}
+    ).
+
+
+Require Extraction.
+Recursive Extraction step_write_on_valid.
+
+
+
+Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* TODO *)
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
-  let loc := location wd.(twd_phys_addr) st in
-  if negb loc.(sl_is_pte) then
-    let st' := update_loc_val loc val st (* TODO *) in
-    {| gsmsr_log := nil;
-      gsmsr_data := GSMSR_success st' |}
-  else
-    match loc.(sl_state) with
-    | SPS_STATE_PTE_VALID av =>
-      Mbind
-        (step_write_on_valid tid wmo loc val st)
-        (fun st => Mreturn (update_loc_val loc val st))
-    |_ =>
-      (* TODO: other cases *)
-    {| gsmsr_log := nil;
-      gsmsr_data := GSMSR_failure GSME_unimplemented |}
-    end.
+  match st.(gsm_memory) !! wd.(twd_phys_addr) with
+    | Some (loc) =>
+      if negb loc.(sl_is_pte) then
+        let st' := update_loc_val loc val st (* TODO *) in
+        {| gsmsr_log := nil;
+          gsmsr_data := GSMSR_success st' |}
+      else
+        match loc.(sl_state) with
+        | SPS_STATE_PTE_VALID av =>
+            (step_write_on_valid tid wmo loc val st)
+        |_ =>
+          (* TODO: other cases *)
+        {| gsmsr_log := nil;
+          gsmsr_data := GSMSR_failure GSME_unimplemented |}
+        end
+    | None => 
+      {| gsmsr_log := nil;
+        gsmsr_data := GSMSR_failure GSME_unimplemented |}
+  end.
+
 
 (* TODO: actually do this *)
-Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
+Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
     step_write trans.(gsmt_thread_identifier) wd st
@@ -403,7 +402,8 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
       gsmsr_data := GSMSR_failure GSME_unimplemented |}
   end.
 
-Definition ghost_simplified_model_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_model_state) : ghost_simplified_model_step_result :=
+
+Definition ghost_simplified_model_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   step trans st.
 
 Definition __ghost_simplified_model_step_write (src_loc : src_loc) (tid : thread_identifier) (wmo : write_memory_order) (phys : phys_addr_t) (val : u64) :=
