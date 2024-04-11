@@ -19,6 +19,7 @@
 #include <nvhe/ghost/ghost_pgtable.h>
 #include <nvhe/ghost/ghost_simplified_model.h>
 
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 /*
  * the actual state
