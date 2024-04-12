@@ -7,7 +7,7 @@ Install base packages with opam:
 ```bash
 opam install coq coq-lsp
 opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
-opam install coq-stdpp-unstable
+opam install coq_stdpp coq-stdpp-bitvector
 ```
 
 Install RecordUpdate:

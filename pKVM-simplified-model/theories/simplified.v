@@ -4,7 +4,7 @@
 
 
 Require Import String.
-Require Import stdpp.unstable.bitvector.
+Require Import stdpp.bitvector.bitvector.
 
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
@@ -358,6 +358,17 @@ match level with
 end
 .
 
+
+Definition map_size (level : u64) : u64 :=
+match level with 
+  | BV _ 0 => bv_shiftl (BV 64 512) (BV 64 30) (* 512 Go *)
+  | BV _ 1 => bv_shiftl (BV 64 1)   (BV 64 30) (* 1 Go *)
+  | BV _ 2 => bv_shiftl (BV 64 2)   (BV 64 20) (* 2 Mo *)
+  | BV _ 3 => bv_shiftl (BV 64 4)   (BV 64 10) (* 4 Ko *)
+  | _ => BV 64 0  (* Should not happen*)
+end
+. 
+
 Definition is_desc_table (descriptor : u64) (level : nat) :=
 (* There is an inequality to make termination easier *)
   if 2 <? level then
@@ -368,6 +379,10 @@ Definition is_desc_table (descriptor : u64) (level : nat) :=
 
 Definition extract_table_address (pte_val : u64) : u64 :=
 bv_and pte_val PTE_BITS_ADDRESS.
+
+Definition extract_output_address (pte_val level : u64) :=
+bv_and pte_val (GENMASK (BV 64 47) (OA_shift level))
+.
 
 Record page_table_context := {
   ptc_loc : option sm_location;
@@ -405,7 +420,7 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
         else
           PTER_PTE_KIND_MAP (
             {|
-              oa_region := {|range_start := extract_table_address desc; range_size := OA_shift level |}
+              oa_region := {| range_start := extract_table_address desc; range_size := map_size level |}
             |}
           )
       else
@@ -415,7 +430,7 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
     ged_ia_region := 
       {|
         range_start := partial_ia;
-        range_size := OA_shift level
+        range_size := map_size level
       |};
     ged_level := level;
     ged_s2 := s2;
@@ -425,7 +440,6 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
   |}
 .
 
-(* TODO: compute the partial ia *)
 Fixpoint traverse_pgt_from_aux (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> visitor_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (max_call_number : nat) : ghost_simplified_model_step_result_data :=
   match max_call_number with
    | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc st 0 max_call_number
@@ -452,7 +466,8 @@ with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s
               | S level =>
                 if is_desc_table location.(sl_val) level then
                   let rec_table_start := extract_table_address location.(sl_val) in
-                  let rec_updated_state := traverse_pgt_from_aux root rec_table_start partial_ia (level) s2 visitor_cb src_loc updated_state max_call_number in
+                  let next_partial_ia := bv_add_Z (extract_output_address location.(sl_val) (Z_to_bv 64 (Z.of_nat level)))  (Z.of_nat (i*level)) in
+                  let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state max_call_number in
                     match rec_updated_state with
                       | GSMSR_success rec_updated_state => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (i+1) max_call_number
                       | e => e
