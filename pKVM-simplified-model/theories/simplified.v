@@ -18,7 +18,12 @@ Search (bv _ -> bv _ -> bool).
 Definition u64_eqb (x y : u64) : bool :=
   bool_decide (x = y).
 
+Definition u64_ltb (x y : u64) : bool := 
+  Z.to_nat (bv_unsigned x) <? Z.to_nat (bv_unsigned y)
+.
+
 Infix "=?" := u64_eqb.
+Infix "b<?" := u64_ltb (at level 70).
 
 Definition phys_addr_t := u64.
 
@@ -391,17 +396,18 @@ bv_and pte_val (GENMASK (BV 64 47) (OA_shift level))
 .
 
 Record page_table_context := {
-  ptc_loc : option sm_location;
-  ptc_partial_ia : u64;
-  ptc_addr : u64;
+  ptc_state: ghost_simplified_memory;
+  ptc_loc: option sm_location;
+  ptc_partial_ia: u64;
+  ptc_addr: u64;
   ptc_root: u64;
-  ptc_level : u64;
+  ptc_level: u64;
   ptc_s2: bool;
-  ptc_src_loc : option src_loc;
+  ptc_src_loc: option src_loc;
 }.
 
 Inductive visitor_result :=
-  | vr_success (loc: sm_location)
+  | vr_success (result: ghost_simplified_model_step_result)
   | vr_failure (gsme: ghost_simplified_model_error)
 .
 
@@ -446,18 +452,18 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
   |}
 .
 
-Fixpoint traverse_pgt_from_aux (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> option string * visitor_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
+Fixpoint traverse_pgt_from_aux (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
    | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc st 0 logs max_call_number
    | O => {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure (GSME_internal_error) |}
   end
-with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> option string * visitor_result) (src_loc : option src_loc)(st : ghost_simplified_memory) (i : nat) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
+with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc)(st : ghost_simplified_memory) (i : nat) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
     | S max_call_number => if bool_decide (i = 512) then
       let location := st.(gsm_memory) !! (bv_add_Z (table_start) (8 * Z.of_nat (i))) in
-        (* location should be updated if necessary *)
         let ctx := 
           {|
+            ptc_state := st;
             ptc_loc := location;
             ptc_addr := ((bv_add_Z (table_start) (8 * Z.of_nat (i))));
             ptc_partial_ia := partial_ia;
@@ -468,24 +474,26 @@ with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s
           |}
         in
         match visitor_cb ctx with
-          | (str, vr_success location) =>
-            let updated_state := st <| gsm_memory := <[ location.(sl_phys_addr) := location]> st.(gsm_memory) |> in
-              if is_desc_table location.(sl_val) level then
-                let rec_table_start := extract_table_address location.(sl_val) in
-                let next_partial_ia := bv_add_Z (extract_output_address location.(sl_val) (Z_to_bv 64 (Z.of_nat level)))  (Z.of_nat (i*level)) in
-                let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state logs max_call_number in
-                match rec_updated_state with
-                  | {| gsmsr_log := l_logs ; gsmsr_data := GSMSR_success rec_updated_state |} => 
-                    let logs := match str with None => logs | Some str => concat [logs; [str]] end in
-                    traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (i+1) (concat [logs; l_logs]) max_call_number
-                  | e => e
-                end
-              else
-                {| gsmsr_log := logs; gsmsr_data := GSMSR_success (updated_state) |}
-          | (None, vr_failure error) =>
-            {|gsmsr_log := logs; gsmsr_data := GSMSR_failure (error) |}
-          | (Some str, vr_failure error) =>
-            {|gsmsr_log := concat [logs; [str]]; gsmsr_data := GSMSR_failure (error) |}
+          | {| gsmsr_log := log1; gsmsr_data := GSMSR_success updated_state |} =>
+            let location := updated_state.(gsm_memory) !! (bv_add_Z (table_start) (8 * Z.of_nat (i))) in
+            match location with
+              | None => 
+                {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_use_of_uninitialized_pte src_loc)) |}
+              | Some location => 
+                if is_desc_table location.(sl_val) level then
+                  let rec_table_start := extract_table_address location.(sl_val) in
+                  let next_partial_ia := bv_add_Z (extract_output_address location.(sl_val) (Z_to_bv 64 (Z.of_nat level)))  (Z.of_nat (i*level)) in
+                  let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state logs max_call_number in
+                  match rec_updated_state with
+                    | {| gsmsr_log := log2 ; gsmsr_data := GSMSR_success rec_updated_state |} => 
+                      traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (i+1) (concat [logs; log1; log2]) max_call_number
+                    | e => e
+                  end
+                else
+                  {| gsmsr_log := logs; gsmsr_data := GSMSR_success (updated_state) |}
+            end
+          | {| gsmsr_log := log1; gsmsr_data := r |}  =>
+            {|gsmsr_log := concat [logs; log1]; gsmsr_data := r |}
         end
       else
         {| gsmsr_log := logs; gsmsr_data := GSMSR_success (st) |}
@@ -493,13 +501,13 @@ with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s
   end
 .
 
-Definition traverse_pgt_from (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> option string * visitor_result) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition traverse_pgt_from (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb src_loc st [] (4*512)
 .
 
 
 
-Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> option string * visitor_result) (s2 : bool) (logs: list string) (roots : list u64) : ghost_simplified_model_step_result :=
+Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
       match traverse_pgt_from r r (BV 64 0) 0 s2 visitor_cb None st with
@@ -511,7 +519,7 @@ Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_t
   end
 .
 
-Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> option string * visitor_result) (s2 : bool) : ghost_simplified_model_step_result := 
+Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) : ghost_simplified_model_step_result := 
   let roots := 
     if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
   in 
@@ -521,31 +529,38 @@ Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_tab
 (******************************************************************************************)
 (*                             Code for write                                             *)
 (******************************************************************************************)
-Definition clean_reachable (ctx : page_table_context) : option string * visitor_result := 
+Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_step_result := 
   match ctx.(ptc_loc) with 
     | Some location => 
       match location.(sl_pte) with
-        | None => (None, vr_failure (GSME_use_of_uninitialized_pte (ctx.(ptc_src_loc))))
+        | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte (ctx.(ptc_src_loc))) |}
         | Some descriptor => 
           match descriptor.(ged_state) with
-            | SPS_STATE_PTE_INVALID_UNCLEAN _ => (None, vr_failure (GSME_writing_with_unclean_children (ctx.(ptc_src_loc))))
-            | _ => (None, vr_success location)
+            | SPS_STATE_PTE_INVALID_UNCLEAN _ => 
+              let st := ctx.(ptc_state) in
+              {|gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_writing_with_unclean_children (ctx.(ptc_src_loc)))|}
+            | _ => {|
+                    gsmsr_log := nil;
+                    gsmsr_data := GSMSR_success ctx.(ptc_state)
+                  |}
           end
       end
-    | None => (None, vr_failure (GSME_use_of_uninitialized_pte (ctx.(ptc_src_loc))))
+    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure  (GSME_use_of_uninitialized_pte (ctx.(ptc_src_loc))) |}
   end
 .
 
-Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : visitor_result :=
+Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | Some location => 
       if location.(sl_pte) then 
-        vr_failure (GSME_double_use_of_pte ctx.(ptc_src_loc))
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc)) |}
       else 
         let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
-        vr_success (location <| sl_pte := (Some new_descriptor) |>)
-    | None =>  (* In the C model, it is not an issue, here we cannot continue because we don't have the value at that memory location *)
-        vr_failure (GSME_unimplemented None)
+        let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
+        let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
+    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unimplemented None) |}
   end
 .
 
@@ -653,17 +668,16 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
   end
 .
 
-
 (******************************************************************************************)
 (*                                      DSB                                               *)
 (******************************************************************************************)
-Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_context) : option string * visitor_result :=
+Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
-    | None => (None, vr_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc)))
+    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc)) |}
     | Some location => 
       let pte :=
         match location.(sl_pte) with
-          | None =>deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2)
+          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2)
           | Some pte => pte
         end
       in
@@ -694,7 +708,9 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
           | _ => pte
         end
       in
-      (None, vr_success (location <| sl_pte := Some pte |>))
+      let new_loc := (location <| sl_pte := Some pte |>) in
+      let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
+      {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
   end
 .
 
