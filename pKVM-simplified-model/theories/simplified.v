@@ -723,6 +723,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
     step_read trans.(gsmt_thread_identifier) rd trans.(gsmt_src_loc) st
   | GSMDT_TRANS_DSB dsb_data => 
     step_dsb trans.(gsmt_thread_identifier) dsb_data trans.(gsmt_src_loc) st
+  | GSMDT_TRANS_ISB => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
   | _ => (* TODO: and so on... *)
     {| gsmsr_log := nil;
       gsmsr_data := GSMSR_failure (GSME_unimplemented (None)) |}
