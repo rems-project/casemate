@@ -903,6 +903,39 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: o
 .
 
 (******************************************************************************************)
+(*                                  Step hint                                             *)
+(******************************************************************************************)
+
+Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs : list string) (offs : nat) : ghost_simplified_model_step_result :=
+  match offs with
+    | O => {|gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+    | S offs => 
+      let addr := bv_add_Z phys ((Z.of_nat (offs * 8))) in
+      match st.(gsm_memory) !! addr with
+        | None => set_owner_root phys root st logs offs (* We might want to do something here, but no data… *)
+        | Some location => 
+          let new_pte := 
+            match location.(sl_pte) with 
+              | None => None
+              | Some pte => Some (pte <| ged_owner := root|>)
+            end
+          in
+          let new_loc := location <| sl_pte := new_pte |> in
+          let new_state := st <|gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
+          set_owner_root phys root new_state logs offs
+      end
+  end
+. 
+
+Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match hd.(thd_hint_kind) with 
+    | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
+    | GHOST_HINT_SET_OWNER_ROOT => 
+      set_owner_root ((*trim the address to be 4k-aligned*)hd.(thd_location)) hd.(thd_value) st [] 512
+  end
+.
+
+(******************************************************************************************)
 (*                             Toplevel function                                          *)
 (******************************************************************************************)
 
@@ -917,9 +950,8 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
     step_dsb trans.(gsmt_thread_identifier) dsb_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_ISB => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data trans.(gsmt_src_loc) st
-  | _ => (* TODO: and so on... *)
-    {| gsmsr_log := nil;
-      gsmsr_data := GSMSR_failure (GSME_unimplemented (None)) |}
+  | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data trans.(gsmt_src_loc) st
+  | GSMDT_TRANS_HINT hint_data => step_hint hint_data trans.(gsmt_src_loc) st
   end.
 
 Definition ghost_simplified_model_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
