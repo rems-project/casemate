@@ -285,6 +285,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_writing_with_unclean_children (code_loc : option src_loc)
 | GSME_double_use_of_pte (code_loc : option src_loc)
 | GSME_unmark_non_pte (code_loc : option src_loc)
+| GSME_root_already_exists (code_loc : option src_loc)
 | GSME_unimplemented (code_loc : option src_loc)
 | GSME_internal_error
 (* TODO: others, more info... *)
@@ -850,10 +851,54 @@ Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (code_loc:
         traverse_si_pgt st (tlbi_visitor tid td) true
     | _ => 
         let res := traverse_all_pgt st (tlbi_visitor tid td) in
-        res <| gsmsr_log := concat [["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]; res.(gsmsr_log)] |>
+        res <| gsmsr_log := concat [res.(gsmsr_log); ["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]] |>
   end
 .
 
+
+(******************************************************************************************)
+(*                                  Step MSR                                              *)
+(******************************************************************************************)
+
+Fixpoint si_root_exists (root : u64) (roots : list u64) :=
+  match roots with
+    | [] => false
+    | t :: q => (t =? root) || (si_root_exists root q)
+  end
+.
+
+Definition extract_si_root (val : u64) (s2 : bool) : u64 :=
+  bv_and val (GENMASK (BV 64 47) (BV 64 1))
+.
+
+Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : u64) (s2 : bool) (code_loc: option src_loc) : ghost_simplified_model_step_result :=
+  let other_root_levels := (if s2 then pr_s1 else pr_s2) st.(gsm_roots) in
+  if si_root_exists root other_root_levels then
+    {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_root_already_exists code_loc) |}
+  else
+    let new_roots :=
+      if s2 then
+        st.(gsm_roots) <| pr_s2 := st.(gsm_roots).(pr_s2) |>
+      else
+        st.(gsm_roots) <| pr_s1 := st.(gsm_roots).(pr_s1) |>
+    in
+    let new_st := st <| gsm_roots := new_roots |> in
+    traverse_si_pgt new_st (mark_cb tid) s2 
+.
+
+Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  let s2 := 
+    match md.(tmd_sysreg) with
+      | SYSREG_TTBR_EL2 => true
+      | SYSREG_VTTBR => false
+    end
+  in
+  let root := extract_si_root md.(tmd_val) s2 in
+  if si_root_exists root ((if s2 then pr_s2 else pr_s1) st.(gsm_roots)) then
+    Mreturn st
+  else
+    register_si_root tid st root true code_loc
+.
 
 (******************************************************************************************)
 (*                             Toplevel function                                          *)
