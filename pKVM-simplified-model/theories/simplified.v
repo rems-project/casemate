@@ -925,13 +925,17 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
           set_owner_root phys root new_state logs offs
       end
   end
-. 
+.
+
+Definition align_4k (addr : u64) : u64 :=
+  bv_and addr (GENMASK (BV 64 64) (BV 64 12))
+.
 
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match hd.(thd_hint_kind) with 
     | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
     | GHOST_HINT_SET_OWNER_ROOT => 
-      set_owner_root ((*trim the address to be 4k-aligned*)hd.(thd_location)) hd.(thd_value) st [] 512
+      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
   end
 .
 
