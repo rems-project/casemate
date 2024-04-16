@@ -284,6 +284,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_read_uninitialized (code_loc : option src_loc)
 | GSME_writing_with_unclean_children (code_loc : option src_loc)
 | GSME_double_use_of_pte (code_loc : option src_loc)
+| GSME_unmark_non_pte (code_loc : option src_loc)
 | GSME_unimplemented (code_loc : option src_loc)
 | GSME_internal_error
 (* TODO: others, more info... *)
@@ -526,6 +527,15 @@ Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_tab
   traverse_si_pgt_aux st visitor_cb s2 [] roots
 .
 
+Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  :=
+  match traverse_si_pgt st visitor_cb true with
+    | {|gsmsr_log := logs; gsmsr_data := GSMSR_success st|} =>
+      let res := traverse_si_pgt st visitor_cb false in
+      res <| gsmsr_log := concat [logs; res.(gsmsr_log)] |>
+    | err => err
+  end
+.
+
 (******************************************************************************************)
 (*                             Code for write                                             *)
 (******************************************************************************************)
@@ -559,6 +569,22 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
         let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
         let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
         {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
+    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unimplemented None) |}
+  end
+.
+
+Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+  match ctx.(ptc_loc) with
+    | Some location =>
+      match location.(sl_pte) with
+        | Some desc => 
+          let new_loc := location <|sl_pte := None |> in
+          let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
+          {| gsmsr_log := nil; gsmsr_data := GSMSR_success (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+        | None =>
+          {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
+      end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
         {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unimplemented None) |}
   end
@@ -725,6 +751,109 @@ Definition step_dsb (tid : thread_identifier) (dk : dsb_kind) (code_loc: option 
   end
 .
 
+(******************************************************************************************)
+(*                                     TLBI                                               *)
+(******************************************************************************************)
+
+Definition should_perform_tlbi (td : trans_tlbi_data) (ptc : page_table_context) : bool :=
+  match ptc.(ptc_loc) with
+    | None => false (* does not happen *)
+    | Some loc =>
+      match loc.(sl_pte) with 
+        | None => false 
+        | Some pte_desc =>
+          match td.(ttd_tlbi_kind) with
+            | TLBI_vae2is | TLBI_ipas2e1is => 
+              let tlbi_addr := bv_shiftr td.(ttd_page) 12 in
+                (negb (is_desc_table loc.(sl_val) (Z.to_nat (bv_unsigned pte_desc.(ged_level)))))
+                && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr)
+                && (tlbi_addr b<? (bv_add pte_desc.(ged_ia_region).(range_start) pte_desc.(ged_ia_region).(range_size)))
+            | _ => true
+          end
+      end
+  end
+.
+
+Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_step_result := 
+  let pte := 
+    match loc.(sl_pte) with
+      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
+      | Some pte => pte
+    end
+  in
+  let st := ptc.(ptc_state) in
+  match pte.(ged_state) with
+    | SPS_STATE_PTE_INVALID_UNCLEAN lis => 
+      let old_desc :=
+        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
+      in 
+      match old_desc.(ged_pte_kind) with
+        | PTER_PTE_KIND_TABLE table_data => 
+          (* check if all children are reachable *)
+          traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) (Z.to_nat (bv_unsigned (old_desc.(ged_level)))) old_desc.(ged_s2) clean_reachable ptc.(ptc_src_loc) st
+        | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
+      end
+    | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
+  end
+.
+
+Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_context) : ghost_simplified_model_step_result :=
+  match ptc.(ptc_loc) with
+    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ptc.(ptc_src_loc)) |}
+    | Some location => 
+      if should_perform_tlbi td ptc then
+        (* step_pte_on_tlbi *)
+        match tlbi_invalid_unclean_unmark_children cpu_id location ptc with
+          | {| gsmsr_log := log; gsmsr_data := GSMSR_success st|} as ret =>
+            match location.(sl_pte) with
+              | Some exploded_desc => 
+                match exploded_desc.(ged_state) with
+                  | SPS_STATE_PTE_INVALID_UNCLEAN ai => 
+                    if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
+                      let new_substate := 
+                        match ai.(ai_lis) with
+                          | LIS_dsbed => (* step_pte_on_tlbi_after_dsb *)
+                              match td.(ttd_tlbi_kind) with
+                                | TLBI_vmalle1is => LIS_dsb_tlbied
+                                | TLBI_ipas2e1is => LIS_dsb_tlbi_ipa
+                                | _ => LIS_dsbed
+                              end
+                          | LIS_dsb_tlbi_ipa_dsb =>
+                              match td.(ttd_tlbi_kind) with
+                                | TLBI_vmalle1is => LIS_dsb_tlbied
+                                | _ => LIS_dsb_tlbi_ipa_dsb
+                              end
+                          | r => r
+                        end
+                      in
+                      let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
+                      let new_mem := st <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> st.(gsm_memory)|> in
+                      ret <|gsmsr_data := GSMSR_success new_mem|>
+                    else
+                      ret
+                  | _ => ret
+                end
+              | None => ret
+            end
+          | e => e
+        end
+      else
+        {|gsmsr_log := nil; gsmsr_data := GSMSR_success ptc.(ptc_state) |}
+  end
+.
+
+
+Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match td.(ttd_tlbi_kind) with
+    | TLBI_vae2is => traverse_si_pgt st (tlbi_visitor tid td) false
+    | TLBI_vmalls12e1is | TLBI_ipas2e1is | TLBI_vmalle1is => 
+        traverse_si_pgt st (tlbi_visitor tid td) true
+    | _ => 
+        let res := traverse_all_pgt st (tlbi_visitor tid td) in
+        res <| gsmsr_log := concat [["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]; res.(gsmsr_log)] |>
+  end
+.
+
 
 (******************************************************************************************)
 (*                             Toplevel function                                          *)
@@ -740,6 +869,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_DSB dsb_data => 
     step_dsb trans.(gsmt_thread_identifier) dsb_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_ISB => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
+  | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data trans.(gsmt_src_loc) st
   | _ => (* TODO: and so on... *)
     {| gsmsr_log := nil;
       gsmsr_data := GSMSR_failure (GSME_unimplemented (None)) |}
