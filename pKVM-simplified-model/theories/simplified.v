@@ -56,12 +56,12 @@ Inductive LIS :=
 | LIS_dsb_tlbi_ipa_dsb
 .
 
-Record aut_invalid := mk_aut_invalid {
+Record aut_invalid_unclean := mk_aut_invalid_unclean {
   ai_invalidator_tid : thread_identifier;
   ai_old_valid_desc : u64;
   ai_lis : LIS;
 }.
-#[export] Instance eta_aut_invalid : Settable _ := settable! mk_aut_invalid <ai_invalidator_tid; ai_old_valid_desc; ai_lis>.
+#[export] Instance eta_aut_invalid_unclean : Settable _ := settable! mk_aut_invalid_unclean <ai_invalidator_tid; ai_old_valid_desc; ai_lis>.
 
 
 Record aut_invalid_clean := {
@@ -70,8 +70,8 @@ Record aut_invalid_clean := {
 
 Inductive sm_pte_state :=
 | SPS_STATE_PTE_VALID (valid_state:aut_valid)
-| SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid)
-| SPS_STATE_PTE_INVALID (invalid_clean_state:aut_invalid_clean)
+| SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid_unclean)
+| SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state:aut_invalid_clean)
 .
 
 Record ghost_addr_range := {
@@ -125,10 +125,12 @@ Record owner_locks := {
 Definition ghost_simplified_model_state := gmap u64 sm_location.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
-Record pte_roots := {
+Record pte_roots := mk_pte_roots {
   pr_s1 : list u64;
   pr_s2 : list u64;
 }.
+#[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
+
 
 Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_roots : pte_roots;
@@ -416,7 +418,7 @@ Inductive visitor_result :=
 Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
-      SPS_STATE_PTE_INVALID ({|aic_invalidator_tid := cpu_id |})
+      SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
     | PTER_PTE_KIND_MAP _ | PTER_PTE_KIND_TABLE _ =>
       SPS_STATE_PTE_VALID {|lvs := [] |}
   end 
@@ -649,7 +651,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
             match desc.(ged_state) with
             | SPS_STATE_PTE_VALID av =>
                 (step_write_on_valid tid wmo code_loc loc val st)
-            | SPS_STATE_PTE_INVALID av =>
+            | SPS_STATE_PTE_INVALID_CLEAN av =>
                 (step_write_on_invalid tid wmo code_loc loc val st)
             | SPS_STATE_PTE_INVALID_UNCLEAN av =>
                 (step_write_on_invalid_unclean tid wmo code_loc loc val st)
@@ -721,7 +723,7 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
                 | LIS_dsb_tlbied => 
                   match kind with
                     | DSB_ish => 
-                      pte <|ged_state := SPS_STATE_PTE_INVALID {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
+                      pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
                     | _ => pte 
                   end
                 | LIS_dsb_tlbi_ipa =>  
