@@ -290,6 +290,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_double_use_of_pte (code_loc : option src_loc)
 | GSME_unmark_non_pte (code_loc : option src_loc)
 | GSME_root_already_exists (code_loc : option src_loc)
+| GSME_not_enough_information (code_loc : option src_loc)
 | GSME_unimplemented (code_loc : option src_loc)
 | GSME_internal_error
 (* TODO: others, more info... *)
@@ -499,7 +500,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
               let location := updated_state.(gsm_memory) !! (bv_add (table_start) (i b* (BV 64 8))) in
               match location with
                 | None => (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
-                  {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_use_of_uninitialized_pte src_loc)) |}
+                  {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_not_enough_information src_loc)) |}
                 | Some location =>
                   let exploded_desc :=
                     match location.(sl_pte) with
@@ -564,6 +565,40 @@ Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_tab
   end
 .
 
+(*******************************************************************)
+(* Some generic walker functions to mark and unmark entries as PTE *)
+
+Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+  match ctx.(ptc_loc) with
+    | Some location => 
+      if location.(sl_pte) then 
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc)) |}
+      else 
+        let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
+        let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
+        let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
+    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information None) |}
+  end
+.
+
+Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+  match ctx.(ptc_loc) with
+    | Some location =>
+      match location.(sl_pte) with
+        | Some desc => 
+          let new_loc := location <|sl_pte := None |> in
+          let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
+          {| gsmsr_log := nil; gsmsr_data := GSMSR_success (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+        | None =>
+          {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
+      end
+    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information None) |}
+  end
+.
+
 (******************************************************************************************)
 (*                             Code for write                                             *)
 (******************************************************************************************)
@@ -587,82 +622,58 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_s
   end
 .
 
-Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
-  match ctx.(ptc_loc) with
-    | Some location => 
-      if location.(sl_pte) then 
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc)) |}
-      else 
-        let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
-        let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
-        let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
-    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unimplemented None) |}
-  end
-.
-
-Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
-  match ctx.(ptc_loc) with
-    | Some location =>
-      match location.(sl_pte) with
-        | Some desc => 
-          let new_loc := location <|sl_pte := None |> in
-          let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := nil; gsmsr_data := GSMSR_success (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
-        | None =>
-          {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
-      end
-    | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unimplemented None) |}
-  end
-.
-
 Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
 (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
-    | Some descriptor => 
+    | None => (* This should not happen because if we write on invalid, we write on PTE *)
+      {| gsmsr_log := []; gsmsr_data := GSMSR_failure GSME_internal_error |}
+    | Some descriptor =>
+      (* Tests if the page table is well formed *)
       match traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable code_loc st with
         | {| gsmsr_log := logs; gsmsr_data :=  GSMSR_success st |} =>
             (* Mark all children as part of page-table entries *)
-          {| gsmsr_log := logs;
-            gsmsr_data := GSMSR_failure (GSME_unimplemented (code_loc)) |}
+            let children_marked := 
+              traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid) code_loc st
+            in
+            children_marked <|gsmsr_log := concat [logs; children_marked.(gsmsr_log)]|>
         | e => e
       end
-    | None => (* This should not happen because if we write on invalid, we write on PTE *)
-      {| gsmsr_log := []; gsmsr_data := GSMSR_failure GSME_internal_error |}
   end
+  (* TODO: In the C model, the LVS status is updated *)
 .
 
 Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
     {| gsmsr_log := []; gsmsr_data := GSMSR_failure (GSME_bbm_invalid_valid (code_loc)) |}
   else 
-   {| gsmsr_log := []; gsmsr_data := GSMSR_success st |}
+   {| gsmsr_log := []; gsmsr_data := GSMSR_success (st <|gsm_memory := <[loc.(sl_phys_addr) := loc <|sl_val := val|> ]> st.(gsm_memory) |>) |}
 .
 
 Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   let old := loc.(sl_val) in
-  if old b=? val then
+  if old b=? val then (* If no change in memory: no problem*)
    {| gsmsr_log := []; gsmsr_data := GSMSR_success st |}
   else
-    if is_desc_valid val then
+    if is_desc_valid val then 
+      (* Changing the descriptor is illegal *)
       {| gsmsr_log := []; gsmsr_data := GSMSR_failure (GSME_bbm_valid_valid (code_loc)) |}
     else
     (
+      (* Invalidation of pgt: changing the state to  *)
       match loc.(sl_pte) with
+        | None => (* This does not make sense because function is called on a pgt *)
+          {| gsmsr_log := []; gsmsr_data := GSMSR_failure GSME_internal_error |}
         | Some desc =>
           let new_desc := desc <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
-          {| 
+          {|
             gsmsr_log := [];
             gsmsr_data := GSMSR_success (st
               <| gsm_memory :=
-                (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory)) 
+                (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory))
               |> );
           |}
-        | None => {| gsmsr_log := []; gsmsr_data := GSMSR_failure GSME_internal_error |}
       end
-      
     ).
 
 Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
@@ -673,6 +684,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
     | Some (loc) =>
         match loc.(sl_pte) with
           | Some desc =>
+            (* If we write to a page table, depending on its state, we update them  *)
             match desc.(ged_state) with
             | SPS_STATE_PTE_VALID av =>
                 (step_write_on_valid tid wmo code_loc loc val st)
@@ -681,7 +693,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
             | SPS_STATE_PTE_INVALID_UNCLEAN av =>
                 (step_write_on_invalid_unclean tid wmo code_loc loc val st)
             end
-          | None => 
+          | None => (* If it is not a pte, we just update the value *)
             let new_loc := loc <| sl_val := val |> in
             {| gsmsr_log := nil;
                 gsmsr_data := GSMSR_success (
@@ -690,12 +702,13 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
             |}
         end
     | None => 
+      (* If the location has not been written to, it is not a pgt, just save its value *)
       {| gsmsr_log := nil;
         gsmsr_data := GSMSR_success (
           st <| gsm_memory :=
-            <[ wd.(twd_phys_addr) := 
+            <[ addr := 
               {|
-                sl_phys_addr := wd.(twd_phys_addr);
+                sl_phys_addr := addr;
                 sl_val := val;
                 sl_pte := None;
               |}
