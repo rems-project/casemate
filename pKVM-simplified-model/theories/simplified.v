@@ -293,15 +293,12 @@ Inductive ghost_simplified_model_error :=
 | GSME_not_enough_information (code_loc : option src_loc)
 | GSME_unimplemented (code_loc : option src_loc)
 | GSME_internal_error
-(* TODO: others, more info... *)
 .
 
-(* TODO: this type needs to be made nicer *)
 Inductive ghost_simplified_model_step_result_data :=
 | GSMSR_success (next : ghost_simplified_memory)
 | GSMSR_failure (s : ghost_simplified_model_error).
 
-(* TODO: this type needs to be made nicer *)
 Record ghost_simplified_model_step_result := mk_ghost_simplified_model_step_result {
   gsmsr_log : list string;
   gsmsr_data : ghost_simplified_model_step_result_data
@@ -639,7 +636,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
         | e => e
       end
   end
-  (* TODO: In the C model, the LVS status is updated but never used, what should the Coq model do? *)
+  (* Question: In the C model, the LVS status is updated for each CPU but never used, what should the Coq model do? *)
 .
 
 Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
@@ -730,7 +727,7 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
       {| gsmsr_log := nil;
         gsmsr_data := GSMSR_failure (GSME_inconsistent_read code_loc) |}
     | None => 
-      (* TODO: Should this really fail? *)
+      (* Question: Should this really fail? *)
       {| gsmsr_log := nil;
         gsmsr_data := GSMSR_failure (GSME_read_uninitialized code_loc) |}
   end
@@ -742,7 +739,7 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
 Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
-      (* TODO: should we ignore it?*)
+      (* Question: should we ignore it and return the state? *)
       {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc)) |}
     | Some location =>
       let pte :=
