@@ -305,11 +305,21 @@ Record ghost_simplified_model_step_result := mk_ghost_simplified_model_step_resu
 }.
 #[export] Instance eta_ghost_simplified_model_step_result : Settable _ := settable! mk_ghost_simplified_model_step_result <gsmsr_log; gsmsr_data>.
 
+(* Type used as input of the page table visitor function  *)
+Record page_table_context := {
+  ptc_state: ghost_simplified_memory;
+  ptc_loc: option sm_location;
+  ptc_partial_ia: u64;
+  ptc_addr: u64;
+  ptc_root: u64;
+  ptc_level: u64;
+  ptc_s2: bool;
+  ptc_src_loc: option src_loc;
+}.
 
 (*****************************************************************************)
 (********                   Code of the transitions                  *********)
 (*****************************************************************************)
-
 
 Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   {| gsmsr_log := nil;
@@ -350,13 +360,19 @@ Definition __read_phys (addr : u64) (pre : bool) (st : ghost_simplified_model_st
 Definition read_phys_pre (addr : u64) (st : ghost_simplified_model_state) : u64 :=
   __read_phys addr true st.
 
-(* TODO: move this *)
-Definition PTE_BIT_VALID : u64 := BV 64 1.
 
-Definition PTE_BIT_TABLE : u64 := BV 64 2.
+(*****************************************************************************)
+(********                   Code for bit-pattern                      *********)
+(*****************************************************************************)
 
-(* i zeros then ones then j zeros *)
+Definition PTE_BIT_VALID : u64 := BV 64 1. (* binary: 0001 *)
+
+Definition PTE_BIT_TABLE : u64 := BV 64 2. (* binary: 0010 *)
+
 Definition GENMASK (i j : u64) : u64 := bv_shiftl (bv_shiftr (bv_opp (BV 64 1)) (i+j)) j.
+(**  0......0  1....1  0....0
+  *  i zeros          j zeros
+  *)
 
 Definition PTE_BITS_ADDRESS : u64  := GENMASK (BV 64 47) (BV 64 12).
 
@@ -373,7 +389,6 @@ match level with
 end
 .
 
-
 Definition map_size (level : u64) : u64 :=
 match level with 
   | BV _ 0 => bv_shiftl (BV 64 512) (BV 64 30) (* 512 Go *)
@@ -384,9 +399,9 @@ match level with
 end
 . 
 
-Definition is_desc_table (descriptor : u64) (level : nat) :=
+Definition is_desc_table (descriptor level : u64) :=
 (* There is an inequality to make termination easier *)
-  if 2 <? level then
+  if BV 64 2 b<? level then
     false
   else
     ((bv_and descriptor PTE_BIT_TABLE) =? PTE_BIT_TABLE)
@@ -399,21 +414,12 @@ Definition extract_output_address (pte_val level : u64) :=
 bv_and pte_val (GENMASK (BV 64 47) (OA_shift level))
 .
 
-Record page_table_context := {
-  ptc_state: ghost_simplified_memory;
-  ptc_loc: option sm_location;
-  ptc_partial_ia: u64;
-  ptc_addr: u64;
-  ptc_root: u64;
-  ptc_level: u64;
-  ptc_s2: bool;
-  ptc_src_loc: option src_loc;
-}.
 
-Inductive visitor_result :=
-  | vr_success (result: ghost_simplified_model_step_result)
-  | vr_failure (gsme: ghost_simplified_model_error)
-.
+
+
+(******************************************************************************************)
+(*                             Page table traversal                                       *)
+(******************************************************************************************)
 
 Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
   match pte_kind with
@@ -427,7 +433,7 @@ Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind 
 Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2 : bool) : ghost_exploded_descriptor :=
   let pte_kind :=       
     if is_desc_valid desc then
-        if is_desc_table desc (Z.to_nat (bv_unsigned level)) then
+        if is_desc_table desc level then
           PTER_PTE_KIND_TABLE (
             {|
               next_level_table_addr := extract_table_address desc;
@@ -456,41 +462,41 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
   |}
 .
 
-Fixpoint traverse_pgt_from_aux (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
+Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
-   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc st 0 logs max_call_number
+   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc st (BV 64 0) logs max_call_number
    | O => {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure (GSME_internal_error) |}
   end
-with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc)(st : ghost_simplified_memory) (i : nat) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
+with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc)(st : ghost_simplified_memory) (i : u64) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
-    | S max_call_number => if bool_decide (i = 512) then
-      let location := st.(gsm_memory) !! (bv_add_Z (table_start) (8 * Z.of_nat (i))) in
+    | S max_call_number => if i =? (BV 64 512) then
+      let location := st.(gsm_memory) !! (bv_add (table_start) (bv_mul (BV 64 8) i)) in
         let ctx := 
           {|
             ptc_state := st;
             ptc_loc := location;
-            ptc_addr := ((bv_add_Z (table_start) (8 * Z.of_nat (i))));
+            ptc_addr := bv_add (table_start) (bv_mul (BV 64 8) i);
             ptc_partial_ia := partial_ia;
             ptc_root := root;
-            ptc_level:= (Z_to_bv 64 (Z.of_nat level));
+            ptc_level:= level;
             ptc_s2 := s2;
             ptc_src_loc := src_loc
           |}
         in
         match visitor_cb ctx with
           | {| gsmsr_log := log1; gsmsr_data := GSMSR_success updated_state |} =>
-            let location := updated_state.(gsm_memory) !! (bv_add_Z (table_start) (8 * Z.of_nat (i))) in
+            let location := updated_state.(gsm_memory) !! (bv_add (table_start) (bv_mul i (BV 64 8))) in
             match location with
               | None => 
                 {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_use_of_uninitialized_pte src_loc)) |}
               | Some location => 
                 if is_desc_table location.(sl_val) level then
                   let rec_table_start := extract_table_address location.(sl_val) in
-                  let next_partial_ia := bv_add_Z (extract_output_address location.(sl_val) (Z_to_bv 64 (Z.of_nat level)))  (Z.of_nat (i*level)) in
+                  let next_partial_ia := bv_add (extract_output_address location.(sl_val) level)  (bv_mul level i) in
                   let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state logs max_call_number in
                   match rec_updated_state with
                     | {| gsmsr_log := log2 ; gsmsr_data := GSMSR_success rec_updated_state |} => 
-                      traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (i+1) (concat [logs; log1; log2]) max_call_number
+                      traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (bv_add i (BV 64 1)) (concat [logs; log1; log2]) max_call_number
                     | e => e
                   end
                 else
@@ -505,7 +511,7 @@ with traverse_pgt_from_offs (root table_start partial_ia : u64) (level : nat) (s
   end
 .
 
-Definition traverse_pgt_from (root table_start partial_ia : u64) (level : nat) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb src_loc st [] (4*512)
 .
 
@@ -514,7 +520,7 @@ Definition traverse_pgt_from (root table_start partial_ia : u64) (level : nat) (
 Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
-      match traverse_pgt_from r r (BV 64 0) 0 s2 visitor_cb None st with
+      match traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb None st with
         | {| gsmsr_log := l_logs; gsmsr_data := GSMSR_success next |} =>
           traverse_si_pgt_aux next visitor_cb s2 (concat [logs; l_logs]) q
         | err => err <|gsmsr_log := concat [err.(gsmsr_log) ; logs] |>
@@ -597,7 +603,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
 (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
     | Some descriptor => 
-      match traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) (Z.to_nat (bv_unsigned (descriptor.(ged_level)))) descriptor.(ged_s2) clean_reachable code_loc st with
+      match traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable code_loc st with
         | {| gsmsr_log := logs; gsmsr_data :=  GSMSR_success st |} =>
             (* Mark all children as part of page-table entries *)
           {| gsmsr_log := logs;
@@ -768,7 +774,7 @@ Definition should_perform_tlbi (td : trans_tlbi_data) (ptc : page_table_context)
           match td.(ttd_tlbi_kind) with
             | TLBI_vae2is | TLBI_ipas2e1is => 
               let tlbi_addr := bv_shiftr td.(ttd_page) 12 in
-                (negb (is_desc_table loc.(sl_val) (Z.to_nat (bv_unsigned pte_desc.(ged_level)))))
+                (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level))))
                 && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr)
                 && (tlbi_addr b<? (bv_add pte_desc.(ged_ia_region).(range_start) pte_desc.(ged_ia_region).(range_size)))
             | _ => true
@@ -793,7 +799,7 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
       match old_desc.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE table_data => 
           (* check if all children are reachable *)
-          traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) (Z.to_nat (bv_unsigned (old_desc.(ged_level)))) old_desc.(ged_s2) clean_reachable ptc.(ptc_src_loc) st
+          traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) old_desc.(ged_level) old_desc.(ged_s2) clean_reachable ptc.(ptc_src_loc) st
         | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
       end
     | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
@@ -943,7 +949,6 @@ Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : gho
 (*                             Toplevel function                                          *)
 (******************************************************************************************)
 
-(* TODO: actually do this *)
 Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
