@@ -970,16 +970,17 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
   match offs with
     | O => {|gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | S offs => 
-      let addr := bv_add_Z phys ((Z.of_nat (offs * 8))) in
+      let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
       match st.(gsm_memory) !! addr with
         | None => set_owner_root phys root st logs offs (* We might want to do something here, but no data… *)
-        | Some location => 
-          let new_pte := 
-            match location.(sl_pte) with 
+        | Some location =>
+          let new_pte :=
+            match location.(sl_pte) with
               | None => None
-              | Some pte => Some (pte <| ged_owner := root|>)
+              | Some pte => Some (pte <| ged_owner := root|>) (* actually change the root *)
             end
           in
+          (* Write the change to the global state *)
           let new_loc := location <| sl_pte := new_pte |> in
           let new_state := st <|gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
           set_owner_root phys root new_state logs offs
@@ -994,7 +995,10 @@ Definition align_4k (addr : u64) : u64 :=
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match hd.(thd_hint_kind) with 
     | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
-    | GHOST_HINT_SET_OWNER_ROOT => 
+      (* AFAIK, this only affects the internal locking discipline of the C simplified model and does nothing on the Coq version *)
+    | GHOST_HINT_SET_OWNER_ROOT =>
+      (* When ownership is transferred *)
+      (* Not sure about the size of the iteration *)
       set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
   end
 .
