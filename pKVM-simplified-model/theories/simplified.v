@@ -22,8 +22,10 @@ Definition u64_ltb (x y : u64) : bool :=
   Z.to_nat (bv_unsigned x) <? Z.to_nat (bv_unsigned y)
 .
 
-Infix "=?" := u64_eqb.
+Infix "b=?" := u64_eqb (at level 70).
 Infix "b<?" := u64_ltb (at level 70).
+Infix "b+" := bv_add (at level 50).
+Infix "b*" := bv_add (at level 40).
 
 Definition phys_addr_t := u64.
 
@@ -377,7 +379,7 @@ Definition GENMASK (i j : u64) : u64 := bv_shiftl (bv_shiftr (bv_opp (BV 64 1)) 
 Definition PTE_BITS_ADDRESS : u64  := GENMASK (BV 64 47) (BV 64 12).
 
 Definition is_desc_valid (descriptor : u64) : bool :=
-  ((bv_and descriptor PTE_BIT_VALID) =? PTE_BIT_VALID)
+  ((bv_and descriptor PTE_BIT_VALID) b=? PTE_BIT_VALID)
 .
 
 Definition OA_shift (level : u64) : u64 :=
@@ -404,7 +406,7 @@ Definition is_desc_table (descriptor level : u64) :=
   if BV 64 2 b<? level then
     false
   else
-    ((bv_and descriptor PTE_BIT_TABLE) =? PTE_BIT_TABLE)
+    ((bv_and descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE)
 .
 
 Definition extract_table_address (pte_val : u64) : u64 :=
@@ -451,8 +453,8 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
   {|
     ged_ia_region := 
       {|
-        range_start := partial_ia;
-        range_size := map_size level
+        range_start := partial_ia; (* It is already conveniently aligned *)
+        range_size := map_size level (* The mapped (or partially mapped) region only depends on the level *)
       |};
     ged_level := level;
     ged_s2 := s2;
@@ -465,48 +467,65 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
 Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
    | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc st (BV 64 0) logs max_call_number
-   | O => {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure (GSME_internal_error) |}
+   | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
+            the number of recursive calls is bounded. *)
+   {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure (GSME_internal_error) |}
   end
+  (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc)(st : ghost_simplified_memory) (i : u64) (logs : list string) (max_call_number : nat) : ghost_simplified_model_step_result :=
   match max_call_number with
-    | S max_call_number => if i =? (BV 64 512) then
-      let location := st.(gsm_memory) !! (bv_add (table_start) (bv_mul (BV 64 8) i)) in
-        let ctx := 
-          {|
-            ptc_state := st;
-            ptc_loc := location;
-            ptc_addr := bv_add (table_start) (bv_mul (BV 64 8) i);
-            ptc_partial_ia := partial_ia;
-            ptc_root := root;
-            ptc_level:= level;
-            ptc_s2 := s2;
-            ptc_src_loc := src_loc
-          |}
-        in
-        match visitor_cb ctx with
-          | {| gsmsr_log := log1; gsmsr_data := GSMSR_success updated_state |} =>
-            let location := updated_state.(gsm_memory) !! (bv_add (table_start) (bv_mul i (BV 64 8))) in
-            match location with
-              | None => 
-                {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_use_of_uninitialized_pte src_loc)) |}
-              | Some location => 
-                if is_desc_table location.(sl_val) level then
-                  let rec_table_start := extract_table_address location.(sl_val) in
-                  let next_partial_ia := bv_add (extract_output_address location.(sl_val) level)  (bv_mul level i) in
-                  let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state logs max_call_number in
-                  match rec_updated_state with
-                    | {| gsmsr_log := log2 ; gsmsr_data := GSMSR_success rec_updated_state |} => 
-                      traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (bv_add i (BV 64 1)) (concat [logs; log1; log2]) max_call_number
-                    | e => e
+    | S max_call_number => 
+        if i b=? (BV 64 512) then
+          (* We are done with this page table *)
+          {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+        else
+          let location := st.(gsm_memory) !! (bv_add (table_start) ((BV 64 8) b* i)) in
+          let ctx := (* We construct the context, we don't know if the location exists but the visitor might create it *)
+            {|
+              ptc_state := st;
+              ptc_loc := location;
+              ptc_addr := bv_add (table_start) ((BV 64 8) b* i);
+              ptc_partial_ia := partial_ia;
+              ptc_root := root;
+              ptc_level:= level;
+              ptc_s2 := s2;
+              ptc_src_loc := src_loc
+            |}
+          in
+          match visitor_cb ctx with (* The visitor can edit the state and write logs *)
+            | {| gsmsr_log := log1; gsmsr_data := GSMSR_failure r |}  => (* If it fails, it fails *)
+              {|gsmsr_log := concat [logs; log1]; gsmsr_data := GSMSR_failure r |}
+            | {| gsmsr_log := log1; gsmsr_data := GSMSR_success updated_state |} =>
+              let location := updated_state.(gsm_memory) !! (bv_add (table_start) (i b* (BV 64 8))) in
+              match location with
+                | None => (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
+                  {|gsmsr_log := concat [logs; log1]; gsmsr_data := (GSMSR_failure (GSME_use_of_uninitialized_pte src_loc)) |}
+                | Some location =>
+                  let exploded_desc :=
+                    match location.(sl_pte) with
+                      | Some pte => pte
+                      | None => (* 0 is a placeholder, we do not use it afterwards *)
+                        deconstruct_pte 0 partial_ia location.(sl_val) level root s2
+                    end
+                  in
+                  match exploded_desc.(ged_pte_kind) with
+                    | PTER_PTE_KIND_TABLE table_data => 
+                      (* If it is a page table descriptor, we we traverse the sub-page table *)
+                      let rec_table_start := table_data.(next_level_table_addr) in
+                      let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size)  in
+                      (* recursive call: explore sub-pgt *)
+                      let rec_updated_state := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc updated_state logs max_call_number in
+                      match rec_updated_state with
+                        | {| gsmsr_log := log2 ; gsmsr_data := GSMSR_success rec_updated_state |} => 
+                          (* If recursive call succeeds, continue *)
+                          traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc rec_updated_state (bv_add i (BV 64 1)) (concat [logs; log1; log2]) max_call_number
+                        | e => e (* if it failed, return immediately *)
+                      end
+                    | _ => (* if the current location is a block descriptor, we can stop and return success *)
+                      {| gsmsr_log := logs; gsmsr_data := GSMSR_success (updated_state) |}
                   end
-                else
-                  {| gsmsr_log := logs; gsmsr_data := GSMSR_success (updated_state) |}
-            end
-          | {| gsmsr_log := log1; gsmsr_data := r |}  =>
-            {|gsmsr_log := concat [logs; log1]; gsmsr_data := r |}
-        end
-      else
-        {| gsmsr_log := logs; gsmsr_data := GSMSR_success (st) |}
+              end
+          end
     | O => {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_offs has been reached, stopping"%string]; gsmsr_data := GSMSR_failure (GSME_internal_error) |}
   end
 .
@@ -515,8 +534,7 @@ Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : boo
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb src_loc st [] (4*512)
 .
 
-
-
+(* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
 Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
@@ -529,6 +547,7 @@ Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_t
   end
 .
 
+(* Generic function to traverse all S1 or S2 roots *)
 Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) : ghost_simplified_model_step_result := 
   let roots := 
     if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
@@ -624,7 +643,7 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
 
 Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   let old := loc.(sl_val) in
-  if old =? val then
+  if old b=? val then
    {| gsmsr_log := []; gsmsr_data := GSMSR_success st |}
   else
     if is_desc_valid val then
@@ -871,7 +890,7 @@ Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (code_loc:
 Fixpoint si_root_exists (root : u64) (roots : list u64) :=
   match roots with
     | [] => false
-    | t :: q => (t =? root) || (si_root_exists root q)
+    | t :: q => (t b=? root) || (si_root_exists root q)
   end
 .
 
