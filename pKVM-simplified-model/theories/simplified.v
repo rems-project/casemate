@@ -924,14 +924,17 @@ Fixpoint si_root_exists (root : u64) (roots : list u64) :=
 .
 
 Definition extract_si_root (val : u64) (s2 : bool) : u64 :=
+  (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
   bv_and val (GENMASK (BV 64 47) (BV 64 1))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : u64) (s2 : bool) (code_loc: option src_loc) : ghost_simplified_model_step_result :=
   let other_root_levels := (if s2 then pr_s1 else pr_s2) st.(gsm_roots) in
+  (* Check that the root does not already exist in the other root list*)
   if si_root_exists root other_root_levels then
     {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_root_already_exists code_loc) |}
   else
+    (* Add the root to the list of roots*)
     let new_roots :=
       if s2 then
         st.(gsm_roots) <| pr_s2 := st.(gsm_roots).(pr_s2) |>
@@ -939,21 +942,24 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
         st.(gsm_roots) <| pr_s1 := st.(gsm_roots).(pr_s1) |>
     in
     let new_st := st <| gsm_roots := new_roots |> in
+    (* then mark all its children as PTE *)
     traverse_si_pgt new_st (mark_cb tid) s2 
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  let s2 := 
+  let s2 :=
     match md.(tmd_sysreg) with
       | SYSREG_TTBR_EL2 => true
       | SYSREG_VTTBR => false
     end
   in
   let root := extract_si_root md.(tmd_val) s2 in
+  (* The value written to TTRB is a root, it might be new. *)
   if si_root_exists root ((if s2 then pr_s2 else pr_s1) st.(gsm_roots)) then
-    Mreturn st
+    Mreturn st (* If it is already known to be a root, do nothing, it has already been registered *)
   else
-    register_si_root tid st root true code_loc
+    (* Otherwise, register it *)
+    register_si_root tid st root s2 code_loc 
 .
 
 (******************************************************************************************)
