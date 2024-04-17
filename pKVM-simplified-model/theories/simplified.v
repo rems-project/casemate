@@ -639,7 +639,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
         | e => e
       end
   end
-  (* TODO: In the C model, the LVS status is updated *)
+  (* TODO: In the C model, the LVS status is updated but never used, what should the Coq model do? *)
 .
 
 Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
@@ -724,12 +724,13 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
 Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match st.(gsm_memory) !! rd.(trd_phys_addr) with
-    | Some mem_loc => if bool_decide (mem_loc.(sl_val) = rd.(trd_val)) then 
+    | Some mem_loc => if mem_loc.(sl_val) b=? rd.(trd_val) then 
       {| gsmsr_log := nil;
         gsmsr_data := (GSMSR_success st) |}  else
       {| gsmsr_log := nil;
         gsmsr_data := GSMSR_failure (GSME_inconsistent_read code_loc) |}
     | None => 
+      (* TODO: Should this really fail? *)
       {| gsmsr_log := nil;
         gsmsr_data := GSMSR_failure (GSME_read_uninitialized code_loc) |}
   end
@@ -740,8 +741,10 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
 (******************************************************************************************)
 Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
-    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc)) |}
-    | Some location => 
+    | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
+      (* TODO: should we ignore it?*)
+      {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc)) |}
+    | Some location =>
       let pte :=
         match location.(sl_pte) with
           | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2)
@@ -750,10 +753,12 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
       in
       let new_pte := 
         match pte.(ged_state) with
-          | SPS_STATE_PTE_INVALID_UNCLEAN sst => 
-            if negb (bool_decide (sst.(ai_invalidator_tid) = cpu_id)) then
-              pte
+          | SPS_STATE_PTE_INVALID_UNCLEAN sst =>
+            (* DSB has an effect on invalid unclean state only *)
+            if negb (sst.(ai_invalidator_tid) =? cpu_id) then
+              pte (* If it is another CPU that did the invalidation, do noting*)
             else
+              (* Otherwise, update the state invalid unclean sub-automaton *)
               match sst.(ai_lis) with
                 | LIS_unguarded =>
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
@@ -766,30 +771,25 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
                   end
                 | LIS_dsb_tlbi_ipa =>  
                     match kind with
-                      | DSB_ish => 
+                      | DSB_ish =>
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
-                      | _ => pte 
+                      | _ => pte
                     end
                 | _ => pte
               end
-          | _ => pte
+          | _ => pte (* If not invalid unclean, then do nothing *)
         end
       in
+      (* then update state and return *)
       let new_loc := (location <| sl_pte := Some pte |>) in
       let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
       {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
   end
 .
 
-
 Definition step_dsb (tid : thread_identifier) (dk : dsb_kind) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
-(** walk the pgt with dsb_visitor*)
-  match traverse_si_pgt st (dsb_visitor dk tid) true with 
-    | {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |} => 
-      let new_state :=  traverse_si_pgt st (dsb_visitor dk tid) false in
-      new_state <| gsmsr_log := concat [logs; new_state.(gsmsr_log)] |>
-    | e => e
-  end
+  (* walk the pgt with dsb_visitor*)
+  traverse_all_pgt st (dsb_visitor dk tid)
 .
 
 (******************************************************************************************)
