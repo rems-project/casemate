@@ -599,6 +599,7 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
 (******************************************************************************************)
 (*                             Code for write                                             *)
 (******************************************************************************************)
+(* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
 Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_step_result := 
   match ctx.(ptc_loc) with 
     | Some location => 
@@ -795,25 +796,25 @@ Definition step_dsb (tid : thread_identifier) (dk : dsb_kind) (code_loc: option 
 
 Definition should_perform_tlbi (td : trans_tlbi_data) (ptc : page_table_context) : bool :=
   match ptc.(ptc_loc) with
-    | None => false (* does not happen *)
+    | None => false (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
     | Some loc =>
-      match loc.(sl_pte) with 
-        | None => false 
+      match loc.(sl_pte) with
+        | None => false (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
         | Some pte_desc =>
           match td.(ttd_tlbi_kind) with
             | TLBI_vae2is | TLBI_ipas2e1is => 
               let tlbi_addr := bv_shiftr td.(ttd_page) 12 in
-                (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level))))
-                && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr)
+                (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level)))) (* Not a leaf *)
+                && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
                 && (tlbi_addr b<? (bv_add pte_desc.(ged_ia_region).(range_start) pte_desc.(ged_ia_region).(range_size)))
-            | _ => true
+            | _ => true (* This should change depending on the TLBI kind *)
           end
       end
   end
 .
 
-Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_step_result := 
-  let pte := 
+Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_step_result :=
+  let pte := (* build the PTE if it is not done already *)
     match loc.(sl_pte) with
       | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
       | Some pte => pte
@@ -822,41 +823,55 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
   let st := ptc.(ptc_state) in
   match pte.(ged_state) with
     | SPS_STATE_PTE_INVALID_UNCLEAN lis => 
-      let old_desc :=
+      let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
         deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
       in 
       match old_desc.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE table_data => 
           (* check if all children are reachable *)
-          traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) old_desc.(ged_level) old_desc.(ged_s2) clean_reachable ptc.(ptc_src_loc) st
+          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) (BV 64 0) pte.(ged_level) pte.(ged_s2) clean_reachable ptc.(ptc_src_loc) st with
+            | {| gsmsr_log := logs; gsmsr_data:= GSMSR_success st|} =>
+              (* If all children are clean, we can unmark them as PTE *)
+              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) ptc.(ptc_src_loc) st with
+                | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log := concat [logs; logs1]; gsmsr_data := st |}
+              end
+            | e => e
+          end
         | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
       end
-    | _ => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
+    | _ => (* if it is not invalid unclean, the TLBI has no effect *)
+      {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
   end
 .
 
 Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_context) : ghost_simplified_model_step_result :=
   match ptc.(ptc_loc) with
-    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ptc.(ptc_src_loc)) |}
-    | Some location => 
+    | None => (* Cannot do anything if the page is not initialized *)
+      {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ptc.(ptc_src_loc)) |}
+    | Some location =>
+      (* Test if there is something to do *)
       if should_perform_tlbi td ptc then
-        (* step_pte_on_tlbi *)
+        (* step_pte_on_tlbi: inlined *)
         match tlbi_invalid_unclean_unmark_children cpu_id location ptc with
           | {| gsmsr_log := log; gsmsr_data := GSMSR_success st|} as ret =>
+            (* If it worked, then we update the invalid unclean sub-automaton *)
             match location.(sl_pte) with
-              | Some exploded_desc => 
+              | None => ret (* This cannot happen (otherwise, should_perform_tlbi would be false) *)
+              | Some exploded_desc =>
                 match exploded_desc.(ged_state) with
-                  | SPS_STATE_PTE_INVALID_UNCLEAN ai => 
+                  | SPS_STATE_PTE_INVALID_UNCLEAN ai =>
+                    (* If the CPU that does the transformation is not the one that initiated the invalidation, do nothing *)
                     if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
-                      let new_substate := 
+                      let new_substate :=
+                        (* Depending on the current state and the TLBI kind, we update the sub-state *)
                         match ai.(ai_lis) with
-                          | LIS_dsbed => (* step_pte_on_tlbi_after_dsb *)
+                          | LIS_dsbed => (* step_pte_on_tlbi_after_dsb: inlined *)
                               match td.(ttd_tlbi_kind) with
                                 | TLBI_vmalle1is => LIS_dsb_tlbied
                                 | TLBI_ipas2e1is => LIS_dsb_tlbi_ipa
                                 | _ => LIS_dsbed
                               end
-                          | LIS_dsb_tlbi_ipa_dsb =>
+                          | LIS_dsb_tlbi_ipa_dsb => (* step_pte_on_tlbi_after_tlbi_ipa: inlined *)
                               match td.(ttd_tlbi_kind) with
                                 | TLBI_vmalle1is => LIS_dsb_tlbied
                                 | _ => LIS_dsb_tlbi_ipa_dsb
@@ -864,6 +879,7 @@ Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_
                           | r => r
                         end
                       in
+                      (* Write the new sub-state in the global automaton *)
                       let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
                       let new_mem := st <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> st.(gsm_memory)|> in
                       ret <|gsmsr_data := GSMSR_success new_mem|>
@@ -871,11 +887,10 @@ Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_
                       ret
                   | _ => ret
                 end
-              | None => ret
             end
           | e => e
         end
-      else
+      else (* In the case where the PTE is not affected by the TLBI, we do nothing *)
         {|gsmsr_log := nil; gsmsr_data := GSMSR_success ptc.(ptc_state) |}
   end
 .
@@ -883,12 +898,16 @@ Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_
 
 Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match td.(ttd_tlbi_kind) with
-    | TLBI_vae2is => traverse_si_pgt st (tlbi_visitor tid td) false
-    | TLBI_vmalls12e1is | TLBI_ipas2e1is | TLBI_vmalle1is => 
-        traverse_si_pgt st (tlbi_visitor tid td) true
-    | _ => 
-        let res := traverse_all_pgt st (tlbi_visitor tid td) in
-        res <| gsmsr_log := concat [res.(gsmsr_log); ["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]] |>
+    | TLBI_vae2is =>
+      (* traverse all s1 pages*)
+      traverse_si_pgt st (tlbi_visitor tid td) false
+    | TLBI_vmalls12e1is | TLBI_ipas2e1is | TLBI_vmalle1is =>
+      (* traverse s2 pages *)
+      traverse_si_pgt st (tlbi_visitor tid td) true
+    | _ =>
+      (* traverse all page tables and add a warning *)
+      let res := traverse_all_pgt st (tlbi_visitor tid td) in
+      res <| gsmsr_log := concat [res.(gsmsr_log); ["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]] |>
   end
 .
 
