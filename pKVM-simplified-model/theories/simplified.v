@@ -1021,22 +1021,32 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_HINT hint_data => step_hint hint_data trans.(gsmt_src_loc) st
   end.
 
-Definition ghost_simplified_model_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  step trans st.
 
-Definition __ghost_simplified_model_step_write (src_loc : src_loc) (tid : thread_identifier) (wmo : write_memory_order) (phys : phys_addr_t) (val : u64) :=
-  ghost_simplified_model_step {|
-    gsmt_src_loc := Some src_loc;
-    gsmt_thread_identifier := tid;
-    gsmt_data := GSMDT_TRANS_MEM_WRITE ({|
-      twd_mo := wmo;
-      twd_phys_addr := phys;
-      twd_val := val;
-    |})
-  |}.
-(* TODO: and all of its friends *)
+Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (logs : list string) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match transitions with
+    | [] => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+    | h :: t =>
+      match step h st with
+        | {| gsmsr_log := logs1; gsmsr_data := GSMSR_success st |} => all_steps_aux t (concat [logs;logs1]) st
+        | e => e
+      end
+  end
+.
 
-(* TODO: continue *)
+Definition all_steps (transitions : list ghost_simplified_model_transition) : ghost_simplified_model_step_result :=
+  let
+    initial_state :=  (* Initially, the memory is empty *)
+      {|
+        gsm_roots :=
+          {|
+            pr_s1 := [];
+            pr_s2 := [];
+          |};
+        gsm_memory := gmap_empty;
+      |}
+  in
+  all_steps_aux transitions [] initial_state
+.
 
 
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)
