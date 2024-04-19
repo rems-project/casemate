@@ -196,35 +196,47 @@ Record TLBI  := {
   TLBI_shareability : Shareability;
 }.
 
+
+
+(***************************************)
+(* Barrier *)
+Inductive MBReqDomain :=
+  | MBReqDomain_Nonshareable
+  | MBReqDomain_InnerShareable
+  | MBReqDomain_OuterShareable
+  | MBReqDomain_FullSystem.
+
+
+(* Inductive MBReqTypes :=
+  | MBReqTypes_Reads
+  | MBReqTypes_Writes
+  | MBReqTypes_All
+. *)
+
+Record DxB  := {
+  DxB_domain : MBReqDomain;
+  (* DxB_types : MBReqTypes; *)
+  (* DxB_nXS : bool; *)
+}.
+
+Inductive Barrier  :=
+  | Barrier_DSB : DxB -> Barrier
+  | Barrier_DMB : DxB -> Barrier
+  | Barrier_ISB : unit -> Barrier
+  | Barrier_SSBB : unit -> Barrier
+  | Barrier_PSSBB : unit -> Barrier
+  | Barrier_SB : unit -> Barrier.
+
 (* All those transitions will go in favor of ARM ISA description (except for hints) *)
 Inductive write_memory_order :=
 | WMO_plain
 | WMO_release
 .
 
-Record tlbi_op_method_by_address_data := {
-  tombad_page : u64;
-  tombad_level_hint : option u64;
-  tombad_last_level_only : bool;
-}.
 
 Record tlbi_op_method_by_address_space_id_data := {
   tombas_asid_or_vmid : u64;
 }.
-
-Inductive sm_tlbi_op_method :=
-| TOM_by_ALL
-| TOM_by_input_addr (by_address_data : tlbi_op_method_by_address_data)
-| TOM_by_addr_space (by_id_data : tlbi_op_method_by_address_space_id_data)
-.
-
-
-Inductive dsb_kind :=
-|	DSB_ish
-|	DSB_ishst
-|	DSB_nsh
-.
-
 
 Inductive ghost_sysreg_kind :=
 |	SYSREG_VTTBR
@@ -267,8 +279,7 @@ Record trans_hint_data := {
 Inductive ghost_simplified_model_transition_data :=
 |	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
 |	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
-|	GSMDT_TRANS_DSB (dsb_data : dsb_kind)
-|	GSMDT_TRANS_ISB
+|	GSMDT_TRANS_BARRIER (dsb_data : Barrier)
 |	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
 |	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
 | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
@@ -741,7 +752,7 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
 (******************************************************************************************)
 (*                                      DSB                                               *)
 (******************************************************************************************)
-Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
       (* Question: should we ignore it and return the state? *)
@@ -766,14 +777,14 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
                 | LIS_dsbed => pte
                 | LIS_dsb_tlbied => 
-                  match kind with
-                    | DSB_ish => 
+                  match kind.(DxB_domain) with
+                    | MBReqDomain_InnerShareable => 
                       pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
                     | _ => pte 
                   end
                 | LIS_dsb_tlbi_ipa =>  
-                    match kind with
-                      | DSB_ish =>
+                    match kind.(DxB_domain) with
+                      | MBReqDomain_InnerShareable =>
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
                       | _ => pte
                     end
@@ -789,7 +800,7 @@ Definition dsb_visitor (kind : dsb_kind) (cpu_id : nat) (ctx : page_table_contex
   end
 .
 
-Definition step_dsb (tid : thread_identifier) (dk : dsb_kind) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
+Definition step_dsb (tid : thread_identifier) (dk : DxB) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
   (* walk the pgt with dsb_visitor*)
   traverse_all_pgt st (dsb_visitor dk tid)
 .
@@ -1019,9 +1030,9 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
     step_write trans.(gsmt_thread_identifier) wd trans.(gsmt_src_loc) st
   | GSMDT_TRANS_MEM_READ rd => 
     step_read trans.(gsmt_thread_identifier) rd trans.(gsmt_src_loc) st
-  | GSMDT_TRANS_DSB dsb_data => 
+  | GSMDT_TRANS_BARRIER ( Barrier_DSB dsb_data) => 
     step_dsb trans.(gsmt_thread_identifier) dsb_data trans.(gsmt_src_loc) st
-  | GSMDT_TRANS_ISB => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
+  | GSMDT_TRANS_BARRIER (_) => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_HINT hint_data => step_hint hint_data trans.(gsmt_src_loc) st
