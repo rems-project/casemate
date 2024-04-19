@@ -145,34 +145,61 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
 (*****************************************************************************)
 (********               Transition definition                        *********)
 (*****************************************************************************)
+
+
+(* Inductive SecurityState := SS_NonSecure | SS_Root | SS_Realm | SS_Secure. *)
+Inductive Regime := Regime_EL3 | Regime_EL30 | Regime_EL2 | Regime_EL20 | Regime_EL10.
+Inductive Shareability := Shareability_NSH | Shareability_ISH | Shareability_OSH.
+
+(***************************************)
+(* TLBI *)
+Inductive TLBIOp :=
+  TLBIOp_DALL
+  | TLBIOp_DASID
+  | TLBIOp_DVA
+  | TLBIOp_IALL
+  | TLBIOp_IASID
+  | TLBIOp_IVA
+  | TLBIOp_ALL
+  | TLBIOp_ASID
+  | TLBIOp_IPAS2
+  | TLBIOp_VAA
+  | TLBIOp_VA
+  | TLBIOp_VMALL
+  | TLBIOp_VMALLS12
+  | TLBIOp_RIPAS2
+  | TLBIOp_RVAA
+  | TLBIOp_RVA
+  | TLBIOp_RPA
+  | TLBIOp_PAALL.
+
+(* Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last. *)
+
+Record TLBIRecord  := {
+    TLBIRecord_op : TLBIOp;
+    (* TLBIRecord_from_aarch64 : bool; *)
+    (* TLBIRecord_security : SecurityState; *)
+    TLBIRecord_regime : Regime;
+    (* TLBIRecord_vmid : bits 16; *)
+    (* TLBIRecord_asid : bits 16; *)
+    (* TLBIRecord_level : TLBILevel; *)
+    (* TLBIRecord_attr : TLBIMemAttr; *)
+    (* TLBIRecord_ipaspace : PASpace; *)
+    TLBIRecord_address : u64;
+    (* TLBIRecord_end_address_name : u64; *)
+    (* TLBIRecord_tg : bits 2; *)
+}.
+
+
+Record TLBI  := {
+  TLBI_rec : TLBIRecord;
+  TLBI_shareability : Shareability;
+}.
+
 (* All those transitions will go in favor of ARM ISA description (except for hints) *)
 Inductive write_memory_order :=
 | WMO_plain
 | WMO_release
-.
-
-(* TODO: careful!!! the C code has clever bit pattern stuff *)
-Inductive sm_tlbi_op_stage :=
-| TLBI_OP_STAGE1
-| TLBI_OP_STAGE2
-| TLBI_OP_BOTH_STAGES
-.
-
-Inductive sm_tlbi_op_method_kind :=
-| TLBI_OP_BY_ALL
-| TLBI_OP_BY_INPUT_ADDR
-| TLBI_OP_BY_ADDR_SPACE
-.
-
-Definition TLBI_OP_BY_VA := TLBI_OP_BY_INPUT_ADDR.
-Definition TLBI_OP_BY_IPA := TLBI_OP_BY_INPUT_ADDR.
-
-Definition TLBI_OP_BY_VMID := TLBI_OP_BY_ADDR_SPACE.
-Definition TLBI_OP_BY_ASID := TLBI_OP_BY_ADDR_SPACE.
-
-Inductive sm_tlbi_op_regime_kind :=
-| TLBI_REGIME_EL10
-| TLBI_REGIME_EL2
 .
 
 Record tlbi_op_method_by_address_data := {
@@ -191,23 +218,6 @@ Inductive sm_tlbi_op_method :=
 | TOM_by_addr_space (by_id_data : tlbi_op_method_by_address_space_id_data)
 .
 
-Record sm_tlbi_op := {
-  sto_stage : sm_tlbi_op_stage;
-  sto_regime : sm_tlbi_op_regime_kind;
-  sto_method : sm_tlbi_op_method;
-  sto_shootdown : bool;
-}.
-
-Inductive tlbi_kind :=
-|	TLBI_vmalls12e1
-|	TLBI_vmalls12e1is
-|	TLBI_vmalle1is
-|	TLBI_alle1is
-|	TLBI_vmalle1
-|	TLBI_vale2is
-|	TLBI_vae2is
-|	TLBI_ipas2e1is
-.
 
 Inductive dsb_kind :=
 |	DSB_ish
@@ -243,12 +253,6 @@ Record trans_read_data := {
   trd_val : u64;
 }.
 
-Record trans_tlbi_data := {
-  ttd_tlbi_kind : tlbi_kind;
-  ttd_page : u64;
-  ttd_level : u64;
-}.
-
 Record trans_msr_data := {
   tmd_sysreg : ghost_sysreg_kind;
   tmd_val : u64;
@@ -265,7 +269,7 @@ Inductive ghost_simplified_model_transition_data :=
 |	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
 |	GSMDT_TRANS_DSB (dsb_data : dsb_kind)
 |	GSMDT_TRANS_ISB
-|	GSMDT_TRANS_TLBI (tlbi_data : trans_tlbi_data)
+|	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
 |	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
 | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
 .
@@ -794,20 +798,21 @@ Definition step_dsb (tid : thread_identifier) (dk : dsb_kind) (code_loc: option 
 (*                                     TLBI                                               *)
 (******************************************************************************************)
 
-Definition should_perform_tlbi (td : trans_tlbi_data) (ptc : page_table_context) : bool :=
+Definition should_perform_tlbi (td : TLBI) (ptc : page_table_context) : bool :=
   match ptc.(ptc_loc) with
     | None => false (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
     | Some loc =>
       match loc.(sl_pte) with
         | None => false (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
         | Some pte_desc =>
-          match td.(ttd_tlbi_kind) with
-            | TLBI_vae2is | TLBI_ipas2e1is => 
-              let tlbi_addr := bv_shiftr td.(ttd_page) 12 in
+          match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
+            | TLBIOp_VA, Regime_EL2, Shareability_ISH
+            | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH => 
+              let tlbi_addr := bv_shiftr td.(TLBI_rec).(TLBIRecord_address) 12 in
                 (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level)))) (* Not a leaf *)
                 && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
                 && (tlbi_addr b<? (bv_add pte_desc.(ged_ia_region).(range_start) pte_desc.(ged_ia_region).(range_size)))
-            | _ => true (* This should change depending on the TLBI kind *)
+            | _,_,_ => true (* This should change depending on the TLBI kind *)
           end
       end
   end
@@ -844,7 +849,7 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
   end
 .
 
-Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_context) : ghost_simplified_model_step_result :=
+Definition tlbi_visitor (cpu_id : nat) (td : TLBI) (ptc : page_table_context) : ghost_simplified_model_step_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
       {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ptc.(ptc_src_loc)) |}
@@ -864,19 +869,18 @@ Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_
                     if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
                       let new_substate :=
                         (* Depending on the current state and the TLBI kind, we update the sub-state *)
-                        match ai.(ai_lis) with
-                          | LIS_dsbed => (* step_pte_on_tlbi_after_dsb: inlined *)
-                              match td.(ttd_tlbi_kind) with
-                                | TLBI_vmalle1is => LIS_dsb_tlbied
-                                | TLBI_ipas2e1is => LIS_dsb_tlbi_ipa
-                                | _ => LIS_dsbed
-                              end
-                          | LIS_dsb_tlbi_ipa_dsb => (* step_pte_on_tlbi_after_tlbi_ipa: inlined *)
-                              match td.(ttd_tlbi_kind) with
-                                | TLBI_vmalle1is => LIS_dsb_tlbied
-                                | _ => LIS_dsb_tlbi_ipa_dsb
-                              end
-                          | r => r
+                        match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
+                          | TLBIOp_VMALL, Regime_EL10, Shareability_ISH => 
+                            match ai.(ai_lis) with
+                              | LIS_dsbed | LIS_dsb_tlbi_ipa_dsb => LIS_dsb_tlbied
+                              | r => r
+                            end
+                          | TLBIOp_IPAS2, Regime_EL10, Shareability_ISH =>
+                            match ai.(ai_lis) with
+                              | LIS_dsb_tlbi_ipa_dsb => LIS_dsb_tlbi_ipa_dsb
+                              | r => r
+                            end
+                          | _,_,_ => ai.(ai_lis)
                         end
                       in
                       (* Write the new sub-state in the global automaton *)
@@ -896,15 +900,17 @@ Definition tlbi_visitor (cpu_id : nat) (td : trans_tlbi_data) (ptc : page_table_
 .
 
 
-Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  match td.(ttd_tlbi_kind) with
-    | TLBI_vae2is =>
+Definition step_tlbi (tid : thread_identifier) (td : TLBI) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
+    | TLBIOp_VA, Regime_EL2 , Shareability_ISH =>
       (* traverse all s1 pages*)
       traverse_si_pgt st (tlbi_visitor tid td) false
-    | TLBI_vmalls12e1is | TLBI_ipas2e1is | TLBI_vmalle1is =>
+    | TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH
+    | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH
+    | TLBIOp_VMALL, Regime_EL10, Shareability_ISH =>
       (* traverse s2 pages *)
       traverse_si_pgt st (tlbi_visitor tid td) true
-    | _ =>
+    | _,_,_ =>
       (* traverse all page tables and add a warning *)
       let res := traverse_all_pgt st (tlbi_visitor tid td) in
       res <| gsmsr_log := concat [res.(gsmsr_log); ["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]] |>
