@@ -140,6 +140,7 @@ unlock_pkvm:
 		hyp_spin_unlock(&vm_table_lock);
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ///////////
 // Memory
 
@@ -1812,12 +1813,17 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		BUG(); // unreachable;
 	}
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 ///////////////////////////
 /// Generic Step
 
 static void step(struct ghost_simplified_model_transition trans)
 {
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), &trans);
+#else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+
 	GHOST_LOG_CONTEXT_ENTER();
 	GHOST_LOG(trans, trans);
 
@@ -1866,6 +1872,8 @@ static void step(struct ghost_simplified_model_transition trans)
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS */
 
 	GHOST_LOG_CONTEXT_EXIT();
+
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
@@ -1888,6 +1896,7 @@ unlock:
 //////////////////////////
 // Initialisation
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void initialise_ghost_simplified_model_options(void)
 {
 	ghost_sm_options.promote_DSB_nsh = true;
@@ -1952,10 +1961,15 @@ static void initialise_ghost_hint_transitions(void)
 	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	// Maybe dump the initial state
+	is_initialised = true;
+#else
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
 
@@ -1971,6 +1985,7 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
 //////////////////////////////
