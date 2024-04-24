@@ -1,0 +1,9 @@
+(executable
+ (public_name parser)
+ (name parser)
+ (libraries str))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -27 -w -32 -w -37 -w -69))))

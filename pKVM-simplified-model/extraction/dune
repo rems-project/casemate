@@ -1,0 +1,4 @@
+(coq.extraction
+ (prelude extraction)
+ (theories simplified stdpp stdpp.bitvector RecordUpdate)
+ (extracted_modules extraction))
