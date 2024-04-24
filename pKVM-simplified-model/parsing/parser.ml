@@ -1,5 +1,5 @@
-type u64 = int64
-type thread_identifier = u64
+type u64 = Big_int_Z.big_int
+type thread_identifier = int
 
 type regime =
   | Regime_EL3
@@ -99,13 +99,16 @@ let parse_write (trans : string) : trans_write_data =
           | _ ->
               Printf.eprintf "Error while parsing a write transition %s\n" trans;
               exit 1);
-        twd_phys_addr = addr;
-        twd_val = value;
+        twd_phys_addr = Big_int_Z.big_int_of_int64 addr;
+        twd_val = Big_int_Z.big_int_of_int64 value;
       })
 
 let parse_read (trans : string) : trans_read_data =
   Scanf.sscanf trans "R %Li (=%Li)" (fun addr value ->
-      { trd_phys_addr = addr; trd_val = value })
+      {
+        trd_phys_addr = Big_int_Z.big_int_of_int64 addr;
+        trd_val = Big_int_Z.big_int_of_int64 value;
+      })
 
 let parse_DSB (trans : string) : barrier =
   Barrier_DSB
@@ -147,7 +150,7 @@ let parse_TLBI (trans : string) : tLBI =
           {
             tLBIRecord_op = op;
             tLBIRecord_regime = regime;
-            tLBIRecord_address = addr;
+            tLBIRecord_address = Big_int_Z.big_int_of_int64 addr;
           };
         tLBI_shareability = shareability;
       })
@@ -162,7 +165,7 @@ let parse_MSR (trans : string) : trans_msr_data =
           | _ ->
               Printf.printf "Error while parsing a MSR transition %s\n" trans;
               exit 1);
-        tmd_val = value;
+        tmd_val = Big_int_Z.big_int_of_int64 value;
       })
 
 let parse_hint (trans : string) : trans_hint_data =
@@ -176,8 +179,8 @@ let parse_hint (trans : string) : trans_hint_data =
           | _ ->
               Printf.eprintf "Error while parsing a hint transition %s\n" trans;
               exit 1);
-        thd_location = loc;
-        thd_value = value;
+        thd_location = Big_int_Z.big_int_of_int64 loc;
+        thd_value = Big_int_Z.big_int_of_int64 value;
       })
 
 let parse_transition (trans : string) : ghost_simplified_model_transition_data =
@@ -219,7 +222,7 @@ let parse_line (line : string) : ghost_simplified_model_transition =
       let cpu = Scanf.sscanf cpu "CPU: %Ld" (fun i -> i) in
       {
         gsmt_src_loc = Some (get_line_number src_loc);
-        gsmt_thread_identifier = cpu;
+        gsmt_thread_identifier = Int64.to_int cpu;
         gsmt_data =
           parse_transition (Str.global_replace (Str.regexp "\\.") "" transition);
       }
