@@ -16,3 +16,7 @@ git clone https://github.com/tchajed/coq-record-update.git
 make -j 8
 make install
 ```
+
+### Extracting traces that can be parsed
+
+To extract logs of the right format, a few options have to be set correctly for compiling the linux kernel.  the options `Runtime simplified model checking` and `Colours in the output of nVHE ghost spec` have to be enabled. Optionally, the option `Only log simplified model steps` can be enabled.
