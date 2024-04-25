@@ -1,93 +1,4 @@
-type u64 = Big_int_Z.big_int
-type thread_identifier = int
-
-type regime =
-  | Regime_EL3
-  | Regime_EL30
-  | Regime_EL2
-  | Regime_EL20
-  | Regime_EL10
-
-type shareability = Shareability_NSH | Shareability_ISH | Shareability_OSH
-
-type tLBIOp =
-  | TLBIOp_DALL
-  | TLBIOp_DASID
-  | TLBIOp_DVA
-  | TLBIOp_IALL
-  | TLBIOp_IASID
-  | TLBIOp_IVA
-  | TLBIOp_ALL
-  | TLBIOp_ASID
-  | TLBIOp_IPAS2
-  | TLBIOp_VAA
-  | TLBIOp_VA
-  | TLBIOp_VMALL
-  | TLBIOp_VMALLS12
-  | TLBIOp_RIPAS2
-  | TLBIOp_RVAA
-  | TLBIOp_RVA
-  | TLBIOp_RPA
-  | TLBIOp_PAALL
-
-type tLBIRecord = {
-  tLBIRecord_op : tLBIOp;
-  tLBIRecord_regime : regime;
-  tLBIRecord_address : u64;
-}
-
-type tLBI = { tLBI_rec : tLBIRecord; tLBI_shareability : shareability }
-
-type mBReqDomain =
-  | MBReqDomain_Nonshareable
-  | MBReqDomain_InnerShareable
-  | MBReqDomain_OuterShareable
-  | MBReqDomain_FullSystem
-
-type dxB = mBReqDomain
-(* singleton inductive, whose constructor was Build_DxB *)
-
-type barrier =
-  | Barrier_DSB of dxB
-  | Barrier_DMB of dxB
-  | Barrier_ISB of unit
-  | Barrier_SSBB of unit
-  | Barrier_PSSBB of unit
-  | Barrier_SB of unit
-
-type write_memory_order = WMO_plain | WMO_release
-type ghost_sysreg_kind = SYSREG_VTTBR | SYSREG_TTBR_EL2
-type ghost_hint_kind = GHOST_HINT_SET_ROOT_LOCK | GHOST_HINT_SET_OWNER_ROOT
-type src_loc = { sl_file : string; sl_func : string; sl_lineno : int }
-
-type trans_write_data = {
-  twd_mo : write_memory_order;
-  twd_phys_addr : u64;
-  twd_val : u64;
-}
-
-type trans_read_data = { trd_phys_addr : u64; trd_val : u64 }
-type trans_msr_data = { tmd_sysreg : ghost_sysreg_kind; tmd_val : u64 }
-
-type trans_hint_data = {
-  thd_hint_kind : ghost_hint_kind;
-  thd_location : u64;
-  thd_value : u64;
-}
-
-type ghost_simplified_model_transition_data =
-  | GSMDT_TRANS_MEM_WRITE of trans_write_data
-  | GSMDT_TRANS_MEM_READ of trans_read_data
-  | GSMDT_TRANS_BARRIER of barrier
-  | GSMDT_TRANS_TLBI of tLBI
-  | GSMDT_TRANS_MSR of trans_msr_data
-  | GSMDT_TRANS_HINT of trans_hint_data
-
-type ghost_simplified_model_transition = {
-  gsmt_src_loc : src_loc option;
-  gsmt_thread_identifier : thread_identifier;
-  gsmt_data : ghost_simplified_model_transition_data;
-}
+open Extraction.Coq_executable_sm
 
 let parse_write (trans : string) : trans_write_data =
   Scanf.sscanf trans "W%s %Li %Li" (fun str addr value ->
@@ -121,7 +32,7 @@ let parse_DSB (trans : string) : barrier =
         exit 1)
 
 let parse_TLBI (trans : string) : tLBI =
-  Scanf.sscanf trans "%s pfn=%Li level=%Li" (fun typ addr level ->
+  Scanf.sscanf trans "%s pfn=%Li level=%Li" (fun typ addr _ ->
       let op, regime, shareability =
         match typ with
         | "TLBI_vmalls12e1" ->

@@ -1,4 +1,14 @@
 (coq.extraction
  (prelude extraction)
  (theories simplified stdpp stdpp.bitvector RecordUpdate)
- (extracted_modules extraction))
+ (extracted_modules coq_executable_sm))
+
+(library
+ (name extraction)
+ (public_name simplified)
+ (libraries zarith))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A -w -39))))
