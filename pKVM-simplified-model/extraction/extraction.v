@@ -10,4 +10,4 @@ Require Import ExtrOcamlZBigInt.
 Require Import ExtrOcamlNatInt.
 
 
-Extraction "coq_executable_sm.ml" step.
+Extraction "coq_executable_sm.ml" all_steps.
