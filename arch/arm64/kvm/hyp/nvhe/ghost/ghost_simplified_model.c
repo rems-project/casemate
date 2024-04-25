@@ -2206,6 +2206,8 @@ int gp_print_sm_loc(gp_stream_t *out, struct sm_location *loc)
 
 }
 
+
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 {
 	int ret;
@@ -2292,6 +2294,8 @@ int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
 
 	return 0;
 }
+
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
 {
@@ -2381,9 +2385,12 @@ int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 	if (ret)
 		return ret;
 
+
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	ret = gp_print_sm_mem(out, &s->memory);
 	if (ret)
 		return ret;
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	/* TODO: owner locks */
 	return 0;
