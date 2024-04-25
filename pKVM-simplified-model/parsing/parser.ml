@@ -192,6 +192,32 @@ let transitions =
     done;
     !result
   with Not_found -> List.rev !result
-  with End_of_file ->
-    close_in file;
-    List.rev !result
+
+(***************************)
+(*  Printers  *)
+let rec print_string_list = function
+  | [] -> ()
+  | t :: q ->
+      print_endline t;
+      print_string_list q
+
+let rec print_int_list : u64 list -> unit = function
+  | [] -> ()
+  | t :: q ->
+      Printf.printf "%x;" (Z.to_nat t);
+      print_int_list q
+
+let print_transition = function
+  | GSMDT_TRANS_MEM_WRITE _ -> print_endline "W"
+  | GSMDT_TRANS_MEM_READ _ -> print_endline "R"
+  | GSMDT_TRANS_BARRIER _ -> print_endline "barrier"
+  | GSMDT_TRANS_MSR _ -> print_endline "barrier"
+  | GSMDT_TRANS_TLBI _ -> print_endline "TLBI"
+  | GSMDT_TRANS_HINT _ -> print_endline "Hint"
+
+let rec print_transition_list = function
+  | [] -> ()
+  | t :: q ->
+      print_transition t.gsmt_data;
+      print_transition_list q
+
