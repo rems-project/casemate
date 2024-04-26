@@ -599,7 +599,7 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
         let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
         {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information None) |}
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
   end
 .
 
@@ -615,7 +615,7 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
           {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information None) |}
+        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
   end
 .
 
@@ -752,8 +752,9 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
         gsmsr_data := GSMSR_failure (GSME_inconsistent_read code_loc) |}
     | None => 
       (* Question: Should this really fail? *)
-      {| gsmsr_log := nil;
-        gsmsr_data := GSMSR_failure (GSME_read_uninitialized code_loc) |}
+      {| gsmsr_log := if rd.(trd_val) b=? (BV 64 0) then ["Read zero but location uninitialized.  Zero'd at allocation?"%string]
+            else ["Non-zero read of uninitialized location "%string];
+        gsmsr_data := GSMSR_success st |}
   end
 .
 

@@ -157,7 +157,6 @@ let parse_line (line : string) : ghost_simplified_model_transition =
   match Str.split (Str.regexp " at \\|; ") line with
   | [ cpu; transition; src_loc ] ->
       let cpu = Scanf.sscanf cpu "CPU: %Ld" (fun i -> i) in
-      print_endline transition;
       {
         gsmt_src_loc = Some (get_line_number src_loc);
         gsmt_thread_identifier = Int64.to_int cpu;
