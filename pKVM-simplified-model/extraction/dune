@@ -6,7 +6,9 @@
 (library
  (name extraction)
  (public_name simplified)
- (libraries zarith))
+ (libraries zarith)
+ (instrumentation
+  (backend bisect_ppx)))
 
 (env
  (dev

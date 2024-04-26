@@ -13,6 +13,7 @@ depends: [
   "coq" { (= "8.19.0") | (= "dev") }
   "coq-stdpp-unstable"
   "coq-record-update" { (= "0.3.3") | (= "dev") }
+  "bisect_ppx" {dev & >= "2.5.0"}
   "dune" {= "3.9.1"} # dune updates like to break things so we fix a version
 ]
 
