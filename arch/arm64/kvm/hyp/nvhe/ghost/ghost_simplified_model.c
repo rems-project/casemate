@@ -13,7 +13,7 @@
 #include <nvhe/ghost/ghost_asserts.h>
 #include <hyp/ghost/ghost_extra_debug-pl011.h>
 #include <nvhe/ghost/ghost_printer.h>
-#include<nvhe/ghost/ghost_spec.h>
+#include <nvhe/ghost/ghost_spec.h>
 #include <nvhe/ghost/ghost_abstraction_diff.h>
 #include <nvhe/ghost/ghost_maplets.h>
 #include <nvhe/ghost/ghost_pgtable.h>
@@ -140,12 +140,12 @@ unlock_pkvm:
 		hyp_spin_unlock(&vm_table_lock);
 }
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ///////////
 // Memory
 
 void copy_sm_state_into(struct ghost_simplified_model_state *out);
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 #ifdef CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS
 /*
  * A simple and slow, but very robust, sanity check over the blobs.
@@ -185,6 +185,7 @@ static bool check_sanity_of_no_blob(u64 phys)
 	return true;
 }
 #endif /* CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS */
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
 
@@ -365,6 +366,7 @@ static u64 __read_phys(u64 addr, bool pre)
 	return value;
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 /**
  * read_phys_pre() - Read a physical address from the simplified model memory.
  *
@@ -376,6 +378,7 @@ static u64 read_phys_pre(u64 addr)
 {
 	return __read_phys(addr, true);
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 /**
  * read_phys() - Read a physical address from the simplified model memory.
@@ -751,6 +754,7 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_sta
 	return state;
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ////////////////////
 // Locks
 
@@ -1077,6 +1081,7 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 	// NOTE: the traversal may have unset all_clean.
 	return all_clean;
 }
+#endif
 
 /**
  * Callback to mark a location in the page table as a page table entry
@@ -1161,6 +1166,7 @@ static void try_insert_root(u64 *root_table, u64 root)
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void try_remove_root(u64 *root_table, u64 root)
 {
 	for (int i = 0; i < MAX_ROOTS; i++) {
@@ -1172,6 +1178,8 @@ static void try_remove_root(u64 *root_table, u64 root)
 
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+
 
 static void try_register_root(ghost_stage_t stage, phys_addr_t root)
 {
@@ -1195,6 +1203,7 @@ static void try_register_root(ghost_stage_t stage, phys_addr_t root)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 {
 	GHOST_LOG_CONTEXT_ENTER();
@@ -1221,17 +1230,20 @@ static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 // Step write sysreg
 
 #define VTTBR_EL2_BADDR_MASK	(GENMASK(47, 1))
-#define TTBR0_EL2_BADDR_MASK	(GENMASK(47, 1))
 
 static phys_addr_t extract_s2_root(u64 vttb)
 {
 	return vttb & VTTBR_EL2_BADDR_MASK;
 }
 
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+#define TTBR0_EL2_BADDR_MASK	(GENMASK(47, 1))
+
 static phys_addr_t extract_s1_root(u64 ttb)
 {
 	return ttb & TTBR0_EL2_BADDR_MASK;
 }
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 
 static void step_msr(struct ghost_simplified_model_transition trans)
 {
@@ -1896,7 +1908,41 @@ unlock:
 //////////////////////////
 // Initialisation
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+void visitor_log(struct pgtable_traverse_context *ctx) {
+	struct ghost_simplified_model_transition trans ={
+			.src_loc = SRC_LOC,
+			.kind = TRANS_MEM_WRITE,
+			.write_data = (struct trans_write_data){
+				.mo = WMO_plain,
+				.phys_addr = ctx->loc->phys_addr,
+				.val = ctx->descriptor
+			}
+		};
+
+	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), trans);
+}
+
+static void dump_initial_state(void) {
+	u64 pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
+
+	// ghost_printf("root: %lx, level: %lx", pkvm_pgd, discover_start_level(GHOST_STAGE1));
+
+	traverse_pgtable(pkvm_pgd,GHOST_STAGE1, visitor_log, NULL);
+
+	struct ghost_simplified_model_transition trans = {
+			.src_loc = SRC_LOC,
+			.kind = TRANS_MSR,
+			.msr_data = (struct trans_msr_data){
+				.sysreg = SYSREG_TTBR_EL2,
+				.val = read_sysreg(ttbr0_el2)
+			}
+		};
+
+	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), trans);	
+}
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+
 static void initialise_ghost_simplified_model_options(void)
 {
 	ghost_sm_options.promote_DSB_nsh = true;
@@ -1961,15 +2007,10 @@ static void initialise_ghost_hint_transitions(void)
 	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
-#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	// Maybe dump the initial state
-	is_initialised = true;
-#else
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
 
@@ -1983,9 +2024,13 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 	initialise_ghost_hint_transitions();
 	sync_simplified_model_memory();
 
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	dump_initial_state();
+	is_initialised = true;
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
 //////////////////////////////
