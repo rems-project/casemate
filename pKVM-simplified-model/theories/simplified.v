@@ -963,9 +963,9 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     (* Add the root to the list of roots*)
     let new_roots :=
       if s2 then
-        st.(gsm_roots) <| pr_s2 := st.(gsm_roots).(pr_s2) |>
+        st.(gsm_roots) <| pr_s2 := root :: st.(gsm_roots).(pr_s2) |>
       else
-        st.(gsm_roots) <| pr_s1 := st.(gsm_roots).(pr_s1) |>
+        st.(gsm_roots) <| pr_s1 := root :: st.(gsm_roots).(pr_s1) |>
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
