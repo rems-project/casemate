@@ -9,6 +9,7 @@
 #include <nvhe/ghost/ghost_maplets.h>
 #include <nvhe/ghost/ghost_asserts.h>
 #include <nvhe/ghost/ghost_control.h>
+#include <hyp/ghost/ghost_extra_debug-pl011.h>
 
 
 #define MAX_CPU 4 // TODO: JP
@@ -666,6 +667,18 @@ static inline void __ghost_simplified_model_step_hint(struct src_loc src_loc, en
 			.value = value,
 		},
 	});
+}
+
+#define ghost_simplified_model_step_zalloc(...) __ghost_simplified_model_step_zalloc(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_zalloc(struct src_loc src_loc, u64 location)
+{
+	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; ZALLOC %lx size: 1 at %s:%d in %s" GHOST_NORMAL "\n", cpu_id(), location, src_loc.file, src_loc.lineno, src_loc. func);
+}
+
+#define ghost_simplified_model_step_zalloc_exact(...) __ghost_simplified_model_step_zalloc_exact(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_zalloc_exact(struct src_loc src_loc, u64 location, u64 size)
+{
+	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; ZALLOC %lx size: %d at %s:%d in %s" GHOST_NORMAL "\n", cpu_id(), location, size, src_loc.file, src_loc.lineno, src_loc. func);
 }
 
 #endif /* GHOST_SIMPLIFIED_MODEL_H */
