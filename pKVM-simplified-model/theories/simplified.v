@@ -593,13 +593,13 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
     | Some location => 
       if location.(sl_pte) then 
         {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc)) |}
-      else 
+      else
         let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
         let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
         let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
+        {| gsmsr_log := ["Tried to mark a non-PTE"%string]; gsmsr_data := GSMSR_success new_state |}
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
+        {| gsmsr_log := ["Tried to mark an uninitialised location"%string]; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
   end
 .
 
@@ -612,10 +612,10 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
           {| gsmsr_log := nil; gsmsr_data := GSMSR_success (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
         | None =>
-          {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
+          {| gsmsr_log := ["Tried to unmark a non-PTE"%string]; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc)) |}
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
+        {| gsmsr_log := ["Tried to mark an uninitialised location"%string]; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc)) |}
   end
 .
 
