@@ -803,7 +803,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
         end
       in
       (* then update state and return *)
-      let new_loc := (location <| sl_pte := Some pte |>) in
+      let new_loc := (location <| sl_pte := Some new_pte |>) in
       let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
       {| gsmsr_log := nil; gsmsr_data := GSMSR_success new_state |}
   end
