@@ -226,17 +226,6 @@ let transitions =
 
 (***************************)
 (*  Printers  *)
-let rec print_string_list = function
-  | [] -> ()
-  | t :: q ->
-      print_endline t;
-      print_string_list q
-
-let rec print_int_list : u64 list -> unit = function
-  | [] -> ()
-  | t :: q ->
-      Printf.printf "%x;" (Z.to_nat t);
-      print_int_list q
 
 let print_transition = function
   | GSMDT_TRANS_MEM_WRITE _ -> print_endline "W"
@@ -246,9 +235,13 @@ let print_transition = function
   | GSMDT_TRANS_TLBI _ -> print_endline "TLBI"
   | GSMDT_TRANS_HINT _ -> print_endline "Hint"
 
-let rec print_transition_list = function
+
+let rec print_list pp = function
   | [] -> ()
   | t :: q ->
-      print_transition t.gsmt_data;
-      print_transition_list q
+      pp t;
+      print_list pp q
 
+let print_string_list = print_list print_endline
+let print_int_list = print_list (fun x -> Printf.printf "%x;" (Z.to_nat x))
+let print_transition_list = print_list (fun x -> print_transition x.gsmt_data)
