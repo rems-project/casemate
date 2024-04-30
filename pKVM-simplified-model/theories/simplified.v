@@ -556,12 +556,12 @@ Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : boo
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) : ghost_simplified_model_step_result :=
+Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) (src_loc : option src_loc) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
-      match traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb None st with
+      match traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb src_loc st with
         | {| gsmsr_log := l_logs; gsmsr_data := GSMSR_success next |} =>
-          traverse_si_pgt_aux next visitor_cb s2 (concat [logs; l_logs]) q
+          traverse_si_pgt_aux next visitor_cb s2 (concat [logs; l_logs]) q src_loc
         | err => err <|gsmsr_log := concat [err.(gsmsr_log) ; logs] |>
       end
     | [] => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
@@ -569,17 +569,17 @@ Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_t
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) : ghost_simplified_model_step_result := 
+Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (src_loc : option src_loc) : ghost_simplified_model_step_result := 
   let roots := 
     if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
   in 
-  traverse_si_pgt_aux st visitor_cb s2 [] roots
+  traverse_si_pgt_aux st visitor_cb s2 [] roots src_loc
 .
 
-Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  :=
-  match traverse_si_pgt st visitor_cb true with
+Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) :=
+  match traverse_si_pgt st visitor_cb true src_loc with
     | {|gsmsr_log := logs; gsmsr_data := GSMSR_success st|} =>
-      let res := traverse_si_pgt st visitor_cb false in
+      let res := traverse_si_pgt st visitor_cb false src_loc in
       res <| gsmsr_log := concat [logs; res.(gsmsr_log)] |>
     | err => err
   end
@@ -811,7 +811,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
 
 Definition step_dsb (tid : thread_identifier) (dk : DxB) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
   (* walk the pgt with dsb_visitor*)
-  traverse_all_pgt st (dsb_visitor dk tid)
+  traverse_all_pgt st (dsb_visitor dk tid) code_loc
 .
 
 (******************************************************************************************)
@@ -924,15 +924,15 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (code_loc: option src
   match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
     | TLBIOp_VA, Regime_EL2 , Shareability_ISH =>
       (* traverse all s1 pages*)
-      traverse_si_pgt st (tlbi_visitor tid td) false
+      traverse_si_pgt st (tlbi_visitor tid td) false code_loc
     | TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH
     | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH
     | TLBIOp_VMALL, Regime_EL10, Shareability_ISH =>
       (* traverse s2 pages *)
-      traverse_si_pgt st (tlbi_visitor tid td) true
+      traverse_si_pgt st (tlbi_visitor tid td) true code_loc
     | _,_,_ =>
       (* traverse all page tables and add a warning *)
-      let res := traverse_all_pgt st (tlbi_visitor tid td) in
+      let res := traverse_all_pgt st (tlbi_visitor tid td) code_loc in
       res <| gsmsr_log := concat [res.(gsmsr_log); ["Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."%string]] |>
   end
 .
@@ -969,7 +969,7 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
-    traverse_si_pgt new_st (mark_cb tid) s2 
+    traverse_si_pgt new_st (mark_cb tid) s2 code_loc
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
