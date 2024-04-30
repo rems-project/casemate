@@ -593,13 +593,15 @@ Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_tab
 Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | Some location =>
-      if location.(sl_pte) then 
-        {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc), None) |}
-      else
-        let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
-        let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
-        let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
-        {| gsmsr_log := ["Tried to mark a non-PTE"%string]; gsmsr_data := GSMSR_success new_state |}
+      match location.(sl_pte) with
+        | Some _ => 
+          {| gsmsr_log := ["Tried to mark a PTE"%string]; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc), None) |}
+        | None =>
+          let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
+          let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
+          let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
+          {| gsmsr_log := ["Marking a PTE"%string]; gsmsr_data := GSMSR_success new_state |}
+      end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
         {| gsmsr_log := ["Tried to mark an uninitialised location"%string]; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None) |}
   end
@@ -617,7 +619,7 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
           {| gsmsr_log := ["Tried to unmark a non-PTE"%string]; gsmsr_data := GSMSR_failure (GSME_unmark_non_pte ctx.(ptc_src_loc), None) |}
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := ["Tried to mark an uninitialised location"%string]; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None) |}
+        {| gsmsr_log := ["Tried to unmark an uninitialised location"%string]; gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None) |}
   end
 .
 
