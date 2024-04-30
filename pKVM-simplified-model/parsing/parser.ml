@@ -227,21 +227,18 @@ let transitions =
 (***************************)
 (*  Printers  *)
 
-let pp_transition ppf = function
-  | GSMDT_TRANS_MEM_WRITE _ -> Format.pp_print_string ppf "W"
-  | GSMDT_TRANS_MEM_READ _ -> Format.pp_print_string ppf "R"
-  | GSMDT_TRANS_BARRIER _ -> Format.pp_print_string ppf "barrier"
-  | GSMDT_TRANS_MSR _ -> Format.pp_print_string ppf "barrier"
-  | GSMDT_TRANS_TLBI _ -> Format.pp_print_string ppf "TLBI"
-  | GSMDT_TRANS_HINT _ -> Format.pp_print_string ppf "Hint"
+let pp_transition_data ppf = function
+  | GSMDT_TRANS_MEM_WRITE _ -> Fmt.pf ppf "W"
+  | GSMDT_TRANS_MEM_READ _ -> Fmt.pf ppf "R"
+  | GSMDT_TRANS_BARRIER _ -> Fmt.pf ppf "barrier"
+  | GSMDT_TRANS_MSR _ -> Fmt.pf ppf "barrier"
+  | GSMDT_TRANS_TLBI _ -> Fmt.pf ppf "TLBI"
+  | GSMDT_TRANS_HINT _ -> Fmt.pf ppf "Hint"
 
-
-let rec pp_list pp_v ppf = function
-  | [] -> ()
-  | t :: q ->
-      pp_v ppf t;
-      pp_list pp_v ppf q
-
-let print_string_list = Format.printf "%a@." (pp_list Format.pp_print_newline)
-let print_int_list = Format.printf "%a@." (fun ppf x -> Format.fprintf ppf "%x;" (Z.to_nat x))
-let print_transition_list = Format.printf "%a@." (pp_list (fun ppf x -> pp_transition ppf x.gsmt_data))
+let print_string_list = Fmt.pr "%a@." (Fmt.Dump.list Fmt.string)
+let print_int_list =
+  let pp_z_hex ppf z = Fmt.pf ppf "%x" (Z.to_nat z) in
+  Fmt.pr "%a@." (Fmt.Dump.list pp_z_hex)
+let print_transition_list =
+  let pp ppf x = pp_transition_data ppf x.gsmt_data in
+  Fmt.pr "%a@." (Fmt.Dump.list pp)
