@@ -1017,7 +1017,7 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
 .
 
 Definition align_4k (addr : u64) : u64 :=
-  bv_and addr (GENMASK (BV 64 64) (BV 64 12))
+  bv_and addr (bv_not (BV 64 1023))
 .
 
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
