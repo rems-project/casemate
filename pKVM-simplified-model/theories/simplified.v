@@ -355,21 +355,14 @@ Definition Merror (s : ghost_simplified_model_error) : ghost_simplified_model_st
     gsmsr_data := GSMSR_failure (s, None) |}.
 
 Definition Mlog (s : string) (r : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
-  match r.(gsmsr_data) with
-  | GSMSR_failure s =>
-    (* TODO: or add to log? *)
-    r
-  | GSMSR_success st =>
-    {| gsmsr_log := cons s r.(gsmsr_log);
-      gsmsr_data := GSMSR_success st |}
-  end.
+  r <|gsmsr_log := s :: r.(gsmsr_log) |>.
 
 
 Definition Mupdate_state (updater : ghost_simplified_memory -> ghost_simplified_model_step_result) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match st with
     | {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |} =>
       let new_st := updater st in
-      new_st <| gsmsr_log := concat [logs; new_st.(gsmsr_log)] |>
+      new_st <| gsmsr_log := concat [new_st.(gsmsr_log); logs] |>
     | e => e
   end
 . 
@@ -558,15 +551,17 @@ Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : boo
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (logs: list string) (roots : list u64) (src_loc : option src_loc) : ghost_simplified_model_step_result :=
+Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list u64) (src_loc : option src_loc) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
-      match traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb src_loc st with
-        | {| gsmsr_log := l_logs; gsmsr_data := GSMSR_success next |} =>
-          traverse_si_pgt_aux next visitor_cb s2 (concat [logs; l_logs]) q src_loc
-        | err => err <|gsmsr_log := concat [err.(gsmsr_log) ; logs] |>
+      (* If the state is failed, there is no point in going on *)
+      match st.(gsmsr_data) with
+        | GSMSR_failure _ => st 
+        | _ =>
+          let st := Mupdate_state (traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb src_loc) st in
+          traverse_si_pgt_aux visitor_cb s2 q src_loc st
       end
-    | [] => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+    | [] => st
   end
 .
 
@@ -575,14 +570,14 @@ Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_tab
   let roots := 
     if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
   in 
-  traverse_si_pgt_aux st visitor_cb s2 [] roots src_loc
+  traverse_si_pgt_aux visitor_cb s2 roots src_loc {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
 .
 
 Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) :=
   match traverse_si_pgt st visitor_cb true src_loc with
     | {|gsmsr_log := logs; gsmsr_data := GSMSR_success st|} =>
       let res := traverse_si_pgt st visitor_cb false src_loc in
-      res <| gsmsr_log := concat [logs; res.(gsmsr_log)] |>
+      res <| gsmsr_log := concat [ res.(gsmsr_log); logs] |>
     | err => err
   end
 .
@@ -660,7 +655,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
             let children_marked := 
               traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid) code_loc st
             in
-            children_marked <|gsmsr_log := concat [logs; children_marked.(gsmsr_log)]|>
+            children_marked <|gsmsr_log := concat [children_marked.(gsmsr_log); logs]|>
         | e => e
       end
   end
@@ -862,7 +857,7 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
             | {| gsmsr_log := logs; gsmsr_data:= GSMSR_success st|} =>
               (* If all children are clean, we can unmark them as PTE *)
               match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) ptc.(ptc_src_loc) st with
-                | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log := concat [logs; logs1]; gsmsr_data := st |}
+                | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log := concat [logs1; logs]; gsmsr_data := st |}
               end
             | e => e
           end
@@ -1057,7 +1052,7 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
     | [] => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | h :: t =>
       match step h st with
-        | {| gsmsr_log := logs1; gsmsr_data := GSMSR_success st |} => all_steps_aux t (concat [logs;logs1]) st
+        | {| gsmsr_log := logs1; gsmsr_data := GSMSR_success st |} => all_steps_aux t (concat [logs1; logs]) st
         | {| gsmsr_log := logs1; gsmsr_data := GSMSR_failure (e, None) |} =>  {| gsmsr_log := logs1; gsmsr_data := GSMSR_failure (e, Some h) |}
         | e => e
       end
@@ -1076,7 +1071,8 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
         gsm_memory := gmap_empty;
       |}
   in
-  all_steps_aux transitions [] initial_state
+  let res := all_steps_aux transitions [] initial_state in
+  res <|gsmsr_log := rev res.(gsmsr_log)|>
 .
 
 
