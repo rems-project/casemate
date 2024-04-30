@@ -126,21 +126,46 @@ let parse_hint (trans : string) : trans_hint_data =
         })
   with End_of_file -> (* Release table: not yet used *) raise NotParsed
 
-let parse_transition (trans : string) : ghost_simplified_model_transition_data =
+let rec construct_writes_from_zalloc (loc : u64) (i : u64) (size : u64)
+    (res : ghost_simplified_model_transition_data list) :
+    ghost_simplified_model_transition_data list =
+  if i = size then res
+  else
+    construct_writes_from_zalloc loc (Big_int_Z.succ_big_int i) size
+      (GSMDT_TRANS_MEM_WRITE
+         {
+           twd_mo = WMO_plain;
+           twd_phys_addr = Big_int_Z.add_big_int loc i;
+           twd_val = Big_int_Z.zero_big_int;
+         }
+      :: res)
+
+let parse_zalloc (trans : string) : ghost_simplified_model_transition_data list
+    =
+  Scanf.sscanf trans "ZALLOC %Li size: %Li" (fun loc size ->
+      construct_writes_from_zalloc
+        (Big_int_Z.big_int_of_int64 loc)
+        Big_int_Z.zero_big_int
+        (Big_int_Z.big_int_of_int64 size)
+        [])
+
+let parse_transition (trans : string) :
+    ghost_simplified_model_transition_data list =
   if String.starts_with ~prefix:"W" trans then
-    GSMDT_TRANS_MEM_WRITE (parse_write trans)
+    [ GSMDT_TRANS_MEM_WRITE (parse_write trans) ]
   else if String.starts_with ~prefix:"R " trans then
-    GSMDT_TRANS_MEM_READ (parse_read trans)
+    [ GSMDT_TRANS_MEM_READ (parse_read trans) ]
   else if String.starts_with ~prefix:"DSB" trans then
-    GSMDT_TRANS_BARRIER (parse_DSB trans)
+    [ GSMDT_TRANS_BARRIER (parse_DSB trans) ]
   else if String.starts_with ~prefix:"ISB" trans then
-    GSMDT_TRANS_BARRIER (Barrier_ISB ())
+    [ GSMDT_TRANS_BARRIER (Barrier_ISB ()) ]
   else if String.starts_with ~prefix:"TLBI" trans then
-    GSMDT_TRANS_TLBI (parse_TLBI trans)
+    [ GSMDT_TRANS_TLBI (parse_TLBI trans) ]
   else if String.starts_with ~prefix:"MSR" trans then
-    GSMDT_TRANS_MSR (parse_MSR trans)
+    [ GSMDT_TRANS_MSR (parse_MSR trans) ]
   else if String.starts_with ~prefix:"HINT" trans then
-    GSMDT_TRANS_HINT (parse_hint trans)
+    [ GSMDT_TRANS_HINT (parse_hint trans) ]
+  else if String.starts_with ~prefix:"ZALLOC" trans then parse_zalloc trans
   else (
     Printf.eprintf "Error while parsing instruction %s\n" trans;
     exit 1)
@@ -153,44 +178,51 @@ let get_line_number (str : string) : src_loc =
       Printf.eprintf "Error while parsing location information:\n\t%s\n" str;
       exit 1
 
-let parse_line (line : string) : ghost_simplified_model_transition =
+let parse_line (line : string) : ghost_simplified_model_transition list =
   match Str.split (Str.regexp " at \\|; ") line with
   | [ cpu; transition; src_loc ] ->
       let cpu = Scanf.sscanf cpu "CPU: %Ld" (fun i -> i) in
-      {
-        gsmt_src_loc = Some (get_line_number src_loc);
-        gsmt_thread_identifier = Int64.to_int cpu;
-        gsmt_data =
-          parse_transition (Str.global_replace (Str.regexp "\\.") "" transition);
-      }
+      let trans =
+        parse_transition (Str.global_replace (Str.regexp "\\.") "" transition)
+      in
+      List.map
+        (fun data ->
+          {
+            gsmt_src_loc = Some (get_line_number src_loc);
+            gsmt_thread_identifier = Int64.to_int cpu;
+            gsmt_data = data;
+          })
+        trans
   | _ ->
       Printf.eprintf "Error while parsing line:\n\t %s\n\n" line;
       exit 1
 
 let transitions =
-  let filename =
-    if Array.length Sys.argv == 2 then Sys.argv.(1)
-    else "../../pkvm-tester/output/fedoralaptop-2024-04-25T14:29:33+01:00/log"
-  in
-  (* Open file to read *)
-  let file = open_in filename in
-  let result = ref [] in
-  let str = really_input_string file (in_channel_length file) in
-  close_in file;
-  let i = ref 0 in
-  try
-    while true do
-      (* Beginning of the next relevant line *)
-      i := 10 + Str.search_forward (Str.regexp "\o033\\[46;37;1m") str !i;
-      (* Length of the line *)
-      let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
-      try result := parse_line (String.sub str !i j) :: !result
-      with NotParsed ->
-        ();
-        incr i
-    done;
-    !result
-  with Not_found -> List.rev !result
+  List.flatten
+    (let filename =
+       if Array.length Sys.argv == 2 then Sys.argv.(1)
+       else
+         "../../pkvm-tester/output/fedoralaptop-2024-04-29T12:33:43+01:00/log"
+     in
+     (* Open file to read *)
+     let file = open_in filename in
+     let result = ref [] in
+     let str = really_input_string file (in_channel_length file) in
+     close_in file;
+     let i = ref 0 in
+     try
+       while true do
+         (* Beginning of the next relevant line *)
+         i := 10 + Str.search_forward (Str.regexp "\o033\\[46;37;1m") str !i;
+         (* Length of the line *)
+         let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
+         try result := parse_line (String.sub str !i j) :: !result
+         with NotParsed ->
+           ();
+           incr i
+       done;
+       !result
+     with Not_found -> List.rev !result)
 
 (***************************)
 (*  Printers  *)
