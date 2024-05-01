@@ -1053,7 +1053,7 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
     | h :: t =>
       match step h st with
         | {| gsmsr_log := logs1; gsmsr_data := GSMSR_success st |} => all_steps_aux t (concat [logs1; logs]) st
-        | {| gsmsr_log := logs1; gsmsr_data := GSMSR_failure (e, None) |} =>  {| gsmsr_log := logs1; gsmsr_data := GSMSR_failure (e, Some h) |}
+        | {| gsmsr_log := logs1; gsmsr_data := GSMSR_failure (e, None) |} =>  {| gsmsr_log := (concat [logs1; logs]); gsmsr_data := GSMSR_failure (e, Some h) |}
         | e => e
       end
   end

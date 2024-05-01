@@ -217,9 +217,7 @@ let transitions =
          (* Length of the line *)
          let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
          try result := parse_line (String.sub str !i j) :: !result
-         with NotParsed ->
-           ();
-           incr i
+         with NotParsed -> ()
        done;
        !result
      with Not_found -> List.rev !result)
@@ -228,17 +226,92 @@ let transitions =
 (*  Printers  *)
 
 let pp_transition_data ppf = function
-  | GSMDT_TRANS_MEM_WRITE _ -> Fmt.pf ppf "W"
-  | GSMDT_TRANS_MEM_READ _ -> Fmt.pf ppf "R"
+  | GSMDT_TRANS_MEM_WRITE
+      { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
+      Fmt.pf ppf "R%s 0x%Lx 0x%Lx\n"
+        (match typ with WMO_release -> "rel" | WMO_plain -> "")
+        (Big_int_Z.int64_of_big_int addr)
+        (Big_int_Z.int64_of_big_int value)
+  | GSMDT_TRANS_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
+      Fmt.pf ppf "R 0x%Lx (=0x%Lx)\n"
+        (Big_int_Z.int64_of_big_int addr)
+        (Big_int_Z.int64_of_big_int value)
   | GSMDT_TRANS_BARRIER _ -> Fmt.pf ppf "barrier"
-  | GSMDT_TRANS_MSR _ -> Fmt.pf ppf "barrier"
+  | GSMDT_TRANS_MSR { tmd_sysreg = reg; tmd_val = value } ->
+      Fmt.pf ppf "MSR %s 0x%Lx\n"
+        (match reg with
+        | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
+        | SYSREG_VTTBR -> "SYSREG_VTTBR")
+        (Big_int_Z.int64_of_big_int value)
   | GSMDT_TRANS_TLBI _ -> Fmt.pf ppf "TLBI"
   | GSMDT_TRANS_HINT _ -> Fmt.pf ppf "Hint"
 
 let print_string_list = Fmt.pr "%a@." (Fmt.Dump.list Fmt.string)
+
 let print_int_list =
   let pp_z_hex ppf z = Fmt.pf ppf "%x" (Z.to_nat z) in
   Fmt.pr "%a@." (Fmt.Dump.list pp_z_hex)
+
 let print_transition_list =
   let pp ppf x = pp_transition_data ppf x.gsmt_data in
   Fmt.pr "%a@." (Fmt.Dump.list pp)
+
+let print_location (loc : src_loc option) : unit =
+  match loc with
+  | Some loc ->
+      Printf.printf " in %s:%d in %s\n" loc.sl_file loc.sl_lineno loc.sl_func
+  | None -> ()
+
+let print_result (res : ghost_simplified_model_step_result) : unit =
+  print_endline "Logs:";
+  print_string_list res.gsmsr_log;
+  match res.gsmsr_data with
+  | GSMSR_success s ->
+      print_endline "Success!";
+      print_int_list s.gsm_roots.pr_s2;
+      print_int_list s.gsm_roots.pr_s1
+  | GSMSR_failure f -> (
+      print_endline "Failure…";
+      (match fst f with
+      | GSME_bbm_valid_valid loc ->
+          print_string "GSME_bbm_valid_valid";
+          print_location loc
+      | GSME_bbm_invalid_valid loc ->
+          print_string "GSME_bbm_invalid_valid";
+          print_location loc
+      | GSME_use_of_uninitialized_pte loc ->
+          print_string "GSME_use_of_uninitialized_pte";
+          print_location loc
+      | GSME_inconsistent_read loc ->
+          print_string "GSME_inconsistent_read";
+          print_location loc
+      | GSME_read_uninitialized loc ->
+          print_string "GSME_read_uninitialized";
+          print_location loc
+      | GSME_writing_with_unclean_children loc ->
+          print_string "GSME_writing_with_unclean_children";
+          print_location loc
+      | GSME_double_use_of_pte loc ->
+          print_string "GSME_double_use_of_pte";
+          print_location loc
+      | GSME_unmark_non_pte loc ->
+          print_string "GSME_unmark_non_pte";
+          print_location loc
+      | GSME_root_already_exists loc ->
+          print_string "GSME_root_already_exists";
+          print_location loc
+      | GSME_not_enough_information loc ->
+          print_string "GSME_not_enough_information";
+          print_location loc
+      | GSME_unimplemented loc ->
+          print_string "GSME_unimplemented";
+          print_location loc
+      | GSME_internal_error -> print_string "GSME_internal_error");
+      match snd f with
+      | None -> ()
+      | Some trans ->
+          print_string "Transition that failed:\n\t";
+          pp_transition_data Format.std_formatter trans.gsmt_data)
+
+let run = all_steps transitions
+let () = print_result run
