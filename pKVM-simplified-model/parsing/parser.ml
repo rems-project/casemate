@@ -163,21 +163,28 @@ let get_line_number (str : string) : src_loc =
       Printf.eprintf "Error while parsing location information:\n\t%s\n" str;
       exit 1
 
+let construct_trans id cpu transition src_loc =
+  let cpu = Scanf.sscanf cpu "CPU: %Ld" (fun i -> i) in
+  let id = Scanf.sscanf id "ID: %Ld" (fun i -> i) in
+  let trans =
+    parse_transition (Str.global_replace (Str.regexp "\\.") "" transition)
+  in
+  List.map
+    (fun data ->
+      {
+        gsmt_src_loc = Some (get_line_number src_loc);
+        gsmt_thread_identifier = Int64.to_int cpu;
+        gsmt_data = data;
+        gsmt_id = Int64.to_int id;
+      })
+    trans
+
 let parse_line (line : string) : ghost_simplified_model_transition list =
   match Str.split (Str.regexp " at \\|; ") line with
   | [ cpu; transition; src_loc ] ->
-      let cpu = Scanf.sscanf cpu "CPU: %Ld" (fun i -> i) in
-      let trans =
-        parse_transition (Str.global_replace (Str.regexp "\\.") "" transition)
-      in
-      List.map
-        (fun data ->
-          {
-            gsmt_src_loc = Some (get_line_number src_loc);
-            gsmt_thread_identifier = Int64.to_int cpu;
-            gsmt_data = data;
-          })
-        trans
+      construct_trans "ID: 0" cpu transition src_loc
+  | [ id; cpu; transition; src_loc ] ->
+      construct_trans id cpu transition src_loc
   | _ ->
       Printf.eprintf "Error while parsing line:\n\t %s\n\n" line;
       exit 1
@@ -213,27 +220,36 @@ let transitions =
 let pp_transition_data ppf = function
   | GSMDT_TRANS_MEM_WRITE
       { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
-      Fmt.pf ppf "W%s 0x%Lx 0x%Lx\n"
+      Fmt.pf ppf "W%s 0x%Lx 0x%Lx"
         (match typ with WMO_release -> "rel" | WMO_plain -> "")
         (Big_int_Z.int64_of_big_int addr)
         (Big_int_Z.int64_of_big_int value)
   | GSMDT_TRANS_MEM_ZALLOC { tzd_addr = addr; tzd_size = size } ->
-      Fmt.pf ppf "ZALLOC 0x%Lx size %Ld\n"
+      Fmt.pf ppf "ZALLOC 0x%Lx size %Ld"
         (Big_int_Z.int64_of_big_int addr)
         (Big_int_Z.int64_of_big_int size)
   | GSMDT_TRANS_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
-      Fmt.pf ppf "R 0x%Lx (=0x%Lx)\n"
+      Fmt.pf ppf "R 0x%Lx (=0x%Lx)"
         (Big_int_Z.int64_of_big_int addr)
         (Big_int_Z.int64_of_big_int value)
   | GSMDT_TRANS_BARRIER _ -> Fmt.pf ppf "barrier"
   | GSMDT_TRANS_MSR { tmd_sysreg = reg; tmd_val = value } ->
-      Fmt.pf ppf "MSR %s 0x%Lx\n"
+      Fmt.pf ppf "MSR %s 0x%Lx"
         (match reg with
         | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
         | SYSREG_VTTBR -> "SYSREG_VTTBR")
         (Big_int_Z.int64_of_big_int value)
   | GSMDT_TRANS_TLBI _ -> Fmt.pf ppf "TLBI"
   | GSMDT_TRANS_HINT _ -> Fmt.pf ppf "Hint"
+
+let pp_location ppf = function
+  | Some loc -> Fmt.pf ppf "%s:%d in %s" loc.sl_file loc.sl_lineno loc.sl_func
+  | None -> Fmt.pf ppf "unknown location"
+
+let pp_transition ppf trans =
+  Fmt.pf ppf "ID: %d; CPU: %d; %a at %a@\n" trans.gsmt_id
+    trans.gsmt_thread_identifier pp_transition_data trans.gsmt_data pp_location
+    trans.gsmt_src_loc
 
 let print_string_list = Fmt.pr "%a@." (Fmt.Dump.list Fmt.string)
 
@@ -300,7 +316,7 @@ let print_result (res : ghost_simplified_model_step_result) : unit =
       | None -> ()
       | Some trans ->
           print_string "Transition that failed:\n\t";
-          pp_transition_data Format.std_formatter trans.gsmt_data)
+          pp_transition Format.std_formatter trans)
 
 let run = all_steps transitions
 let () = print_result run

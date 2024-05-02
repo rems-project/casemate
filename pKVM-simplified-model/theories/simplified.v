@@ -300,6 +300,7 @@ Record ghost_simplified_model_transition := {
   gsmt_src_loc : option src_loc;
   gsmt_thread_identifier : thread_identifier;
   gsmt_data : ghost_simplified_model_transition_data;
+  gsmt_id : nat;
 }.
 
 
