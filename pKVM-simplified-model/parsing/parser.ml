@@ -126,28 +126,12 @@ let parse_hint (trans : string) : trans_hint_data =
         })
   with End_of_file -> (* Release table: not yet used *) raise NotParsed
 
-let rec construct_writes_from_zalloc (loc : u64) (i : u64) (size : u64)
-    (res : ghost_simplified_model_transition_data list) :
-    ghost_simplified_model_transition_data list =
-  if i = size then res
-  else
-    construct_writes_from_zalloc loc (Big_int_Z.succ_big_int i) size
-      (GSMDT_TRANS_MEM_WRITE
-         {
-           twd_mo = WMO_plain;
-           twd_phys_addr = Big_int_Z.add_big_int loc i;
-           twd_val = Big_int_Z.zero_big_int;
-         }
-      :: res)
-
-let parse_zalloc (trans : string) : ghost_simplified_model_transition_data list
-    =
+let parse_zalloc (trans : string) : trans_zalloc_data =
   Scanf.sscanf trans "ZALLOC %Li size: %Li" (fun loc size ->
-      construct_writes_from_zalloc
-        (Big_int_Z.big_int_of_int64 loc)
-        Big_int_Z.zero_big_int
-        (Big_int_Z.big_int_of_int64 size)
-        [])
+      {
+        tzd_addr = Big_int_Z.big_int_of_int64 loc;
+        tzd_size = Big_int_Z.big_int_of_int64 size;
+      })
 
 let parse_transition (trans : string) :
     ghost_simplified_model_transition_data list =
@@ -165,7 +149,8 @@ let parse_transition (trans : string) :
     [ GSMDT_TRANS_MSR (parse_MSR trans) ]
   else if String.starts_with ~prefix:"HINT" trans then
     [ GSMDT_TRANS_HINT (parse_hint trans) ]
-  else if String.starts_with ~prefix:"ZALLOC" trans then parse_zalloc trans
+  else if String.starts_with ~prefix:"ZALLOC" trans then
+    [ GSMDT_TRANS_MEM_ZALLOC (parse_zalloc trans) ]
   else (
     Printf.eprintf "Error while parsing instruction %s\n" trans;
     exit 1)
@@ -228,10 +213,14 @@ let transitions =
 let pp_transition_data ppf = function
   | GSMDT_TRANS_MEM_WRITE
       { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
-      Fmt.pf ppf "R%s 0x%Lx 0x%Lx\n"
+      Fmt.pf ppf "W%s 0x%Lx 0x%Lx\n"
         (match typ with WMO_release -> "rel" | WMO_plain -> "")
         (Big_int_Z.int64_of_big_int addr)
         (Big_int_Z.int64_of_big_int value)
+  | GSMDT_TRANS_MEM_ZALLOC { tzd_addr = addr; tzd_size = size } ->
+      Fmt.pf ppf "ZALLOC 0x%Lx size %Ld\n"
+        (Big_int_Z.int64_of_big_int addr)
+        (Big_int_Z.int64_of_big_int size)
   | GSMDT_TRANS_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R 0x%Lx (=0x%Lx)\n"
         (Big_int_Z.int64_of_big_int addr)

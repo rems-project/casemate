@@ -126,6 +126,9 @@ Record owner_locks := {
 (* The memory state is a map from address to simplified model location *)
 Definition ghost_simplified_model_state := gmap u64 sm_location.
 
+(* The zalloc'd memory is stored here *)
+Definition ghost_simplified_model_zallocd := gmap u64 unit.
+
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
   pr_s1 : list u64;
@@ -136,9 +139,10 @@ Record pte_roots := mk_pte_roots {
 
 Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_roots : pte_roots;
-  gsm_memory : ghost_simplified_model_state
+  gsm_memory : ghost_simplified_model_state;
+  gsm_zalloc : ghost_simplified_model_zallocd;
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory>.
+#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc>.
 
 
 
@@ -233,6 +237,10 @@ Inductive write_memory_order :=
 | WMO_release
 .
 
+Record trans_zalloc_data := {
+    tzd_addr : u64;
+    tzd_size : u64;
+}.
 
 Record tlbi_op_method_by_address_space_id_data := {
   tombas_asid_or_vmid : u64;
@@ -278,6 +286,7 @@ Record trans_hint_data := {
 
 Inductive ghost_simplified_model_transition_data :=
 |	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
+| GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
 |	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
 |	GSMDT_TRANS_BARRIER (dsb_data : Barrier)
 |	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
@@ -434,7 +443,9 @@ Definition extract_output_address (pte_val level : u64) :=
 bv_and pte_val (GENMASK (BV 64 47) (OA_shift level))
 .
 
-
+Definition align_4k (addr : u64) : u64 :=
+  bv_and addr (bv_not (BV 64 1023))
+.
 
 
 (******************************************************************************************)
@@ -736,6 +747,35 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
         ) |}
   end.
 
+(******************************************************************************************)
+(*                             Code for zalloc                                            *)
+(******************************************************************************************)
+
+Definition is_zallocd (st : ghost_simplified_memory) (addr : u64) : bool :=
+  match st.(gsm_zalloc) !! (bv_shiftr addr (BV 64 12)) with
+    | Some () => true
+    | None => false
+  end
+.
+
+Definition step_zalloc_aux (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+  let update s := {| gsmsr_log := nil; gsmsr_data := GSMSR_success (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
+  Mupdate_state update st
+.
+
+Fixpoint step_zalloc_all (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) (offs : nat) : ghost_simplified_model_step_result :=
+  match offs with
+    | O => st
+    | S offs => 
+      let st := step_zalloc_aux (bv_add_Z addr (Z_of_nat offs)) code_loc st in
+      step_zalloc_all addr code_loc st offs
+  end
+.
+
+Definition step_zalloc (zd : trans_zalloc_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  step_zalloc_all (bv_shiftl zd.(tzd_addr) (BV 64 12)) code_loc {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (Z.to_nat (bv_unsigned zd.(tzd_size)))
+.
+
 
 (******************************************************************************************)
 (*                             Code for read                                              *)
@@ -1013,9 +1053,6 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
   end
 .
 
-Definition align_4k (addr : u64) : u64 :=
-  bv_and addr (bv_not (BV 64 1023))
-.
 
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match hd.(thd_hint_kind) with 
@@ -1036,6 +1073,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
     step_write trans.(gsmt_thread_identifier) wd trans.(gsmt_src_loc) st
+  | GSMDT_TRANS_MEM_ZALLOC zd => step_zalloc zd trans.(gsmt_src_loc) st
   | GSMDT_TRANS_MEM_READ rd => 
     step_read trans.(gsmt_thread_identifier) rd trans.(gsmt_src_loc) st
   | GSMDT_TRANS_BARRIER ( Barrier_DSB dsb_data) => 
@@ -1069,6 +1107,7 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
             pr_s2 := [];
           |};
         gsm_memory := gmap_empty;
+        gsm_zalloc := gmap_empty;
       |}
   in
   let res := all_steps_aux transitions [] initial_state in
