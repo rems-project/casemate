@@ -33,6 +33,8 @@ struct ghost_simplified_model_options ghost_sm_options;
 struct ghost_simplified_model_transition current_transition;
 bool is_initialised = false;
 
+int transition_id = 0;
+
 #define GHOST_SIMPLIFIED_MODEL_CATCH_FIRE(msg) { \
 	GHOST_WARN(msg); \
 	ghost_assert(false); \
@@ -1833,7 +1835,8 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 static void step(struct ghost_simplified_model_transition trans)
 {
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), &trans);
+	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
+	transition_id++;
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	GHOST_LOG_CONTEXT_ENTER();
@@ -1920,13 +1923,11 @@ void visitor_log(struct pgtable_traverse_context *ctx) {
 			}
 		};
 
-	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), trans);
+	step(trans);
 }
 
 static void dump_initial_state(void) {
 	u64 pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-
-	// ghost_printf("root: %lx, level: %lx", pkvm_pgd, discover_start_level(GHOST_STAGE1));
 
 	traverse_pgtable(pkvm_pgd,GHOST_STAGE1, visitor_log, NULL);
 
@@ -1939,7 +1940,7 @@ static void dump_initial_state(void) {
 			}
 		};
 
-	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", cpu_id(), trans);	
+	step(trans);	
 }
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
