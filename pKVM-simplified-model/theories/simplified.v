@@ -27,6 +27,8 @@ Infix "b<?" := u64_ltb (at level 70).
 Infix "b+" := bv_add (at level 50).
 Infix "b*" := bv_add (at level 40).
 
+Infix "+s" := append (right associativity, at level 60).
+
 Definition phys_addr_t := u64.
 
 Definition sm_owner_t := u64.
@@ -386,6 +388,50 @@ Definition __read_phys (addr : u64) (pre : bool) (st : ghost_simplified_model_st
 
 Definition read_phys_pre (addr : u64) (st : ghost_simplified_model_state) : u64 :=
   __read_phys addr true st.
+
+
+(*****************************************************************************)
+(********                   Code for bit-pattern                     *********)
+(*****************************************************************************)
+
+Fixpoint string_of_int_aux (s : u64) (max : nat) : string :=
+  match max with
+  | O => ""%string
+  | S n =>
+    match s with
+      | BV _ 0 => ""%string
+      | x =>  (string_of_int_aux (bv_divu x (BV 64 16)) n) ++ (
+        match bv_modu x (BV 64 16) with
+          | BV _ 0 => "0"%string
+          | BV _ 1 => "1"%string
+          | BV _ 2 => "2"%string
+          | BV _ 3 => "3"%string
+          | BV _ 4 => "4"%string
+          | BV _ 5 => "5"%string
+          | BV _ 6 => "6"%string
+          | BV _ 7 => "7"%string
+          | BV _ 8 => "8"%string
+          | BV _ 9 => "9"%string
+          | BV _ 10 => "a"%string
+          | BV _ 11 => "b"%string
+          | BV _ 12 => "c"%string
+          | BV _ 13 => "d"%string
+          | BV _ 14 => "e"%string
+          | BV _ 15 => "f"%string
+          | _ => ""%string
+        end
+      )  
+    end
+  end
+.
+
+Definition string_of_int (s : u64) (max : nat) : string :=
+  "0x"%string +s
+  match s with 
+    | BV _ 0 => "0"%string
+    | BV _ _ => string_of_int_aux s max
+  end
+.
 
 
 (*****************************************************************************)
@@ -784,16 +830,39 @@ Definition step_zalloc (zd : trans_zalloc_data) (code_loc: option src_loc) (st :
 Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match st.(gsm_memory) !! rd.(trd_phys_addr) with
-    | Some mem_loc => if mem_loc.(sl_val) b=? rd.(trd_val) then 
+    | Some loc => if loc.(sl_val) b=? rd.(trd_val) then 
       {| gsmsr_log := nil;
         gsmsr_data := (GSMSR_success st) |}  else
-      {| gsmsr_log := nil;
-        gsmsr_data := GSMSR_failure (GSME_inconsistent_read code_loc, None) |}
-    | None => 
-      (* Question: Should this really fail? *)
-      {| gsmsr_log := if rd.(trd_val) b=? (BV 64 0) then ["Read zero but location uninitialized.  Zero'd at allocation?"%string]
-            else ["Non-zero read of uninitialized location "%string];
-        gsmsr_data := GSMSR_success st |}
+        let new_loc := loc <| sl_val := rd.(trd_val) |> in
+      {| gsmsr_log :=
+        [ 
+          "Warning: inconsistent read (updating the value and continuing), expected "%string 
+          +s string_of_int loc.(sl_val) 65
+          +s " got "%string
+          +s string_of_int rd.(trd_val) 65
+          +s " at address "%string
+          +s string_of_int rd.(trd_phys_addr) 65
+        ];
+        gsmsr_data := (GSMSR_success (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
+    | None =>
+      if is_zallocd st rd.(trd_phys_addr) then
+        (* If it has been zalloced, try and read again but this time with location initialised at 0 *)
+        let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
+        let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
+        {| gsmsr_log :=
+              (if rd.(trd_val) b=? (BV 64 0) then
+                []
+              else
+                ["Non-zero read of a zalloc'd but uninitialized location value: "%string +s (string_of_int rd.(trd_val) 65)
+              +s " Address: "
+              +s string_of_int rd.(trd_phys_addr) 65]);
+          gsmsr_data := GSMSR_success st |}
+      else
+        let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
+        let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
+        {| gsmsr_log :=
+            ["Read of non-zalloc'd memory, initializing anyways"%string];
+          gsmsr_data := GSMSR_success st |}
   end
 .
 
