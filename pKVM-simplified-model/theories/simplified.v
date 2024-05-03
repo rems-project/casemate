@@ -18,7 +18,7 @@ Search (bv _ -> bv _ -> bool).
 Definition u64_eqb (x y : u64) : bool :=
   bool_decide (x = y).
 
-Definition u64_ltb (x y : u64) : bool := 
+Definition u64_ltb (x y : u64) : bool :=
   Z.to_nat (bv_unsigned x) <? Z.to_nat (bv_unsigned y)
 .
 
@@ -377,7 +377,7 @@ Definition Mupdate_state (updater : ghost_simplified_memory -> ghost_simplified_
       new_st <| gsmsr_log := concat [new_st.(gsmsr_log); logs] |>
     | e => e
   end
-. 
+.
 
 
 
@@ -411,16 +411,16 @@ Fixpoint string_of_int_aux (s : u64) (max : nat) : string :=
           | BV _ 15 => "f"%string
           | _ => ""%string
         end
-      )  
+      )
     end
   end
 .
 
-Definition string_of_int (s : u64) (max : nat) : string :=
+Definition string_of_int (s : u64) : string :=
   "0x"%string +s
-  match s with 
+  match s with
     | BV _ 0 => "0"%string
-    | BV _ _ => string_of_int_aux s max
+    | BV _ _ => string_of_int_aux s 65
   end
 .
 
@@ -433,7 +433,7 @@ Definition PTE_BIT_VALID : u64 := BV 64 1. (* binary: 0001 *)
 
 Definition PTE_BIT_TABLE : u64 := BV 64 2. (* binary: 0010 *)
 
-Definition GENMASK (h l : u64) : u64 := 
+Definition GENMASK (h l : u64) : u64 :=
 bv_and (bv_sub (bv_not (BV 64 0)) ((bv_shiftl (BV 64 1) l b+ BV 64 1)))
 (bv_shiftr (((bv_not (BV 64 0)))) (bv_sub (BV 64 63) h)).
 (**  0......0  1....1  0....0
@@ -456,14 +456,14 @@ end
 .
 
 Definition map_size (level : u64) : u64 :=
-match level with 
+match level with
   | BV _ 0 => bv_shiftl (BV 64 512) (BV 64 30) (* 512 Go *)
   | BV _ 1 => bv_shiftl (BV 64 1)   (BV 64 30) (* 1 Go *)
   | BV _ 2 => bv_shiftl (BV 64 2)   (BV 64 20) (* 2 Mo *)
   | BV _ 3 => bv_shiftl (BV 64 4)   (BV 64 10) (* 4 Ko *)
   | _ => BV 64 0  (* Should not happen*)
 end
-. 
+.
 
 Definition is_desc_table (descriptor level : u64) :=
 (* There is an inequality to make termination easier *)
@@ -515,29 +515,29 @@ Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind 
       SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
     | PTER_PTE_KIND_MAP _ | PTER_PTE_KIND_TABLE _ =>
       SPS_STATE_PTE_VALID {|lvs := [] |}
-  end 
+  end
 .
 
 Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2 : bool) : ghost_exploded_descriptor :=
-  let pte_kind :=       
+  let pte_kind :=
     if is_desc_valid desc then
-        if is_desc_table desc level then
-          PTER_PTE_KIND_TABLE (
-            {|
-              next_level_table_addr := extract_table_address desc;
-            |}
-          )
-        else
-          PTER_PTE_KIND_MAP (
-            {|
-              oa_region := {| range_start := extract_table_address desc; range_size := map_size level |}
-            |}
-          )
+      if is_desc_table desc level then
+        PTER_PTE_KIND_TABLE (
+          {|
+            next_level_table_addr := extract_table_address desc;
+          |}
+        )
       else
-        PTER_PTE_KIND_INVALID
+        PTER_PTE_KIND_MAP (
+          {|
+            oa_region := {| range_start := extract_table_address desc; range_size := map_size level |}
+          |}
+        )
+    else
+      PTER_PTE_KIND_INVALID
   in
   {|
-    ged_ia_region := 
+    ged_ia_region :=
       {|
         range_start := partial_ia; (* It is already conveniently aligned *)
         range_size := map_size level (* The mapped (or partially mapped) region only depends on the level *)
@@ -560,7 +560,7 @@ Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : b
   (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
-    | S max_call_number => 
+    | S max_call_number =>
         if i b=? (BV 64 512) then
           (* We are done with this page table *)
           mon
@@ -568,13 +568,14 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
         match mon with
             | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
             | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
-            let location := st !! (bv_add (table_start) ((BV 64 8) b* i)) in
+            let addr := bv_add (table_start) ((BV 64 8) b* i) in
+            let location := st !! addr in
             let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
               visitor_cb
               {|
                 ptc_state := s;
                 ptc_loc := location;
-                ptc_addr := bv_add (table_start) ((BV 64 8) b* i);
+                ptc_addr := addr;
                 ptc_partial_ia := partial_ia;
                 ptc_root := root;
                 ptc_level:= level;
@@ -627,7 +628,7 @@ Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplifi
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
       match st.(gsmsr_data) with
-        | GSMSR_failure _ => st 
+        | GSMSR_failure _ => st
         | _ =>
           let st := Mupdate_state (traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb src_loc) st in
           traverse_si_pgt_aux visitor_cb s2 q src_loc st
@@ -637,10 +638,10 @@ Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplifi
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (src_loc : option src_loc) : ghost_simplified_model_step_result := 
-  let roots := 
+Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (src_loc : option src_loc) : ghost_simplified_model_step_result :=
+  let roots :=
     if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
-  in 
+  in
   traverse_si_pgt_aux visitor_cb s2 roots src_loc {| gsmsr_log := nil; gsmsr_data := GSMSR_success st |}
 .
 
@@ -660,7 +661,7 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
-        | Some _ => 
+        | Some _ =>
           {| gsmsr_log := ["Tried to mark a PTE"%string]; gsmsr_data := GSMSR_failure (GSME_double_use_of_pte ctx.(ptc_src_loc), None) |}
         | None =>
           let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
@@ -669,8 +670,8 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
           Mreturn new_state
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| 
-          gsmsr_log := ["Tried to mark an uninitialised location at address: "%string +s (string_of_int ctx.(ptc_addr) 65)];
+        {|
+          gsmsr_log := ["Tried to mark an uninitialised location at address: "%string +s (string_of_int ctx.(ptc_addr))];
           gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None)
         |}
   end
@@ -680,7 +681,7 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
-        | Some desc => 
+        | Some desc =>
           let new_loc := location <|sl_pte := None |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
           {| gsmsr_log := nil; gsmsr_data := GSMSR_success (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
@@ -689,7 +690,7 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
         {|
-          gsmsr_log := ["Tried to unmark an uninitialised location at address: "%string +s (string_of_int ctx.(ptc_addr) 65)];
+          gsmsr_log := ["Tried to unmark an uninitialised location at address: "%string +s (string_of_int ctx.(ptc_addr))];
           gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None)
         |}
   end
@@ -699,14 +700,14 @@ Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplifie
 (*                             Code for write                                             *)
 (******************************************************************************************)
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
-Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_step_result := 
-  match ctx.(ptc_loc) with 
-    | Some location => 
+Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_step_result :=
+  match ctx.(ptc_loc) with
+    | Some location =>
       match location.(sl_pte) with
         | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte (ctx.(ptc_src_loc)), None) |}
-        | Some descriptor => 
+        | Some descriptor =>
           match descriptor.(ged_state) with
-            | SPS_STATE_PTE_INVALID_UNCLEAN _ => 
+            | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
               let st := ctx.(ptc_state) in
               {|gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_writing_with_unclean_children (ctx.(ptc_src_loc)), None)|}
             | _ => {|
@@ -717,29 +718,27 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_s
       end
     | None =>
       {|
-        gsmsr_log := ["While testing if children are clean, reached an uninitialized location: "%string +s (string_of_int ctx.(ptc_addr) 65)];
+        gsmsr_log := ["While testing if children are clean, reached an uninitialized location: "%string +s (string_of_int ctx.(ptc_addr))];
         gsmsr_data := GSMSR_failure  (GSME_not_enough_information (ctx.(ptc_src_loc)), None)
       |}
   end
 .
 
-Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
+Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_order) (code_loc: option src_loc) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
 (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror GSME_internal_error
     | Some descriptor =>
+      let new_loc := loc <| sl_val := val |> in
+      let st := st <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
       if is_desc_valid val then
         (* Tests if the page table is well formed *)
-        match traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable code_loc st with
-          | {| gsmsr_log := logs; gsmsr_data :=  GSMSR_success st |} =>
-              (* Mark all children as part of page-table entries *)
-              let children_marked := 
-                traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid) code_loc st
-              in
-              children_marked <|gsmsr_log := concat [children_marked.(gsmsr_log); logs]|>
-          | e => e
-        end
+        let
+          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable code_loc st
+        in
+        (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
+        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid) code_loc) st
       else
         (* if the descriptor is invalid, do nothing *)
         Mreturn st
@@ -751,7 +750,7 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
     Merror (GSME_bbm_invalid_valid code_loc)
-  else 
+  else
     Mreturn (st <|gsm_memory := <[loc.(sl_phys_addr) := loc <|sl_val := val|> ]> st.(gsm_memory) |>)
 .
 
@@ -760,7 +759,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
   if old b=? val then (* If no change in memory: no problem*)
    {| gsmsr_log := []; gsmsr_data := GSMSR_success st |}
   else
-    if is_desc_valid val then 
+    if is_desc_valid val then
       (* Changing the descriptor is illegal *)
       {| gsmsr_log := []; gsmsr_data := GSMSR_failure (GSME_bbm_valid_valid (code_loc), None) |}
     else
@@ -806,12 +805,12 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
               )
             |}
         end
-    | None => 
+    | None =>
       (* If the location has not been written to, it is not a pgt, just save its value *)
-      {| gsmsr_log := nil;
+      {| gsmsr_log := ["Warning: write on non-zalloc'd location: "%string +s string_of_int addr];
         gsmsr_data := GSMSR_success (
           st <| gsm_memory :=
-            <[ addr := 
+            <[ addr :=
               {|
                 sl_phys_addr := addr;
                 sl_val := val;
@@ -833,7 +832,7 @@ Definition step_zalloc_aux (addr : u64) (code_loc : option src_loc) (st : ghost_
 Fixpoint step_zalloc_all (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) (offs : u64) (max : nat) : ghost_simplified_model_step_result :=
   match max with
     | O => st
-    | S max => 
+    | S max =>
       let st := step_zalloc_aux (bv_add addr offs) code_loc st in
       step_zalloc_all addr code_loc st (offs b+ (BV 64 1)) max
   end
@@ -851,18 +850,18 @@ Definition step_zalloc (zd : trans_zalloc_data) (code_loc: option src_loc) (st :
 Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match st !! rd.(trd_phys_addr) with
-    | Some loc => if loc.(sl_val) b=? rd.(trd_val) then 
+    | Some loc => if loc.(sl_val) b=? rd.(trd_val) then
       {| gsmsr_log := nil;
         gsmsr_data := (GSMSR_success st) |}  else
         let new_loc := loc <| sl_val := rd.(trd_val) |> in
       {| gsmsr_log :=
-        [ 
-          "Warning: inconsistent read (updating the value and continuing), expected "%string 
-          +s string_of_int loc.(sl_val) 65
+        [
+          "Warning: inconsistent read (updating the value and continuing), expected "%string
+          +s string_of_int loc.(sl_val)
           +s " got "%string
-          +s string_of_int rd.(trd_val) 65
+          +s string_of_int rd.(trd_val)
           +s " at address "%string
-          +s string_of_int rd.(trd_phys_addr) 65
+          +s string_of_int rd.(trd_phys_addr)
         ];
         gsmsr_data := (GSMSR_success (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
     | None =>
@@ -890,7 +889,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
           | Some pte => pte
         end
       in
-      let new_pte := 
+      let new_pte :=
         match pte.(ged_state) with
           | SPS_STATE_PTE_INVALID_UNCLEAN sst =>
             (* DSB has an effect on invalid unclean state only *)
@@ -902,13 +901,13 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
                 | LIS_unguarded =>
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
                 | LIS_dsbed => pte
-                | LIS_dsb_tlbied => 
+                | LIS_dsb_tlbied =>
                   match kind.(DxB_domain) with
-                    | MBReqDomain_InnerShareable => 
+                    | MBReqDomain_InnerShareable =>
                       pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
-                    | _ => pte 
+                    | _ => pte
                   end
-                | LIS_dsb_tlbi_ipa =>  
+                | LIS_dsb_tlbi_ipa =>
                     match kind.(DxB_domain) with
                       | MBReqDomain_InnerShareable =>
                   pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
@@ -926,7 +925,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
   end
 .
 
-Definition step_dsb (tid : thread_identifier) (dk : DxB) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
+Definition step_dsb (tid : thread_identifier) (dk : DxB) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* walk the pgt with dsb_visitor*)
   traverse_all_pgt st (dsb_visitor dk tid) code_loc
 .
@@ -944,7 +943,7 @@ Definition should_perform_tlbi (td : TLBI) (ptc : page_table_context) : bool :=
         | Some pte_desc =>
           match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
             | TLBIOp_VA, Regime_EL2, Shareability_ISH
-            | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH => 
+            | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH =>
               let tlbi_addr := bv_shiftr td.(TLBI_rec).(TLBIRecord_address) 12 in
                 (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level)))) (* Not a leaf *)
                 && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
@@ -964,12 +963,12 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
   in
   let st := ptc.(ptc_state) in
   match pte.(ged_state) with
-    | SPS_STATE_PTE_INVALID_UNCLEAN lis => 
+    | SPS_STATE_PTE_INVALID_UNCLEAN lis =>
       let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
         deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
-      in 
+      in
       match old_desc.(ged_pte_kind) with
-        | PTER_PTE_KIND_TABLE table_data => 
+        | PTER_PTE_KIND_TABLE table_data =>
           (* check if all children are reachable *)
           match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) (BV 64 0) pte.(ged_level) pte.(ged_s2) clean_reachable ptc.(ptc_src_loc) st with
             | {| gsmsr_log := logs; gsmsr_data:= GSMSR_success st|} =>
@@ -1007,7 +1006,7 @@ Definition tlbi_visitor (cpu_id : nat) (td : TLBI) (ptc : page_table_context) : 
                       let new_substate :=
                         (* Depending on the current state and the TLBI kind, we update the sub-state *)
                         match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
-                          | TLBIOp_VMALL, Regime_EL10, Shareability_ISH => 
+                          | TLBIOp_VMALL, Regime_EL10, Shareability_ISH =>
                             match ai.(ai_lis) with
                               | LIS_dsbed | LIS_dsb_tlbi_ipa_dsb => LIS_dsb_tlbied
                               | r => r
@@ -1102,7 +1101,7 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: o
     Mreturn st (* If it is already known to be a root, do nothing, it has already been registered *)
   else
     (* Otherwise, register it *)
-    register_si_root tid st root s2 code_loc 
+    register_si_root tid st root s2 code_loc
 .
 
 (******************************************************************************************)
@@ -1112,7 +1111,7 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (code_loc: o
 Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs : list string) (offs : nat) : ghost_simplified_model_step_result :=
   match offs with
     | O => {|gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
-    | S offs => 
+    | S offs =>
       let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
       match st !! addr with
         | None => set_owner_root phys root st logs offs (* We might want to do something here, but no data… *)
@@ -1133,7 +1132,7 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
 
 
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  match hd.(thd_hint_kind) with 
+  match hd.(thd_hint_kind) with
     | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
       (* AFAIK, this only affects the internal locking discipline of the C simplified model and does nothing on the Coq version *)
     | GHOST_HINT_SET_OWNER_ROOT =>
@@ -1152,11 +1151,11 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_MEM_WRITE wd =>
     step_write trans.(gsmt_thread_identifier) wd trans.(gsmt_src_loc) st
   | GSMDT_TRANS_MEM_ZALLOC zd => step_zalloc zd trans.(gsmt_src_loc) st
-  | GSMDT_TRANS_MEM_READ rd => 
+  | GSMDT_TRANS_MEM_READ rd =>
     step_read trans.(gsmt_thread_identifier) rd trans.(gsmt_src_loc) st
-  | GSMDT_TRANS_BARRIER ( Barrier_DSB dsb_data) => 
+  | GSMDT_TRANS_BARRIER ( Barrier_DSB dsb_data) =>
     step_dsb trans.(gsmt_thread_identifier) dsb_data trans.(gsmt_src_loc) st
-  | GSMDT_TRANS_BARRIER (_) => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *) 
+  | GSMDT_TRANS_BARRIER (_) => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *)
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data trans.(gsmt_src_loc) st
   | GSMDT_TRANS_HINT hint_data => step_hint hint_data trans.(gsmt_src_loc) st
