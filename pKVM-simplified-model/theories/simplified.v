@@ -256,6 +256,7 @@ Inductive ghost_sysreg_kind :=
 Inductive ghost_hint_kind :=
 | GHOST_HINT_SET_ROOT_LOCK
 | GHOST_HINT_SET_OWNER_ROOT
+| GHOST_HINT_RELEASE
 .
 
 Record src_loc := {
@@ -308,6 +309,7 @@ Record ghost_simplified_model_transition := {
 (********               Error reporting datastructures               *********)
 (*****************************************************************************)
 Inductive ghost_simplified_model_error :=
+| GSME_bbm_violation (code_loc : option src_loc)
 | GSME_bbm_valid_valid (code_loc : option src_loc)
 | GSME_bbm_invalid_valid (code_loc : option src_loc)
 | GSME_use_of_uninitialized_pte (code_loc : option src_loc)
@@ -1054,7 +1056,7 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (code_loc: option src
 (*                                  Step MSR                                              *)
 (******************************************************************************************)
 
-Fixpoint si_root_exists (root : u64) (roots : list u64) :=
+Fixpoint si_root_exists (root : u64) (roots : list u64) : bool :=
   match roots with
     | [] => false
     | t :: q => (t b=? root) || (si_root_exists root q)
@@ -1126,6 +1128,82 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
   end
 .
 
+Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_step_result :=
+    match ctx.(ptc_loc) with
+    | None => 
+      {|
+        gsmsr_log := ["Tried to release a table that was not initialised at address: "%string +s string_of_int ctx.(ptc_addr)];
+        gsmsr_data := GSMSR_failure (GSME_not_enough_information ctx.(ptc_src_loc), None)
+      |}
+    | Some location =>
+      match location.(sl_pte) with
+        | None => 
+          {|
+            gsmsr_log := ["Tried to release a table that was not marked as a PTE at address: "%string +s string_of_int ctx.(ptc_addr)];
+            gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte ctx.(ptc_src_loc), None)
+          |}
+        | Some desc =>
+          match desc.(ged_state) with
+            | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
+              {|
+                gsmsr_log := ["Tried to release at PTE with an unclean child"%string];
+                gsmsr_data := GSMSR_failure (GSME_bbm_violation ctx.(ptc_src_loc), None)
+              |}
+            | _ => Mreturn ctx.(ptc_state)
+          end
+      end
+  end
+.
+
+
+Fixpoint remove (x : u64) (l : list u64) : list u64 :=
+  match l with
+    | nil => nil
+    | y::tl => if x b=? y then remove x tl else y::(remove x tl)
+  end
+.
+
+Definition try_unregister_root (addr : u64) (cpu : nat) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result := 
+  match st !! addr with
+    | None => Merror GSME_internal_error
+    | Some loc => 
+      match loc.(sl_pte) with
+        | None => Merror GSME_internal_error
+        | Some pte =>
+          let new_roots :=
+            if pte.(ged_s2) then
+              st.(gsm_roots) <| pr_s2 := remove addr st.(gsm_roots).(pr_s2) |>
+            else
+              st.(gsm_roots) <| pr_s1 := remove addr st.(gsm_roots).(pr_s1) |>
+
+          in
+          let st := st <| gsm_roots := new_roots |> in
+          traverse_si_pgt st (unmark_cb cpu) pte.(ged_s2) src_loc
+      end
+  end
+.
+
+Definition step_release_table (code_loc : option src_loc) (addr : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match st !! addr with
+    | None => 
+      {|
+        gsmsr_log := ["Tried to release a table that was not initialised at address: "%string +s string_of_int addr];
+        gsmsr_data := GSMSR_failure (GSME_not_enough_information code_loc, None)
+      |}
+    | Some location =>
+      match location.(sl_pte) with
+        | None => 
+          {|
+            gsmsr_log := ["Tried to release a table that was not marked as a PTE at address: "%string +s string_of_int addr];
+            gsmsr_data := GSMSR_failure (GSME_use_of_uninitialized_pte code_loc, None)
+          |}
+        | Some desc =>
+          let st := traverse_pgt_from desc.(ged_owner) desc.(ged_ia_region).(range_start) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_s2) step_release_cb code_loc st in
+          
+          st
+      end
+  end
+.
 
 Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match hd.(thd_hint_kind) with
@@ -1135,6 +1213,9 @@ Definition step_hint (hd : trans_hint_data) (code_loc: option src_loc) (st : gho
       (* When ownership is transferred *)
       (* Not sure about the size of the iteration *)
       set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
+    | GHOST_HINT_RELEASE =>
+      (* Can we use the free to detect when pagetables are released? *)
+      step_release_table code_loc hd.(thd_location) st
   end
 .
 
