@@ -210,7 +210,7 @@ let transitions =
          let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
          try result := parse_line (String.sub str !i j) :: !result
          with NotParsed -> ()
-       done;
+                done;
        !result
      with Not_found -> List.rev !result)
 
@@ -261,62 +261,25 @@ let print_transition_list =
   let pp ppf x = pp_transition_data ppf x.gsmt_data in
   Fmt.pr "%a@." (Fmt.Dump.list pp)
 
-let print_location (loc : src_loc option) : unit =
-  match loc with
-  | Some loc ->
-      Printf.printf " in %s:%d in %s\n" loc.sl_file loc.sl_lineno loc.sl_func
-  | None -> ()
-
-let print_result (res : ghost_simplified_model_step_result) : unit =
+let print_result (res : ghost_simplified_model_result) : unit =
   print_endline "Logs:";
-  print_string_list res.gsmsr_log;
-  match res.gsmsr_data with
-  | GSMSR_success s ->
-      print_endline "Success!";
-      print_int_list s.gsm_roots.pr_s2;
-      print_int_list s.gsm_roots.pr_s1
-  | GSMSR_failure f -> (
-      print_endline "Failure…";
-      (match fst f with
-      | GSME_bbm_valid_valid loc ->
-          print_string "GSME_bbm_valid_valid";
-          print_location loc
-      | GSME_bbm_invalid_valid loc ->
-          print_string "GSME_bbm_invalid_valid";
-          print_location loc
-      | GSME_use_of_uninitialized_pte loc ->
-          print_string "GSME_use_of_uninitialized_pte";
-          print_location loc
-      | GSME_inconsistent_read loc ->
-          print_string "GSME_inconsistent_read";
-          print_location loc
-      | GSME_read_uninitialized loc ->
-          print_string "GSME_read_uninitialized";
-          print_location loc
-      | GSME_writing_with_unclean_children loc ->
-          print_string "GSME_writing_with_unclean_children";
-          print_location loc
-      | GSME_double_use_of_pte loc ->
-          print_string "GSME_double_use_of_pte";
-          print_location loc
-      | GSME_unmark_non_pte loc ->
-          print_string "GSME_unmark_non_pte";
-          print_location loc
-      | GSME_root_already_exists loc ->
-          print_string "GSME_root_already_exists";
-          print_location loc
-      | GSME_not_enough_information loc ->
-          print_string "GSME_not_enough_information";
-          print_location loc
-      | GSME_unimplemented loc ->
-          print_string "GSME_unimplemented";
-          print_location loc
-      | GSME_internal_error -> print_string "GSME_internal_error");
-      match snd f with
-      | None -> ()
-      | Some trans ->
-          print_string "Transition that failed:\n\t";
-          pp_transition Format.std_formatter trans)
+  print_string_list res.gsmr_log;
+  match res.gsmr_result with
+  | SMR_success -> print_endline "Success!"
+  | SMR_failure (error_code, trans) ->
+      print_string "Error:\n\t";
+      (match error_code with
+      | GSME_bbm_violation -> print_endline "GSME_bbm_violation"
+      | GSME_not_a_pte -> print_endline "GSME_not_a_pte"
+      | GSME_inconsistent_read -> print_endline "GSME_inconsistent_read"
+      | GSME_uninitialised -> print_endline "GSME_uninitialised"
+      | GSME_unclean_child -> print_endline "GSME_unclean_child"
+      | GSME_double_use_of_pte -> print_endline "GSME_double_use_of_pte"
+      | GSME_root_already_exists -> print_endline "GSME_root_already_exists"
+      | GSME_unimplemented -> print_endline "GSME_unimplemented"
+      | GSME_internal_error -> print_endline "GSME_internal_error");
+      print_string "Transition that failed:\n\t";
+      pp_transition Format.std_formatter trans
 
 let run = all_steps transitions
 let () = print_result run
