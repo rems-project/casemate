@@ -1,8 +1,5 @@
 open Extraction.Coq_executable_sm
 
-(* For operations that are not (yet) modeled by the SM *)
-exception NotParsed
-
 let parse_write (trans : string) : trans_write_data =
   Scanf.sscanf trans "W%s %Li %Li" (fun str addr value ->
       {
@@ -124,7 +121,14 @@ let parse_hint (trans : string) : trans_hint_data =
           thd_location = Big_int_Z.big_int_of_int64 loc;
           thd_value = Big_int_Z.big_int_of_int64 value;
         })
-  with End_of_file -> (* Release table: not yet used *) raise NotParsed
+  with End_of_file ->
+    (* Release table *)
+    Scanf.sscanf trans "HINT GHOST_HINT_RELEASE_TABLE %Li" (fun loc ->
+        {
+          thd_hint_kind = GHOST_HINT_RELEASE;
+          thd_location = Big_int_Z.big_int_of_int64 loc;
+          thd_value = Big_int_Z.big_int_of_int 0 (* Value not used *);
+        })
 
 let parse_zalloc (trans : string) : trans_zalloc_data =
   Scanf.sscanf trans "ZALLOC %Li size: %Li" (fun loc size ->
@@ -208,8 +212,7 @@ let transitions =
          i := 10 + Str.search_forward (Str.regexp "\o033\\[46;37;1m") str !i;
          (* Length of the line *)
          let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
-         try result := parse_line (String.sub str !i j) :: !result
-         with NotParsed -> ()
+         result := parse_line (String.sub str !i j) :: !result
                 done;
        !result
      with Not_found -> List.rev !result)
