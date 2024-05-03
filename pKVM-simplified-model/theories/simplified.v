@@ -25,7 +25,7 @@ Definition u64_ltb (x y : u64) : bool :=
 Infix "b=?" := u64_eqb (at level 70).
 Infix "b<?" := u64_ltb (at level 70).
 Infix "b+" := bv_add (at level 50).
-Infix "b*" := bv_add (at level 40).
+Infix "b*" := bv_mul (at level 40).
 
 Infix "+s" := append (right associativity, at level 60).
 
