@@ -568,7 +568,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
         match mon with
             | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
             | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
-            let addr := bv_add (table_start) ((BV 64 8) b* i) in
+            let addr := table_start b+ ((BV 64 8) b* i) in
             let location := st !! addr in
             let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
               visitor_cb
@@ -587,7 +587,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
             match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
               | GSMSR_failure r  => mon (* If it fails, it fails *)
               | GSMSR_success updated_state =>
-                let location := updated_state !! (bv_add (table_start) (i b* (BV 64 8))) in
+                let location := updated_state !! addr in
                 match location with
                   | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
                   | Some location =>
@@ -619,7 +619,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
 .
 
 Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (src_loc : option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb src_loc (4*512) {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|}
+  traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb src_loc (4*512) (Mreturn st)
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
@@ -708,12 +708,8 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_s
         | Some descriptor =>
           match descriptor.(ged_state) with
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
-              let st := ctx.(ptc_state) in
-              {|gsmsr_log := nil; gsmsr_data := GSMSR_failure (GSME_writing_with_unclean_children (ctx.(ptc_src_loc)), None)|}
-            | _ => {|
-                    gsmsr_log := nil;
-                    gsmsr_data := GSMSR_success ctx.(ptc_state)
-                  |}
+              Merror (GSME_writing_with_unclean_children (ctx.(ptc_src_loc)))
+            | _ => Mreturn ctx.(ptc_state)
           end
       end
     | None =>
