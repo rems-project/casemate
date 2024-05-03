@@ -379,16 +379,6 @@ Definition Mupdate_state (updater : ghost_simplified_memory -> ghost_simplified_
   end
 . 
 
-Definition update_loc_val (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_memory :=
-  (* TODO: implement *)
-  st.
-
-Definition __read_phys (addr : u64) (pre : bool) (st : ghost_simplified_model_state) : u64 :=
-  (* TODO: implement *)
-  addr.
-
-Definition read_phys_pre (addr : u64) (st : ghost_simplified_model_state) : u64 :=
-  __read_phys addr true st.
 
 
 (*****************************************************************************)
@@ -494,6 +484,26 @@ Definition align_4k (addr : u64) : u64 :=
   bv_and addr (bv_not (BV 64 1023))
 .
 
+Definition is_zallocd (st : ghost_simplified_memory) (addr : u64) : bool :=
+  match st.(gsm_zalloc) !! (bv_shiftr addr (BV 64 12)) with
+    | Some () => true
+    | None => false
+  end
+.
+
+Definition get_location (st : ghost_simplified_memory) (addr : u64) : option sm_location :=
+  match st.(gsm_memory) !! addr with
+    | Some loc => Some loc
+    | None =>
+      match is_zallocd st addr with
+        | true => Some {| sl_phys_addr := addr; sl_val := BV 64 0; sl_pte := None; |}
+        | false => None
+      end
+  end
+.
+
+Infix "!!" := get_location (at level 20) .
+
 
 (******************************************************************************************)
 (*                             Page table traversal                                       *)
@@ -558,7 +568,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
         match mon with
             | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
             | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
-            let location := st.(gsm_memory) !! (bv_add (table_start) ((BV 64 8) b* i)) in
+            let location := st !! (bv_add (table_start) ((BV 64 8) b* i)) in
             let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
               visitor_cb
               {|
@@ -576,7 +586,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
             match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
               | GSMSR_failure r  => mon (* If it fails, it fails *)
               | GSMSR_success updated_state =>
-                let location := updated_state.(gsm_memory) !! (bv_add (table_start) (i b* (BV 64 8))) in
+                let location := updated_state !! (bv_add (table_start) (i b* (BV 64 8))) in
                 match location with
                   | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
                   | Some location =>
@@ -587,16 +597,19 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
                           deconstruct_pte 0 partial_ia location.(sl_val) level root s2
                       end
                     in
-                    match exploded_desc.(ged_pte_kind) with
-                      | PTER_PTE_KIND_TABLE table_data =>
-                        (* If it is a page table descriptor, we we traverse the sub-page table *)
-                        let rec_table_start := table_data.(next_level_table_addr) in
-                        let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size)  in
-                        (* recursive call: explore sub-pgt *)
-                        let st := traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc max_call_number mon in
-                        traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc (bv_add i (BV 64 1))  max_call_number mon
-                      | _ => mon
-                    end
+                    let mon :=
+                      (* if it is a valid descriptor, recurisvely call pgt_traversal_from, otherwise, continue *)
+                      match exploded_desc.(ged_pte_kind) with
+                        | PTER_PTE_KIND_TABLE table_data =>
+                          (* If it is a page table descriptor, we we traverse the sub-page table *)
+                          let rec_table_start := table_data.(next_level_table_addr) in
+                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size)  in
+                          (* recursive call: explore sub-pgt *)
+                          traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb src_loc max_call_number mon
+                        | _ => mon
+                      end
+                    in
+                    traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb src_loc (bv_add i (BV 64 1))  max_call_number mon
                 end
             end
         end
@@ -758,7 +771,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
-  match st.(gsm_memory) !! addr with
+  match st !! addr with
     | Some (loc) =>
         match loc.(sl_pte) with
           | Some desc =>
@@ -798,29 +811,22 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (code_lo
 (*                             Code for zalloc                                            *)
 (******************************************************************************************)
 
-Definition is_zallocd (st : ghost_simplified_memory) (addr : u64) : bool :=
-  match st.(gsm_zalloc) !! (bv_shiftr addr (BV 64 12)) with
-    | Some () => true
-    | None => false
-  end
-.
-
 Definition step_zalloc_aux (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   let update s := {| gsmsr_log := nil; gsmsr_data := GSMSR_success (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
   Mupdate_state update st
 .
 
-Fixpoint step_zalloc_all (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) (offs : nat) : ghost_simplified_model_step_result :=
-  match offs with
+Fixpoint step_zalloc_all (addr : u64) (code_loc : option src_loc) (st : ghost_simplified_model_step_result) (offs : u64) (max : nat) : ghost_simplified_model_step_result :=
+  match max with
     | O => st
-    | S offs => 
-      let st := step_zalloc_aux (bv_add_Z addr (Z_of_nat offs)) code_loc st in
-      step_zalloc_all addr code_loc st offs
+    | S max => 
+      let st := step_zalloc_aux (bv_add addr offs) code_loc st in
+      step_zalloc_all addr code_loc st (offs b+ (BV 64 1)) max
   end
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  step_zalloc_all (bv_shiftl zd.(tzd_addr) (BV 64 12)) code_loc {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (Z.to_nat (bv_unsigned zd.(tzd_size)))
+  step_zalloc_all (bv_shiftr zd.(tzd_addr) (BV 64 12)) code_loc {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (BV 64 0) (Z.to_nat (bv_unsigned zd.(tzd_size)))
 .
 
 
@@ -830,7 +836,7 @@ Definition step_zalloc (zd : trans_zalloc_data) (code_loc: option src_loc) (st :
 
 Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc: option src_loc) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
-  match st.(gsm_memory) !! rd.(trd_phys_addr) with
+  match st !! rd.(trd_phys_addr) with
     | Some loc => if loc.(sl_val) b=? rd.(trd_val) then 
       {| gsmsr_log := nil;
         gsmsr_data := (GSMSR_success st) |}  else
@@ -846,24 +852,12 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (code_loc:
         ];
         gsmsr_data := (GSMSR_success (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
     | None =>
-      if is_zallocd st rd.(trd_phys_addr) then
-        (* If it has been zalloced, try and read again but this time with location initialised at 0 *)
         let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
         let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
         {| gsmsr_log :=
-              (if rd.(trd_val) b=? (BV 64 0) then
-                []
-              else
-                ["Non-zero read of a zalloc'd but uninitialized location value: "%string +s (string_of_int rd.(trd_val) 65)
-              +s " Address: "
-              +s string_of_int rd.(trd_phys_addr) 65]);
-          gsmsr_data := GSMSR_success st |}
-      else
-        let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
-        let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
-        {| gsmsr_log :=
-            ["Read of non-zalloc'd memory, initializing anyways"%string];
-          gsmsr_data := GSMSR_success st |}
+            ["Warning: read of non-zalloc'd memory, initializing anyways and continuing"%string];
+            gsmsr_data := GSMSR_success st
+        |}
   end
 .
 
@@ -1106,7 +1100,7 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
     | O => {|gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | S offs => 
       let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
-      match st.(gsm_memory) !! addr with
+      match st !! addr with
         | None => set_owner_root phys root st logs offs (* We might want to do something here, but no data… *)
         | Some location =>
           let new_pte :=
