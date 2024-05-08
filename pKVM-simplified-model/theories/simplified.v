@@ -33,8 +33,6 @@ Definition phys_addr_t := u64.
 
 Definition sm_owner_t := u64.
 
-Definition thread_identifier := nat.
-
 Definition n512 := 512.
 
 Definition b0 := BV 64 0.
@@ -48,7 +46,13 @@ Definition b63 := BV 64 63.
 Definition b512 := BV 64 512.
 Definition b1023 := BV 64 1023.
 
-
+(*******************)
+(* Numerical types *)
+Inductive thread_identifier :=
+| Thread_identifier : nat -> thread_identifier
+.
+Global Instance loc_eq_decision : EqDecision thread_identifier.
+  Proof. solve_decision. Qed.
 
 (*****************************************************************************)
 (********                Automaton definition                        *********)
@@ -531,7 +535,7 @@ Infix "!!" := get_location (at level 20) .
 (*                             Page table traversal                                       *)
 (******************************************************************************************)
 
-Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
+Definition initial_state (partial_ai desc level : u64) (cpu_id : thread_identifier) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
       SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
@@ -540,7 +544,7 @@ Definition initial_state (partial_ai desc level : u64) (cpu_id : nat) (pte_kind 
   end
 .
 
-Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2 : bool) : ghost_exploded_descriptor :=
+Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level root : u64) (s2 : bool) : ghost_exploded_descriptor :=
   let pte_kind :=
     if is_desc_valid desc then
       if is_desc_table desc level then
@@ -618,7 +622,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
                       match location.(sl_pte) with
                         | Some pte => pte
                         | None => (* 0 is a placeholder, we do not use it afterwards *)
-                          deconstruct_pte 0 partial_ia location.(sl_val) level root s2
+                          deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root s2
                       end
                     in
                     let mon :=
@@ -680,7 +684,7 @@ Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_tab
 (*******************************************************************)
 (* Some generic walker functions to mark and unmark entries as PTE *)
 
-Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+Definition mark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
@@ -700,7 +704,7 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
   end
 .
 
-Definition unmark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+Definition unmark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
@@ -894,7 +898,7 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghos
 (******************************************************************************************)
 (*                                      DSB                                               *)
 (******************************************************************************************)
-Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_model_step_result :=
+Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
       (* Question: should we ignore it and return the state? *)
@@ -910,7 +914,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : nat) (ctx : page_table_context) : 
         match pte.(ged_state) with
           | SPS_STATE_PTE_INVALID_UNCLEAN sst =>
             (* DSB has an effect on invalid unclean state only *)
-            if negb (sst.(ai_invalidator_tid) =? cpu_id) then
+            if negb (bool_decide (sst.(ai_invalidator_tid) = cpu_id)) then
               pte (* If it is another CPU that did the invalidation, do noting*)
             else
               (* Otherwise, update the state invalid unclean sub-automaton *)
@@ -971,7 +975,7 @@ Definition should_perform_tlbi (td : TLBI) (ptc : page_table_context) : bool :=
   end
 .
 
-Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_step_result :=
+Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_step_result :=
   let pte := (* build the PTE if it is not done already *)
     match loc.(sl_pte) with
       | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
@@ -1002,7 +1006,7 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
   end
 .
 
-Definition tlbi_visitor (cpu_id : nat) (td : TLBI) (ptc : page_table_context) : ghost_simplified_model_step_result :=
+Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI) (ptc : page_table_context) : ghost_simplified_model_step_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
       {| gsmsr_log := nil; gsmsr_data := GSMSR_failure GSME_uninitialised |}
@@ -1187,7 +1191,7 @@ Fixpoint remove (x : u64) (l : list u64) : list u64 :=
   end
 .
 
-Definition try_unregister_root (addr : u64) (cpu : nat) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition try_unregister_root (addr : u64) (cpu : thread_identifier) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match st !! addr with
     | None => Merror GSME_internal_error
     | Some loc =>
