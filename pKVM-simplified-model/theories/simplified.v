@@ -31,8 +31,6 @@ Infix "+s" := append (right associativity, at level 60).
 
 Definition phys_addr_t := u64.
 
-Definition sm_owner_t := u64.
-
 Definition n512 := 512.
 
 Definition b0 := BV 64 0.
@@ -51,8 +49,20 @@ Definition b1023 := BV 64 1023.
 Inductive thread_identifier :=
 | Thread_identifier : nat -> thread_identifier
 .
-Global Instance loc_eq_decision : EqDecision thread_identifier.
+Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
+
+Inductive owner_t :=
+| Root : u64 -> owner_t
+.
+Global Instance owner_t_eq_decision : EqDecision owner_t.
+  Proof. solve_decision. Qed.
+
+Definition root_val (root : owner_t) : u64 :=
+  match root with
+    | Root r => r
+  end
+.
 
 (*****************************************************************************)
 (********                Automaton definition                        *********)
@@ -121,7 +131,7 @@ Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
   ged_pte_kind : pte_rec;
   ged_state : sm_pte_state;
   (* address of the root of the PTE *)
-  ged_owner : sm_owner_t;
+  ged_owner : owner_t;
 }.
 #[export] Instance eta_ghost_exploded_descriptor : Settable _ := settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_s2; ged_pte_kind; ged_state; ged_owner>.
 
@@ -138,7 +148,7 @@ Record sm_location := mk_sm_location {
 (* Do we need locks? *)
 Record owner_locks := {
   ol_len : u64;
-  ol_owner_ids : list sm_owner_t;
+  ol_owner_ids : list owner_t;
   ol_locks : unit (* TODO??? *);
 }.
 
@@ -150,8 +160,8 @@ Definition ghost_simplified_model_zallocd := gmap u64 unit.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
-  pr_s1 : list u64;
-  pr_s2 : list u64;
+  pr_s1 : list owner_t;
+  pr_s2 : list owner_t;
 }.
 #[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
 
@@ -301,7 +311,7 @@ Record trans_msr_data := {
 Record trans_hint_data := {
   thd_hint_kind : ghost_hint_kind;
   thd_location : u64;
-  thd_value : u64;
+  thd_value : owner_t;
 }.
 
 Inductive ghost_simplified_model_transition_data :=
@@ -365,7 +375,7 @@ Record page_table_context := {
   ptc_loc: option sm_location;
   ptc_partial_ia: u64;
   ptc_addr: u64;
-  ptc_root: u64;
+  ptc_root: owner_t;
   ptc_level: u64;
   ptc_s2: bool;
 }.
@@ -544,7 +554,7 @@ Definition initial_state (partial_ai desc level : u64) (cpu_id : thread_identifi
   end
 .
 
-Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level root : u64) (s2 : bool) : ghost_exploded_descriptor :=
+Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level : u64) (root : owner_t) (s2 : bool) : ghost_exploded_descriptor :=
   let pte_kind :=
     if is_desc_valid desc then
       if is_desc_table desc level then
@@ -576,7 +586,7 @@ Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level r
   |}
 .
 
-Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
    | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
@@ -584,7 +594,7 @@ Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : b
    {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure GSME_internal_error |}
   end
   (* This is the for loop that iterates over all the entries of a page table *)
-with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
     | S max_call_number =>
       if i b=? b512 then
@@ -645,19 +655,20 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
   end
 .
 
-Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition traverse_pgt_from (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*n512) (Mreturn st)
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list u64) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list owner_t) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
       match st.(gsmsr_data) with
         | GSMSR_failure _ => st
         | _ =>
-          let st := Mupdate_state (traverse_pgt_from r r b0 b0 s2 visitor_cb) st in
+          let base := match r with Root a => a end in
+          let st := Mupdate_state (traverse_pgt_from r base b0 b0 s2 visitor_cb) st in
           traverse_si_pgt_aux visitor_cb s2 q st
       end
     | [] => st
@@ -906,7 +917,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
     | Some location =>
       let pte :=
         match location.(sl_pte) with
-          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2)
+          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_s2)
           | Some pte => pte
         end
       in
@@ -1079,19 +1090,19 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (st : ghost_simplifie
 (*                                  Step MSR                                              *)
 (******************************************************************************************)
 
-Fixpoint si_root_exists (root : u64) (roots : list u64) : bool :=
+Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
   match roots with
     | [] => false
-    | t :: q => (t b=? root) || (si_root_exists root q)
+    | t :: q => (bool_decide (t = root)) || (si_root_exists root q)
   end
 .
 
-Definition extract_si_root (val : u64) (s2 : bool) : u64 :=
+Definition extract_si_root (val : u64) (s2 : bool) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  bv_and val (GENMASK (b47) (b1))
+  Root (bv_and val (GENMASK (b47) (b1)))
 .
 
-Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : u64) (s2 : bool) : ghost_simplified_model_step_result :=
+Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (s2 : bool) : ghost_simplified_model_step_result :=
   let other_root_levels := (if s2 then pr_s1 else pr_s2) st.(gsm_roots) in
   (* Check that the root does not already exist in the other root list*)
   if si_root_exists root other_root_levels then
@@ -1106,7 +1117,9 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
-    traverse_pgt_from root root b0 b0 s2 (mark_cb tid) new_st
+    match root with
+      |Root r => traverse_pgt_from root r b0 b0 s2 (mark_cb tid) new_st
+    end
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
@@ -1129,7 +1142,7 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_
 (*                                  Step hint                                             *)
 (******************************************************************************************)
 
-Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs : list string) (offs : nat) : ghost_simplified_model_step_result :=
+Fixpoint set_owner_root (phys : u64) (root : owner_t) (st : ghost_simplified_memory) (logs : list string) (offs : nat) : ghost_simplified_model_step_result :=
   match offs with
     | O => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | S offs =>
@@ -1184,15 +1197,15 @@ Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_s
 .
 
 
-Fixpoint remove (x : u64) (l : list u64) : list u64 :=
+Fixpoint remove (x : owner_t) (l : list owner_t) : list owner_t :=
   match l with
     | nil => nil
-    | y::tl => if x b=? y then remove x tl else y::(remove x tl)
+    | y::tl => if bool_decide (x = y) then remove x tl else y::(remove x tl)
   end
 .
 
-Definition try_unregister_root (addr : u64) (cpu : thread_identifier) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  match st !! addr with
+Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match st !! root_val addr with
     | None => Merror GSME_internal_error
     | Some loc =>
       match loc.(sl_pte) with
