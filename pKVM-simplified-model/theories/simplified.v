@@ -672,7 +672,7 @@ Definition mark_cb (cpu_id : nat) (ctx : page_table_context) : ghost_simplified_
         | Some _ =>
           {| gsmsr_log := ["Tried to mark a PTE"%string]; gsmsr_data := GSMSR_failure GSME_double_use_of_pte |}
         | None =>
-          let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_s2) in
+          let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_s2) in
           let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
           let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
           Mreturn new_state
@@ -1085,7 +1085,7 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
-    traverse_si_pgt new_st (mark_cb tid) s2
+    traverse_pgt_from root root (BV 64 0) (BV 64 0) s2 (mark_cb tid) new_st
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
