@@ -35,6 +35,19 @@ Definition sm_owner_t := u64.
 
 Definition thread_identifier := nat.
 
+Definition n512 := 512.
+
+Definition b0 := BV 64 0.
+Definition b1 := BV 64 1.
+Definition b2 := BV 64 2.
+Definition b8 := BV 64 8.
+Definition b12 := BV 64 12.
+Definition b16 := BV 64 16.
+Definition b47 := BV 64 47.
+Definition b63 := BV 64 63.
+Definition b512 := BV 64 512.
+Definition b1023 := BV 64 1023.
+
 
 
 (*****************************************************************************)
@@ -400,8 +413,8 @@ Fixpoint string_of_int_aux (s : u64) (max : nat) : string :=
   | S n =>
     match s with
       | BV _ 0 => ""%string
-      | x =>  (string_of_int_aux (bv_divu x (BV 64 16)) n) ++ (
-        match bv_modu x (BV 64 16) with
+      | x =>  (string_of_int_aux (bv_divu x b16) n) ++ (
+        match bv_modu x b16 with
           | BV _ 0 => "0"%string
           | BV _ 1 => "1"%string
           | BV _ 2 => "2"%string
@@ -438,18 +451,18 @@ Definition string_of_int (s : u64) : string :=
 (********                   Code for bit-pattern                     *********)
 (*****************************************************************************)
 
-Definition PTE_BIT_VALID : u64 := BV 64 1. (* binary: 0001 *)
+Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
 
-Definition PTE_BIT_TABLE : u64 := BV 64 2. (* binary: 0010 *)
+Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
 Definition GENMASK (h l : u64) : u64 :=
-bv_and (bv_sub (bv_not (BV 64 0)) ((bv_shiftl (BV 64 1) l b+ BV 64 1)))
-(bv_shiftr (((bv_not (BV 64 0)))) (bv_sub (BV 64 63) h)).
+bv_and (bv_sub (bv_not b0) ((bv_shiftl b1 l) b+ b1))
+(bv_shiftr (((bv_not b0))) (bv_sub b63 h)).
 (**  0......0  1....1  0....0
   *  i zeros          j zeros
   *)
 
-Definition PTE_BITS_ADDRESS : u64  := GENMASK (BV 64 47) (BV 64 12).
+Definition PTE_BITS_ADDRESS : u64  := GENMASK b47 b12.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
   ((bv_and descriptor PTE_BIT_VALID) b=? PTE_BIT_VALID)
@@ -459,24 +472,24 @@ Definition OA_shift (level : u64) : u64 :=
 match level with
   | BV _ 1 => BV 64 (12 + 9 + 9)
   | BV _ 2 => BV 64 (12 + 9 )
-  | BV _ 3 => BV 64 (12)
-  | _ => BV 64 0  (* Should not happen*)
+  | BV _ 3 => b12
+  | _ => b0  (* Should not happen*)
 end
 .
 
 Definition map_size (level : u64) : u64 :=
 match level with
-  | BV _ 0 => bv_shiftl (BV 64 512) (BV 64 30) (* 512 Go *)
-  | BV _ 1 => bv_shiftl (BV 64 1)   (BV 64 30) (* 1 Go *)
-  | BV _ 2 => bv_shiftl (BV 64 2)   (BV 64 20) (* 2 Mo *)
+  | BV _ 0 => bv_shiftl b512 (BV 64 30) (* 512 Go *)
+  | BV _ 1 => bv_shiftl (b1)   (BV 64 30) (* 1 Go *)
+  | BV _ 2 => bv_shiftl (b12)   (BV 64 20) (* 2 Mo *)
   | BV _ 3 => bv_shiftl (BV 64 4)   (BV 64 10) (* 4 Ko *)
-  | _ => BV 64 0  (* Should not happen*)
+  | _ => b0  (* Should not happen*)
 end
 .
 
 Definition is_desc_table (descriptor level : u64) :=
 (* There is an inequality to make termination easier *)
-  if BV 64 2 b<? level then
+  if b2 b<? level then
     false
   else
     ((bv_and descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE)
@@ -486,15 +499,15 @@ Definition extract_table_address (pte_val : u64) : u64 :=
 bv_and pte_val PTE_BITS_ADDRESS.
 
 Definition extract_output_address (pte_val level : u64) :=
-bv_and pte_val (GENMASK (BV 64 47) (OA_shift level))
+bv_and pte_val (GENMASK b47 (OA_shift level))
 .
 
 Definition align_4k (addr : u64) : u64 :=
-  bv_and addr (bv_not (BV 64 1023))
+  bv_and addr (bv_not b1023)
 .
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : u64) : bool :=
-  match st.(gsm_zalloc) !! (bv_shiftr addr (BV 64 12)) with
+  match st.(gsm_zalloc) !! (bv_shiftr addr b12) with
     | Some () => true
     | None => false
   end
@@ -505,7 +518,7 @@ Definition get_location (st : ghost_simplified_memory) (addr : u64) : option sm_
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with
-        | true => Some {| sl_phys_addr := addr; sl_val := BV 64 0; sl_pte := None; |}
+        | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; |}
         | false => None
       end
   end
@@ -561,7 +574,7 @@ Definition deconstruct_pte (cpu_id : nat) (partial_ia desc level root : u64) (s2
 
 Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
-   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb (BV 64 0) max_call_number mon
+   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
             the number of recursive calls is bounded. *)
    {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_aux has been reached, stopping"%string]; gsmsr_data := GSMSR_failure GSME_internal_error |}
@@ -570,14 +583,14 @@ Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : b
 with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
     | S max_call_number =>
-      if i b=? (BV 64 512) then
+      if i b=? b512 then
         (* We are done with this page table *)
         mon
       else
         match mon with
           | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
           | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
-            let addr := table_start b+ ((BV 64 8) b* i) in
+            let addr := table_start b+ (b8 b* i) in
             let location := st !! addr in
             let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
               visitor_cb
@@ -591,6 +604,8 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
                 ptc_s2 := s2;
               |}
             in
+            (* let mon := Mlog ("table start: "%string +s string_of_int table_start) mon in
+            let mon := Mlog ("Visiting cell at addr: "%string +s string_of_int addr) mon in *)
             let mon := Mupdate_state visitor_state_updater mon in
             match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
               | GSMSR_failure r  => mon (* If it fails, it fails *)
@@ -618,7 +633,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
                         | _ => mon
                       end
                     in
-                    traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb (bv_add i (BV 64 1))  max_call_number mon
+                    traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb (bv_add i b1)  max_call_number mon
                 end
             end
         end
@@ -627,7 +642,7 @@ with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool
 .
 
 Definition traverse_pgt_from (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*512) (Mreturn st)
+  traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*n512) (Mreturn st)
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
@@ -638,7 +653,7 @@ Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplifi
       match st.(gsmsr_data) with
         | GSMSR_failure _ => st
         | _ =>
-          let st := Mupdate_state (traverse_pgt_from r r (BV 64 0) (BV 64 0) s2 visitor_cb) st in
+          let st := Mupdate_state (traverse_pgt_from r r b0 b0 s2 visitor_cb) st in
           traverse_si_pgt_aux visitor_cb s2 q st
       end
     | [] => st
@@ -735,10 +750,10 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
       if is_desc_valid val then
         (* Tests if the page table is well formed *)
         let
-          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
+          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) b0 descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
         in
         (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
-        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) (BV 64 0) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
+        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) b0 descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
       else
         (* if the descriptor is invalid, do nothing *)
         Mreturn st
@@ -836,12 +851,12 @@ Fixpoint step_zalloc_all (addr : u64) (st : ghost_simplified_model_step_result) 
     | O => st
     | S max =>
       let st := step_zalloc_aux (bv_add addr offs) st in
-      step_zalloc_all addr st (offs b+ (BV 64 1)) max
+      step_zalloc_all addr st (offs b+ (b1)) max
   end
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  step_zalloc_all (bv_shiftr zd.(tzd_addr) (BV 64 12)) {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (BV 64 0) (Z.to_nat (bv_unsigned zd.(tzd_size)))
+  step_zalloc_all (bv_shiftr zd.(tzd_addr) (b12)) {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} b0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
 .
 
 
@@ -972,10 +987,10 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : nat) (loc : sm_locatio
       match old_desc.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE table_data =>
           (* check if all children are reachable *)
-          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) (BV 64 0) pte.(ged_level) pte.(ged_s2) clean_reachable st with
+          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) b0 pte.(ged_level) pte.(ged_s2) clean_reachable st with
             | {| gsmsr_log := logs; gsmsr_data:= GSMSR_success st|} =>
               (* If all children are clean, we can unmark them as PTE *)
-              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) (BV 64 0) old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) st with
+              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) b0 old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) st with
                 | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log := concat [logs1; logs]; gsmsr_data := st |}
               end
             | e => e
@@ -1069,7 +1084,7 @@ Fixpoint si_root_exists (root : u64) (roots : list u64) : bool :=
 
 Definition extract_si_root (val : u64) (s2 : bool) : u64 :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  bv_and val (GENMASK (BV 64 47) (BV 64 1))
+  bv_and val (GENMASK (b47) (b1))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : u64) (s2 : bool) : ghost_simplified_model_step_result :=
@@ -1087,7 +1102,7 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
-    traverse_pgt_from root root (BV 64 0) (BV 64 0) s2 (mark_cb tid) new_st
+    traverse_pgt_from root root b0 b0 s2 (mark_cb tid) new_st
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
@@ -1220,7 +1235,7 @@ Definition step_hint (hd : trans_hint_data) (st : ghost_simplified_memory) : gho
     | GHOST_HINT_SET_OWNER_ROOT =>
       (* When ownership is transferred *)
       (* Not sure about the size of the iteration *)
-      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
+      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] n512
     | GHOST_HINT_RELEASE =>
       (* Can we use the free to detect when pagetables are released? *)
       step_release_table hd.(thd_location) st
