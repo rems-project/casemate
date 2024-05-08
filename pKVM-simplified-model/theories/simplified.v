@@ -1116,7 +1116,12 @@ Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs :
     | S offs =>
       let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
       match st !! addr with
-        | None => set_owner_root phys root st logs offs (* We might want to do something here, but no data… *)
+        | None =>
+          {|
+            gsmsr_log :=
+              ("Tried to mark an owner root but one of the locations where uninitialized at: "%string +s string_of_int addr) :: logs;
+              gsmsr_data := GSMSR_failure GSME_uninitialised
+          |}
         | Some location =>
           let new_pte :=
             match location.(sl_pte) with
