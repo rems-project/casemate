@@ -213,7 +213,7 @@ let transitions =
          (* Length of the line *)
          let j = Str.search_forward (Str.regexp "\o033\\[0m") str !i - !i in
          result := parse_line (String.sub str !i j) :: !result
-                done;
+       done;
        !result
      with Not_found -> List.rev !result)
 
@@ -264,25 +264,30 @@ let print_transition_list =
   let pp ppf x = pp_transition_data ppf x.gsmt_data in
   Fmt.pr "%a@." (Fmt.Dump.list pp)
 
-let print_result (res : ghost_simplified_model_result) : unit =
-  print_endline "Logs:";
-  print_string_list res.gsmr_log;
-  match res.gsmr_result with
-  | SMR_success -> print_endline "Success!"
+let xx = Format.std_formatter
+
+type 'a printer = Format.formatter -> 'a -> unit
+
+let pp_error ppf = function
+  | GSME_bbm_violation -> Fmt.pf ppf "GSME_bbm_violation"
+  | GSME_not_a_pte -> Fmt.pf ppf "GSME_not_a_pte"
+  | GSME_inconsistent_read -> Fmt.pf ppf "GSME_inconsistent_read"
+  | GSME_uninitialised -> Fmt.pf ppf "GSME_uninitialised"
+  | GSME_unclean_child -> Fmt.pf ppf "GSME_unclean_child"
+  | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
+  | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
+  | GSME_unimplemented -> Fmt.pf ppf "GSME_unimplemented"
+  | GSME_internal_error -> Fmt.pf ppf "GSME_internal_error"
+
+let pp_result ppf = function
+  | SMR_success -> Fmt.pf ppf "Success!"
   | SMR_failure (error_code, trans) ->
-      print_string "Error:\n\t";
-      (match error_code with
-      | GSME_bbm_violation -> print_endline "GSME_bbm_violation"
-      | GSME_not_a_pte -> print_endline "GSME_not_a_pte"
-      | GSME_inconsistent_read -> print_endline "GSME_inconsistent_read"
-      | GSME_uninitialised -> print_endline "GSME_uninitialised"
-      | GSME_unclean_child -> print_endline "GSME_unclean_child"
-      | GSME_double_use_of_pte -> print_endline "GSME_double_use_of_pte"
-      | GSME_root_already_exists -> print_endline "GSME_root_already_exists"
-      | GSME_unimplemented -> print_endline "GSME_unimplemented"
-      | GSME_internal_error -> print_endline "GSME_internal_error");
-      print_string "Transition that failed:\n\t";
-      pp_transition Format.std_formatter trans
+      Fmt.pf ppf "Error:\n\t%a Transition that failed:\n\t%a" pp_error
+        error_code pp_transition trans
+
+let pp_model_result ppf res =
+  Fmt.pf ppf "logs:%a \nresult:%a\n" (Fmt.Dump.list Fmt.string) res.gsmr_log
+    pp_result res.gsmr_result
 
 let run = all_steps transitions
-let () = print_result run
+let () = pp_model_result Fmt.stdout run
