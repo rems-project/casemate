@@ -570,58 +570,58 @@ Fixpoint traverse_pgt_from_aux (root table_start partial_ia level : u64) (s2 : b
 with traverse_pgt_from_offs (root table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
     | S max_call_number =>
-        if i b=? (BV 64 512) then
-          (* We are done with this page table *)
-          mon
-        else
+      if i b=? (BV 64 512) then
+        (* We are done with this page table *)
+        mon
+      else
         match mon with
-            | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
-            | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
+          | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
+          | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
             let addr := table_start b+ ((BV 64 8) b* i) in
             let location := st !! addr in
-                    let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
-                      visitor_cb
-                      {|
-                        ptc_state := s;
-                        ptc_loc := location;
-                        ptc_addr := addr;
-                        ptc_partial_ia := partial_ia;
-                        ptc_root := root;
-                        ptc_level:= level;
-                        ptc_s2 := s2;
-                      |}
+            let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
+              visitor_cb
+              {|
+                ptc_state := s;
+                ptc_loc := location;
+                ptc_addr := addr;
+                ptc_partial_ia := partial_ia;
+                ptc_root := root;
+                ptc_level:= level;
+                ptc_s2 := s2;
+              |}
+            in
+            let mon := Mupdate_state visitor_state_updater mon in
+            match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
+              | GSMSR_failure r  => mon (* If it fails, it fails *)
+              | GSMSR_success updated_state =>
+                let location := updated_state !! addr in
+                match location with
+                  | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
+                  | Some location =>
+                    let exploded_desc :=
+                      match location.(sl_pte) with
+                        | Some pte => pte
+                        | None => (* 0 is a placeholder, we do not use it afterwards *)
+                          deconstruct_pte 0 partial_ia location.(sl_val) level root s2
+                      end
                     in
-                    let mon := Mupdate_state visitor_state_updater mon in
-                    match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
-                      | GSMSR_failure r  => mon (* If it fails, it fails *)
-                      | GSMSR_success updated_state =>
-                        let location := updated_state !! addr in
-                        match location with
-                          | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
-                          | Some location =>
-                            let exploded_desc :=
-                              match location.(sl_pte) with
-                                | Some pte => pte
-                                | None => (* 0 is a placeholder, we do not use it afterwards *)
-                                  deconstruct_pte 0 partial_ia location.(sl_val) level root s2
-                              end
-                            in
                     let mon :=
-                            (* if it is a valid descriptor, recurisvely call pgt_traversal_from, otherwise, continue *)
-                            match exploded_desc.(ged_pte_kind) with
-                              | PTER_PTE_KIND_TABLE table_data =>
-                                (* If it is a page table descriptor, we we traverse the sub-page table *)
-                                let rec_table_start := table_data.(next_level_table_addr) in
-                                let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size)  in
-                                (* recursive call: explore sub-pgt *)
-                          traverse_pgt_from_aux root rec_table_start next_partial_ia (level) s2 visitor_cb max_call_number mon
-                              | _ => mon
-                            end
+                      (* if it is a valid descriptor, recurisvely call pgt_traversal_from, otherwise, continue *)
+                      match exploded_desc.(ged_pte_kind) with
+                        | PTER_PTE_KIND_TABLE table_data =>
+                          (* If it is a page table descriptor, we we traverse the sub-page table *)
+                          let rec_table_start := table_data.(next_level_table_addr) in
+                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size) in
+                          (* recursive call: explore sub-pgt *)
+                          traverse_pgt_from_aux root rec_table_start next_partial_ia level s2 visitor_cb max_call_number mon
+                        | _ => mon
+                      end
                     in
                     traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb (bv_add i (BV 64 1))  max_call_number mon
-                        end
-                    end
-              end
+                end
+            end
+        end
     | O => {| gsmsr_log := ["The maximum number of recursive calls of traverse_pgt_from_offs has been reached, stopping"%string]; gsmsr_data := GSMSR_failure GSME_internal_error |}
   end
 .
@@ -725,7 +725,7 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_s
 .
 
 Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-(* If the location is a PTE table, tests if its children are clean *)
+  (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror GSME_internal_error
@@ -786,25 +786,27 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
   let addr := wd.(twd_phys_addr) in
   match st !! addr with
     | Some (loc) =>
-        match loc.(sl_pte) with
-          | Some desc =>
-            (* If we write to a page table, depending on its state, we update them  *)
-            match desc.(ged_state) with
+      match loc.(sl_pte) with
+        | Some desc =>
+          (* If we write to a page table, depending on its state, we update them  *)
+          match desc.(ged_state) with
             | SPS_STATE_PTE_VALID av =>
                 (step_write_on_valid tid wmo loc val st)
             | SPS_STATE_PTE_INVALID_CLEAN av =>
                 (step_write_on_invalid tid wmo loc val st)
             | SPS_STATE_PTE_INVALID_UNCLEAN av =>
                 (step_write_on_invalid_unclean tid wmo loc val st)
-            end
-          | None => (* If it is not a pte, we just update the value *)
-            let new_loc := loc <| sl_val := val |> in
-            {| gsmsr_log := nil;
-                gsmsr_data := GSMSR_success (
-                  st <| gsm_memory := <[ addr := new_loc ]> st.(gsm_memory) |>
-              )
-            |}
-        end
+          end
+        | None => (* If it is not a pte, we just update the value *)
+          let new_loc := loc <| sl_val := val |> in
+          {|
+            gsmsr_log := nil;
+            gsmsr_data :=
+              GSMSR_success (
+                st <| gsm_memory := <[ addr := new_loc ]> st.(gsm_memory) |>
+              );
+          |}
+      end
     | None =>
       (* If the location has not been written to, it is not a pgt, just save its value *)
       {| gsmsr_log := ["Warning: write on non-zalloc'd location: "%string +s string_of_int addr];
@@ -1110,7 +1112,7 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_
 
 Fixpoint set_owner_root (phys root : u64) (st : ghost_simplified_memory) (logs : list string) (offs : nat) : ghost_simplified_model_step_result :=
   match offs with
-    | O => {|gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+    | O => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | S offs =>
       let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
       match st !! addr with
