@@ -142,12 +142,12 @@ unlock_pkvm:
 		hyp_spin_unlock(&vm_table_lock);
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ///////////
 // Memory
 
 void copy_sm_state_into(struct ghost_simplified_model_state *out);
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 #ifdef CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS
 /*
  * A simple and slow, but very robust, sanity check over the blobs.
@@ -187,7 +187,6 @@ static bool check_sanity_of_no_blob(u64 phys)
 	return true;
 }
 #endif /* CONFIG_NVHE_GHOST_SPEC_SAFETY_CHECKS */
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
 
@@ -368,7 +367,6 @@ static u64 __read_phys(u64 addr, bool pre)
 	return value;
 }
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 /**
  * read_phys_pre() - Read a physical address from the simplified model memory.
  *
@@ -380,7 +378,6 @@ static u64 read_phys_pre(u64 addr)
 {
 	return __read_phys(addr, true);
 }
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 /**
  * read_phys() - Read a physical address from the simplified model memory.
@@ -756,7 +753,6 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_sta
 	return state;
 }
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ////////////////////
 // Locks
 
@@ -1083,7 +1079,6 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 	// NOTE: the traversal may have unset all_clean.
 	return all_clean;
 }
-#endif
 
 /**
  * Callback to mark a location in the page table as a page table entry
@@ -1168,7 +1163,6 @@ static void try_insert_root(u64 *root_table, u64 root)
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
 }
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void try_remove_root(u64 *root_table, u64 root)
 {
 	for (int i = 0; i < MAX_ROOTS; i++) {
@@ -1180,7 +1174,6 @@ static void try_remove_root(u64 *root_table, u64 root)
 
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
 }
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 static void try_register_root(ghost_stage_t stage, phys_addr_t root)
@@ -1205,7 +1198,6 @@ static void try_register_root(ghost_stage_t stage, phys_addr_t root)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 {
 	GHOST_LOG_CONTEXT_ENTER();
@@ -1238,14 +1230,12 @@ static phys_addr_t extract_s2_root(u64 vttb)
 	return vttb & VTTBR_EL2_BADDR_MASK;
 }
 
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 #define TTBR0_EL2_BADDR_MASK	(GENMASK(47, 1))
 
 static phys_addr_t extract_s1_root(u64 ttb)
 {
 	return ttb & TTBR0_EL2_BADDR_MASK;
 }
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 
 static void step_msr(struct ghost_simplified_model_transition trans)
 {
@@ -1827,17 +1817,12 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		BUG(); // unreachable;
 	}
 }
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 ///////////////////////////
 /// Generic Step
 
 static void step(struct ghost_simplified_model_transition trans)
 {
-#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
-	transition_id++;
-#else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	GHOST_LOG_CONTEXT_ENTER();
 	GHOST_LOG(trans, trans);
@@ -1887,22 +1872,23 @@ static void step(struct ghost_simplified_model_transition trans)
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS */
 
 	GHOST_LOG_CONTEXT_EXIT();
-
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
 	ensure_atomic_lock();
 	lock_sm();
 
-	if (! is_initialised) {
-		goto unlock;
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
+	transition_id++;
+#else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+	if (is_initialised) {
+	    step(trans);
 	}
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
-	step(trans);
-
-unlock:
 	unlock_sm();
 	ensure_atomic_unlock();
 }
@@ -1911,38 +1897,7 @@ unlock:
 //////////////////////////
 // Initialisation
 
-#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-void visitor_log(struct pgtable_traverse_context *ctx) {
-	struct ghost_simplified_model_transition trans ={
-			.src_loc = SRC_LOC,
-			.kind = TRANS_MEM_WRITE,
-			.write_data = (struct trans_write_data){
-				.mo = WMO_plain,
-				.phys_addr = ctx->loc->phys_addr,
-				.val = ctx->descriptor
-			}
-		};
-
-	step(trans);
-}
-
-static void dump_initial_state(void) {
-	u64 pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-
-	traverse_pgtable(pkvm_pgd,GHOST_STAGE1, visitor_log, NULL);
-
-	struct ghost_simplified_model_transition trans = {
-			.src_loc = SRC_LOC,
-			.kind = TRANS_MSR,
-			.msr_data = (struct trans_msr_data){
-				.sysreg = SYSREG_TTBR_EL2,
-				.val = read_sysreg(ttbr0_el2)
-			}
-		};
-
-	step(trans);	
-}
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 
 static void initialise_ghost_simplified_model_options(void)
 {
@@ -2008,10 +1963,13 @@ static void initialise_ghost_hint_transitions(void)
 	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
+
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
 
@@ -2025,13 +1983,10 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 	initialise_ghost_hint_transitions();
 	sync_simplified_model_memory();
 
-#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	dump_initial_state();
-	is_initialised = true;
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
 //////////////////////////////
