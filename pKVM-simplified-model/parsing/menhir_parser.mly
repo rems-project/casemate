@@ -3,9 +3,6 @@
   open Extraction.Coq_executable_sm
 %}
 
-
-%token EOF
-%token BEGIN_TRANS BETWEEN_TRANS END_TRANS
 %token AT IN
 %token ID CPU
 %token COL SCOL
@@ -23,34 +20,33 @@
 %token SYSREG_VTTBR SYSREG_TTBR_EL2
 %token HINT
 %token GHOST_HINT_SET_ROOT_LOCK GHOST_HINT_SET_OWNER_ROOT GHOST_HINT_RELEASE_TABLE
-%token ZALLOC
+%token ZALLOC SIZE
 
-%start trace
+%start trans
 
-%type <ghost_simplified_model_transition list> trace
+%type <ghost_simplified_model_transition> trans
 
 %%
 
-trace:
-  transitions = separated_list(BETWEEN_TRANS, trans)
-    {transitions}
-  
 trans:
-  BEGIN_TRANS
-    ID COL id = NUM SCOL
+    id= trans_id?
     CPU COL cpu = NUM SCOL
     data = trans_data
     AT
     src_loc = location
-  END_TRANS
   {
     {
       gsmt_src_loc = Some src_loc;
         gsmt_thread_identifier = cpu;
         gsmt_data = data;
-        gsmt_id = id;
+        gsmt_id = Option.fold ~none:0 ~some:(fun z -> z) id;
     }
   }
+
+trans_id:
+| ID COL id = NUM SCOL
+    { id }
+
 
 location:
   filename = FN COL line_num = NUM IN fn_name = FN
@@ -120,7 +116,7 @@ trans_data:
   | MSR reg = sysreg addr = VAL { GSMDT_TRANS_MSR {tmd_sysreg = reg; tmd_val = addr; } }
   | HINT kind = hint_type loc = VAL value = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = value} }
   | HINT kind = hint_type loc = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = Big_int_Z.big_int_of_int 0} }
-  | ZALLOC addr = VAL size = VAL { GSMDT_TRANS_MEM_ZALLOC {tzd_addr = addr; tzd_size = size } }
+  | ZALLOC addr = VAL SIZE COL size = NUM { GSMDT_TRANS_MEM_ZALLOC {tzd_addr = addr; tzd_size = Big_int_Z.big_int_of_int size } }
 
 write_types:
   | W {WMO_plain}

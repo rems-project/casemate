@@ -13,24 +13,46 @@ let set_file f s = f := s
 let options = []
 let usage = "usage: [options] trace file"
 
-let transitions =
+let transitions () =
+  let begin_str, end_str = ("\o033\\[46;37;1m", "\o033\\[0m") in
+
   Arg.parse options (set_file filename) usage;
+
   (* Check that a file has been  *)
   if !filename = "" then (
     eprintf "No trace file to analyze\n@?";
     exit 1);
 
-  let f = open_in !filename in
-  let buf = Lexing.from_channel f in
-  try
-    let p = Menhir_parser.trace Lexer.token buf in
-    close_in f;
-    p
-  with Menhir_parser.Error ->
-    (* Syntax error, convert the line number and return an error *)
-    loc (Lexing.lexeme_start_p buf);
-    eprintf "Syntax error@.";
-    exit 1
+  (* open file *)
+  let ic = open_in !filename in
+  (* resulting list *)
+  let rec loop list line_number =
+    (* All transitions are on one line *)
+    try
+      let line = input_line ic in
+      (* search*)
+      let start_off =
+        String.length begin_str - 1
+        + Str.search_forward (Str.regexp begin_str) line 0
+      in
+      let end_off =
+        try Str.search_forward (Str.regexp end_str) line start_off
+        with Not_found ->
+          eprintf "Ill formed line %d @[@@%s@@]" line_number line;
+          exit 1
+      in
+      let trans_str = String.sub line start_off (end_off - start_off) in
+      let buf = Lexing.from_string trans_str in
+      try loop (Menhir_parser.trans Lexer.token buf :: list) @@ (line_number + 1)
+      with Menhir_parser.Error ->
+        let str = Lexing.lexeme buf in
+        Printf.printf "==> \x1b[31m%s\x1b[0m\n" str;
+        exit 1
+    with
+    | Not_found -> loop list (line_number + 1)
+    | End_of_file -> list
+  in
+  loop [] 0
 
 (***************************)
 (*  Printers  *)
