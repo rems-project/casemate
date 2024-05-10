@@ -25,12 +25,11 @@ let transitions () =
 
   (* open file *)
   let ic = open_in !filename in
-  (* resulting list *)
-  let rec loop list line_number =
-    (* All transitions are on one line *)
+  let acc = ref [] in
+  let buf = ref @@ Lexing.from_string "" in
+  let rec loop () =
+    let line = input_line ic in
     try
-      let line = input_line ic in
-      (* search*)
       let start_off =
         String.length begin_str - 1
         + Str.search_forward (Str.regexp begin_str) line 0
@@ -38,21 +37,25 @@ let transitions () =
       let end_off =
         try Str.search_forward (Str.regexp end_str) line start_off
         with Not_found ->
-          eprintf "Ill formed line %d @[@@%s@@]" line_number line;
+          eprintf "Ill formed line: @. @[%s@]\n" line;
           exit 1
       in
-      let trans_str = String.sub line start_off (end_off - start_off) in
-      let buf = Lexing.from_string trans_str in
-      try loop (Menhir_parser.trans Lexer.token buf :: list) @@ (line_number + 1)
-      with Menhir_parser.Error ->
-        let str = Lexing.lexeme buf in
-        Printf.printf "==> \x1b[31m%s\x1b[0m\n" str;
-        exit 1
-    with
-    | Not_found -> loop list (line_number + 1)
-    | End_of_file -> list
+      buf :=
+        Lexing.from_string (String.sub line start_off (end_off - start_off));
+      acc := Menhir_parser.trans Lexer.token !buf :: !acc;
+      loop ()
+    with Not_found -> loop ()
   in
-  loop [] 0
+  try
+    let xs = List.rev @@ loop () in
+    close_in ic;
+    xs
+  with
+  | End_of_file -> List.rev !acc
+  | Menhir_parser.Error ->
+      let str = Lexing.lexeme !buf in
+      Printf.printf "==> \x1b[31m%s\x1b[0m\n" str;
+      exit 1
 
 (***************************)
 (*  Printers  *)
@@ -121,6 +124,3 @@ let pp_result ppf = function
 let pp_model_result ppf res =
   Fmt.pf ppf "logs:%a \nresult:%a\n" (Fmt.Dump.list Fmt.string) res.gsmr_log
     pp_result res.gsmr_result
-
-let run = all_steps transitions
-let () = pp_model_result Fmt.stdout run

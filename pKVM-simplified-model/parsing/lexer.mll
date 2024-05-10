@@ -73,7 +73,6 @@ rule token = parse
         FN id
     }
   | filename as f {FN f}
-  | eof {EOF}
   | '\n' {Lexing.new_line lexbuf; token lexbuf}
   | ' ' as c { token lexbuf }
   | _ as str {
