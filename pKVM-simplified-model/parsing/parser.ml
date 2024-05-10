@@ -101,22 +101,52 @@ let print_transition_list =
   Fmt.pr "%a@." (Fmt.Dump.list pp)
 
 let pp_error ppf = function
-  | GSME_bbm_violation -> Fmt.pf ppf "GSME_bbm_violation"
-  | GSME_not_a_pte -> Fmt.pf ppf "GSME_not_a_pte"
+  | GSME_bbm_violation violation ->
+      Fmt.pf ppf "BBM violation: %s"
+        (match violation with
+        | VT_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
+        | VT_valid_on_valid -> "Wrote valid on antother valid descriptor"
+        | VT_realease_unclean ->
+            "Tried to release a page that was still unclean")
+  | GSME_not_a_pte (str, addr) ->
+      Fmt.pf ppf "Address %Lx was expected to be a PTE in function %s"
+        (Big_int_Z.int64_of_big_int addr)
+        str
   | GSME_inconsistent_read -> Fmt.pf ppf "GSME_inconsistent_read"
-  | GSME_uninitialised -> Fmt.pf ppf "GSME_uninitialised"
+  | GSME_uninitialised (str, addr) ->
+      Fmt.pf ppf "Address %Lx was uninitialized in function %s"
+        (Big_int_Z.int64_of_big_int addr)
+        str
   | GSME_unclean_child -> Fmt.pf ppf "GSME_unclean_child"
   | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
   | GSME_unimplemented -> Fmt.pf ppf "GSME_unimplemented"
-  | GSME_internal_error -> Fmt.pf ppf "GSME_internal_error"
+  | GSME_internal_error e ->
+      Fmt.pf ppf "GSME_internal_error: %s"
+        (match e with
+        | IET_infinite_loop -> "the maximum number of iterations was reached."
+        | IET_unexpected_none -> "a None was found where it was unexpected.")
+
+let pp_log ppf = function
+  | Inconsistent_read (a, b, c) ->
+      Fmt.pf ppf "Inconsistent read, expected %Lx, got %Lx at address %Lx"
+        (Big_int_Z.int64_of_big_int a)
+        (Big_int_Z.int64_of_big_int b)
+        (Big_int_Z.int64_of_big_int c)
+  | Warning_read_write_non_allocd x ->
+      Fmt.pf ppf "Read/wrote a non-alloc'd location at address %Lx"
+        (Big_int_Z.int64_of_big_int x)
+  | Warning_unsupported_TLBI ->
+      Fmt.pf ppf
+        "Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."
 
 let pp_result ppf = function
   | SMR_success -> Fmt.pf ppf "Success!"
   | SMR_failure (error_code, trans) ->
-      Fmt.pf ppf "Error:\n\t%a Transition that failed:\n\t%a" pp_error
-        error_code pp_transition trans
+      Fmt.pf ppf "Error:\n\t\t%a@.\t@[Transition that failed:\n\t\t@[%a@]@]"
+        pp_error error_code pp_transition trans
 
 let pp_model_result ppf res =
-  Fmt.pf ppf "logs:%a \nresult:%a\n" (Fmt.Dump.list Fmt.string) res.gsmr_log
-    pp_result res.gsmr_result
+  Fmt.pf ppf "Logs:@.\t@[%a@]\nResult:@.\t@[%a@]\n" (Fmt.Dump.list pp_log)
+    res.gsmr_log pp_result res.gsmr_result
+
