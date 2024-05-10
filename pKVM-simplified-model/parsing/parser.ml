@@ -1,14 +1,7 @@
 open Format
-open Lexing
 open Extraction.Coq_executable_sm
 
 let filename = ref ""
-
-let loc pos =
-  let l = pos.pos_lnum in
-  let c = pos.pos_cnum - pos.pos_bol + 1 in
-  eprintf "File \"%s\", line %d, characters %d-%d:\n" !filename l (c - 1) c
-
 let set_file f s = f := s
 let options = []
 let usage = "usage: [options] trace file"
@@ -27,6 +20,7 @@ let transitions () =
   let ic = open_in !filename in
   let acc = ref [] in
   let buf = ref @@ Lexing.from_string "" in
+  let line_deb = ref "" in
   let rec loop () =
     let line = input_line ic in
     try
@@ -37,11 +31,12 @@ let transitions () =
       let end_off =
         try Str.search_forward (Str.regexp end_str) line start_off
         with Not_found ->
-          eprintf "Ill formed line: @. @[%s@]\n" line;
+          eprintf "Ill formed line: @.\t@[%s@]\n" line;
           exit 1
       in
-      buf :=
-        Lexing.from_string (String.sub line start_off (end_off - start_off));
+      let str = String.sub line start_off (end_off - start_off) in
+      line_deb := str;
+      buf := Lexing.from_string str;
       acc := Menhir_parser.trans Lexer.token !buf :: !acc;
       loop ()
     with Not_found -> loop ()
@@ -54,7 +49,8 @@ let transitions () =
   | End_of_file -> List.rev !acc
   | Menhir_parser.Error ->
       let str = Lexing.lexeme !buf in
-      Printf.printf "==> \x1b[31m%s\x1b[0m\n" str;
+      eprintf "Parsing error on line: @.\t@[%s@]\n" !line_deb;
+      eprintf "==> \x1b[31m%s\x1b[0m\n" str;
       exit 1
 
 (***************************)

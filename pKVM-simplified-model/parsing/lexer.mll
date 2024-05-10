@@ -1,6 +1,5 @@
 {
   open Menhir_parser
-  open Lexing
 
   let keywords = [
   "at" , AT;
@@ -19,9 +18,6 @@
   "DSB_nsh", DSB_nsh;
   (* ISB *)
   "ISB", ISB;
-  (* TLBI *) 
-  "pfn=", PFN;
-  "level=", LEVEL;
   "size", SIZE;
   (* MSR *)
   "MSR", MSR;
@@ -41,6 +37,14 @@ let lexicon: (string, token) Hashtbl.t =
   let add (key, builder) = Hashtbl.add lexicon key builder in
   List.iter add keywords; lexicon
 
+let purify_str = 
+  Str.global_replace (Str.regexp "\\.\\|(=\\|)\\|pfn\\=\\|level\\=") ""
+
+let value i =
+  try
+  VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))
+  with Scanf.Scan_failure _ -> print_endline i; VAL (Big_int_Z.big_int_of_int 0)
+
 }
 
 let id = ['0'-'9']*+
@@ -49,20 +53,20 @@ let value_read = "(=0x"'.'*['0'-'9''a'-'f']*+')'
 let tlbi_all = "TLBI_vmall"['0'-'9''a'-'z']*
 let tlbi = "TLBI_"['0'-'9''a'-'z']*
 let filename = ['0'-'9''a'-'z''_''-''.''/']*+
-let keword_regexpr = ['A'-'Z''a'-'z'';''_']*+
-
-
+let keword_regexpr = ['A'-'Z''a'-'z']['A'-'Z''a'-'z''0'-'9'';''_''=']*+
 
 
 rule token = parse
   | ':' {COL}
   | ';' {SCOL}
   (* Hexa 0x....0 *)
-  | value as i {VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))}
-  (* Hexa (=0x....0) *)
-  | value_read as i {VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.\\|(=\\|)") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))}
+  | value as i {value i}
+  | "(="(value as i)")" {value i}
+  | "pfn="(value as i) {value i}
   (* decimal number *)
-  | id as i {NUM (int_of_string i)}
+  | id as i
+  | "level="(id as i)
+    {NUM (int_of_string i)}
   (* TLBIs *)
   | tlbi_all as t {TLBI_ALL t}
   | tlbi as t {TLBI t}
@@ -74,7 +78,7 @@ rule token = parse
     }
   | filename as f {FN f}
   | '\n' {Lexing.new_line lexbuf; token lexbuf}
-  | ' ' as c { token lexbuf }
+  | ' ' { token lexbuf }
   | _ as str {
       let pos = Lexing.lexeme_start_p lexbuf in
       let loc pos =

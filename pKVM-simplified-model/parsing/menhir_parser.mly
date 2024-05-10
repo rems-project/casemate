@@ -15,7 +15,6 @@
 %token ISB
 %token <string> TLBI_ALL
 %token <string> TLBI
-%token PFN LEVEL
 %token MSR
 %token SYSREG_VTTBR SYSREG_TTBR_EL2
 %token HINT
@@ -89,7 +88,7 @@ trans_data:
         };
       tLBI_shareability = shareability;
     })}
-  | tlbi = TLBI PFN addr = VAL LEVEL VAL {
+  | tlbi = TLBI addr = VAL NUM {
     GSMDT_TRANS_TLBI (
       let op, regime, shareability =
         match tlbi with
