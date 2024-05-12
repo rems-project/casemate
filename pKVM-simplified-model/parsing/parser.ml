@@ -1,57 +1,33 @@
-open Format
 open Extraction.Coq_executable_sm
 
-let filename = ref ""
-let set_file f s = f := s
-let options = []
-let usage = "usage: [options] trace file"
+let strip_prefix ~prefix s =
+  let n = String.length s
+  and pn = String.length prefix in
+  if n < pn then None else
+  if String.sub s 0 pn <> prefix then None else
+    Some (String.sub s pn (n - pn))
 
-let transitions () =
-  let begin_str, end_str = ("\o033\\[46;37;1m", "\o033\\[0m") in
+let strip_suffix ~suffix s =
+  let n = String.length s
+  and sn = String.length suffix in
+  if n < sn then None else
+  if String.sub s (n - sn) sn <> suffix then None else
+    Some (String.sub s 0 (n - sn))
 
-  Arg.parse options (set_file filename) usage;
+let parse_line line =
+  let prefix = "\o033[46;37;1m"
+  and suffix = "\o033[0m" in
+  match strip_prefix line ~prefix with
+  | None -> None
+  | Some line' ->
+      match strip_suffix line' ~suffix with
+      | None -> Fmt.invalid_arg "Ill-formed line: %S" line
+      | Some line' ->
+          let buf = Lexing.from_string line' in
+          try Some (Menhir_parser.trans Lexer.token buf) with
+          | Menhir_parser.Error -> Fmt.invalid_arg "Parse error: %S" line
 
-  (* Check that a file has been  *)
-  if !filename = "" then (
-    eprintf "No trace file to analyze\n@?";
-    exit 1);
-
-  (* open file *)
-  let ic = open_in !filename in
-  let acc = ref [] in
-  let buf = ref @@ Lexing.from_string "" in
-  let line_deb = ref "" in
-  let rec loop () =
-    let line = input_line ic in
-    try
-      let start_off =
-        String.length begin_str - 1
-        + Str.search_forward (Str.regexp begin_str) line 0
-      in
-      let end_off =
-        try Str.search_forward (Str.regexp end_str) line start_off
-        with Not_found ->
-          eprintf "Ill formed line: @.\t@[%s@]\n" line;
-          exit 1
-      in
-      let str = String.sub line start_off (end_off - start_off) in
-      line_deb := str;
-      buf := Lexing.from_string str;
-      acc := Menhir_parser.trans Lexer.token !buf :: !acc;
-      loop ()
-    with Not_found -> loop ()
-  in
-  try
-    let xs = List.rev @@ loop () in
-    close_in ic;
-    xs
-  with
-  | End_of_file -> List.rev !acc
-  | Menhir_parser.Error ->
-      let str = Lexing.lexeme !buf in
-      eprintf "Parsing error on line: @.\t@[%s@]\n" !line_deb;
-      eprintf "==> \x1b[31m%s\x1b[0m\n" str;
-      exit 1
+let transitions ic = Iters.lines ic |> Iters.filter_map parse_line
 
 (***************************)
 (*  Printers  *)
