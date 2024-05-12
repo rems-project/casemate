@@ -1,4 +1,0 @@
-(env
- (release
-  (binaries (bin/coqc_timing.sh as coqc))
-  (flags :standard)))
