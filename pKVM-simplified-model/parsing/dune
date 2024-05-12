@@ -10,10 +10,3 @@
  (public_name parser)
  (name parser)
  (libraries str zarith fmt extraction))
-
-(env
- (dev
-  (flags
-   (:standard -warn-error -A))
-  (ocamlopt_flags
-   (:standard -O3))))
