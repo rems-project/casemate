@@ -752,9 +752,10 @@ Definition unmark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : g
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
 Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_step_result :=
   match ctx.(ptc_loc) with
+    | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure GSME_unclean_child |}
     | Some location =>
       match location.(sl_pte) with
-        | None => {| gsmsr_log := nil; gsmsr_data := GSMSR_failure GSME_unclean_child |}
+        | None => Mreturn ctx.(ptc_state)
         | Some descriptor =>
           match descriptor.(ged_state) with
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
@@ -762,7 +763,6 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_s
             | _ => Mreturn ctx.(ptc_state)
           end
       end
-    | None => Mreturn ctx.(ptc_state)
   end
 .
 
