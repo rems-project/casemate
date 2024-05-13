@@ -41,10 +41,7 @@ let purify_str =
   Str.global_replace (Str.regexp "\\.\\|(=\\|)\\|pfn\\=\\|level\\=") ""
 
 let value i =
-  try
   VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))
-  with Scanf.Scan_failure _ -> print_endline i; VAL (Big_int_Z.big_int_of_int 0)
-
 }
 
 let id = ['0'-'9']*+

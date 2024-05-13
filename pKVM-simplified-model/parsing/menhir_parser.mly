@@ -115,7 +115,7 @@ trans_data:
   | MSR reg = sysreg addr = VAL { GSMDT_TRANS_MSR {tmd_sysreg = reg; tmd_val = addr; } }
   | HINT kind = hint_type loc = VAL value = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = value} }
   | HINT kind = hint_type loc = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = Big_int_Z.big_int_of_int 0} }
-  | ZALLOC addr = VAL SIZE COL size = NUM { GSMDT_TRANS_MEM_ZALLOC {tzd_addr = addr; tzd_size = Big_int_Z.big_int_of_int size } }
+  | ZALLOC addr = VAL SIZE COL size = int { GSMDT_TRANS_MEM_ZALLOC {tzd_addr = addr; tzd_size = Big_int_Z.big_int_of_int64 size } }
 
 write_types:
   | W {WMO_plain}
@@ -130,3 +130,7 @@ hint_type:
   | GHOST_HINT_SET_ROOT_LOCK {GHOST_HINT_SET_ROOT_LOCK}
   | GHOST_HINT_SET_OWNER_ROOT {GHOST_HINT_SET_OWNER_ROOT}
   | GHOST_HINT_RELEASE_TABLE {GHOST_HINT_RELEASE}
+
+int:
+  | num = NUM {Int64.of_int num}
+  | va = VAL {Big_int_Z.int64_of_big_int va}
