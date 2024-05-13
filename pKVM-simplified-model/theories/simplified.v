@@ -29,8 +29,6 @@ Infix "b*" := bv_mul (at level 40).
 
 Infix "+s" := append (right associativity, at level 60).
 
-Definition phys_addr_t := u64.
-
 Definition n512 := 512.
 
 Definition b0 := BV 64 0.
@@ -52,17 +50,60 @@ Inductive thread_identifier :=
 Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
 
+
+Inductive phys_addr_t :=
+| Phys_addr : u64 -> phys_addr_t
+.
+Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
+  Proof. solve_decision. Qed.
+
+Definition phys_addr_val (root : phys_addr_t) : u64 :=
+  match root with
+    | Phys_addr r => r
+  end
+.
+Definition pa_plus (a b : phys_addr_t) : phys_addr_t :=
+  Phys_addr ((phys_addr_val a) b+ (phys_addr_val b))
+.
+Infix "pa+" := pa_plus (at level 50).
+Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
+  Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
+.
+Infix "pa*" := pa_plus (at level 40).
+Notation "<[ K := V ]> D" := (<[ phys_addr_val K := V ]> D) (at level 100).
+Definition pa0 := Phys_addr b0.
+
 Inductive owner_t :=
-| Root : u64 -> owner_t
+| Root : phys_addr_t -> owner_t
 .
 Global Instance owner_t_eq_decision : EqDecision owner_t.
   Proof. solve_decision. Qed.
 
-Definition root_val (root : owner_t) : u64 :=
+Definition root_val (root : owner_t) : phys_addr_t :=
   match root with
     | Root r => r
   end
 .
+
+Inductive level_t :=
+| l0
+| l1
+| l2
+| l3
+| lerror
+.
+Definition next_level (l : level_t) : level_t :=
+  match l with
+    | l0 => l1
+    | l1 => l2
+    | l2 => l3
+    | l3 => lerror
+    | lerror => lerror
+  end
+.
+Global Instance level_t_eq_decision : EqDecision level_t.
+  Proof. solve_decision. Qed.
+
 
 (*****************************************************************************)
 (********                Automaton definition                        *********)
@@ -106,12 +147,12 @@ Inductive sm_pte_state :=
 .
 
 Record ghost_addr_range := {
-  range_start : u64;
-  range_size : u64;
+  range_start : phys_addr_t;
+  range_size : phys_addr_t;
 }.
 
 Record table_data_t := {
-  next_level_table_addr : u64;
+  next_level_table_addr : phys_addr_t;
 }.
 
 Record map_data_t := {
@@ -126,7 +167,7 @@ Inductive pte_rec :=
 
 Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
   ged_ia_region : ghost_addr_range;
-  ged_level : u64;
+  ged_level : level_t;
   ged_s2 : bool;
   ged_pte_kind : pte_rec;
   ged_state : sm_pte_state;
@@ -139,7 +180,7 @@ Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
 
 Record sm_location := mk_sm_location {
   (* sl_initialised : bool; *)
-  sl_phys_addr : u64;
+  sl_phys_addr : phys_addr_t;
   sl_val : u64;
   sl_pte : option ghost_exploded_descriptor;
 }.
@@ -218,7 +259,7 @@ Record TLBIRecord  := {
     (* TLBIRecord_level : TLBILevel; *)
     (* TLBIRecord_attr : TLBIMemAttr; *)
     (* TLBIRecord_ipaspace : PASpace; *)
-    TLBIRecord_address : u64;
+    TLBIRecord_address : phys_addr_t;
     (* TLBIRecord_end_address_name : u64; *)
     (* TLBIRecord_tg : bits 2; *)
 }.
@@ -267,7 +308,7 @@ Inductive write_memory_order :=
 .
 
 Record trans_zalloc_data := {
-    tzd_addr : u64;
+    tzd_addr : phys_addr_t;
     tzd_size : u64;
 }.
 
@@ -294,12 +335,12 @@ Record src_loc := {
 
 Record trans_write_data := {
   twd_mo : write_memory_order;
-  twd_phys_addr : u64;
+  twd_phys_addr : phys_addr_t;
   twd_val : u64;
 }.
 
 Record trans_read_data := {
-  trd_phys_addr : u64;
+  trd_phys_addr : phys_addr_t;
   trd_val : u64;
 }.
 
@@ -310,7 +351,7 @@ Record trans_msr_data := {
 
 Record trans_hint_data := {
   thd_hint_kind : ghost_hint_kind;
-  thd_location : u64;
+  thd_location : phys_addr_t;
   thd_value : owner_t;
 }.
 
@@ -348,9 +389,9 @@ Inductive internal_error_type :=
 
 Inductive ghost_simplified_model_error :=
 | GSME_bbm_violation : violation_type -> ghost_simplified_model_error
-| GSME_not_a_pte : string -> u64 -> ghost_simplified_model_error
+| GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
 | GSME_inconsistent_read
-| GSME_uninitialised : string -> u64 -> ghost_simplified_model_error
+| GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
 | GSME_unclean_child
 | GSME_double_use_of_pte
 | GSME_root_already_exists
@@ -364,8 +405,8 @@ Inductive ghost_simplified_model_step_result_data :=
 .
 
 Inductive log_element :=
-| Inconsistent_read : u64 -> u64 -> u64 -> log_element
-| Warning_read_write_non_allocd : u64 -> log_element
+| Inconsistent_read : u64 -> u64 -> phys_addr_t -> log_element
+| Warning_read_write_non_allocd : phys_addr_t -> log_element
 | Warning_unsupported_TLBI
 .
 
@@ -390,10 +431,10 @@ Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
 Record page_table_context := {
   ptc_state: ghost_simplified_memory;
   ptc_loc: option sm_location;
-  ptc_partial_ia: u64;
-  ptc_addr: u64;
+  ptc_partial_ia: phys_addr_t;
+  ptc_addr: phys_addr_t;
   ptc_root: owner_t;
-  ptc_level: u64;
+  ptc_level: level_t;
   ptc_s2: bool;
 }.
 
@@ -451,56 +492,55 @@ bv_and (bv_sub (bv_not b0) ((bv_shiftl b1 l) b+ b1))
 Definition PTE_BITS_ADDRESS : u64  := GENMASK b47 b12.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
-  ((bv_and descriptor PTE_BIT_VALID) b=? PTE_BIT_VALID)
+  negb ((bv_and descriptor PTE_BIT_VALID) b=? b0)
 .
 
-Definition OA_shift (level : u64) : u64 :=
+Definition OA_shift (level : level_t) : u64 :=
 match level with
-  | BV _ 1 => BV 64 (12 + 9 + 9)
-  | BV _ 2 => BV 64 (12 + 9 )
-  | BV _ 3 => b12
+  | l1 => BV 64 (12 + 9 + 9)
+  | l2 => BV 64 (12 + 9 )
+  | l3 => b12
   | _ => b0  (* Should not happen*)
 end
 .
 
-Definition map_size (level : u64) : u64 :=
+Definition map_size (level : level_t) : phys_addr_t :=
 match level with
-  | BV _ 0 => bv_shiftl b512 (BV 64 30) (* 512 Go *)
-  | BV _ 1 => bv_shiftl (b1)   (BV 64 30) (* 1 Go *)
-  | BV _ 2 => bv_shiftl (b12)   (BV 64 20) (* 2 Mo *)
-  | BV _ 3 => bv_shiftl (BV 64 4)   (BV 64 10) (* 4 Ko *)
-  | _ => b0  (* Should not happen*)
+  | l0 => Phys_addr (bv_shiftl b512 (BV 64 30)) (* 512 Go *)
+  | l1 => Phys_addr (bv_shiftl (b1)   (BV 64 30)) (* 1 Go *)
+  | l2 => Phys_addr (bv_shiftl (b12)   (BV 64 20)) (* 2 Mo *)
+  | l3 => Phys_addr (bv_shiftl (BV 64 4)   (BV 64 10)) (* 4 Ko *)
+  | _ => pa0  (* Should not happen*)
 end
 .
 
-Definition is_desc_table (descriptor level : u64) :=
-(* There is an inequality to make termination easier *)
-  if b2 b<? level then
-    false
-  else
-    ((bv_and descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE)
+Definition is_desc_table (descriptor : u64) (level : level_t) :=
+  match level with
+    | l3 => false
+    | _ => (bv_and descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE
+  end
 .
 
-Definition extract_table_address (pte_val : u64) : u64 :=
-bv_and pte_val PTE_BITS_ADDRESS.
+Definition extract_table_address (pte_val : u64) : phys_addr_t :=
+Phys_addr (bv_and pte_val PTE_BITS_ADDRESS).
 
-Definition extract_output_address (pte_val level : u64) :=
+Definition extract_output_address (pte_val : u64) (level : level_t) :=
 bv_and pte_val (GENMASK b47 (OA_shift level))
 .
 
-Definition align_4k (addr : u64) : u64 :=
-  bv_and addr (bv_not b1023)
+Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
+  Phys_addr (bv_and (phys_addr_val addr) (bv_not b1023))
 .
 
-Definition is_zallocd (st : ghost_simplified_memory) (addr : u64) : bool :=
-  match st.(gsm_zalloc) !! (bv_shiftr addr b12) with
+Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
+  match st.(gsm_zalloc) !! (bv_shiftr (phys_addr_val addr) b12) with
     | Some () => true
     | None => false
   end
 .
 
-Definition get_location (st : ghost_simplified_memory) (addr : u64) : option sm_location :=
-  match st.(gsm_memory) !! addr with
+Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
+  match st.(gsm_memory) !! phys_addr_val addr with
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with
@@ -517,7 +557,7 @@ Infix "!!" := get_location (at level 20) .
 (*                             Page table traversal                                       *)
 (******************************************************************************************)
 
-Definition initial_state (partial_ai desc level : u64) (cpu_id : thread_identifier) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
+Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (cpu_id : thread_identifier) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
       SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
@@ -526,7 +566,7 @@ Definition initial_state (partial_ai desc level : u64) (cpu_id : thread_identifi
   end
 .
 
-Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level : u64) (root : owner_t) (s2 : bool) : ghost_exploded_descriptor :=
+Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (root : owner_t) (s2 : bool) : ghost_exploded_descriptor :=
   let pte_kind :=
     if is_desc_valid desc then
       if is_desc_table desc level then
@@ -558,7 +598,7 @@ Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia desc level :
   |}
 .
 
-Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result)  (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
    | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
@@ -566,7 +606,7 @@ Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia level : 
    {| gsmsr_log := [] ; gsmsr_data := GSMSR_failure (GSME_internal_error IET_infinite_loop) |}
   end
   (* This is the for loop that iterates over all the entries of a page table *)
-with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match max_call_number with
     | S max_call_number =>
       if i b=? b512 then
@@ -576,7 +616,7 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia level : u64
         match mon with
           | {| gsmsr_log := _; gsmsr_data := GSMSR_failure _ |}  => mon (* If it fails, it fails *)
           | {| gsmsr_log := _; gsmsr_data := GSMSR_success st |} as mon =>
-            let addr := table_start b+ (b8 b* i) in
+            let addr := table_start pa+ (Phys_addr (b8 b* i)) in
             let location := st !! addr in
             let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
               visitor_cb
@@ -613,9 +653,9 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia level : u64
                         | PTER_PTE_KIND_TABLE table_data =>
                           (* If it is a page table descriptor, we we traverse the sub-page table *)
                           let rec_table_start := table_data.(next_level_table_addr) in
-                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) b+ i b* exploded_desc.(ged_ia_region).(range_size) in
+                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) pa+ (((Phys_addr i) pa* exploded_desc.(ged_ia_region).(range_size))) in
                           (* recursive call: explore sub-pgt *)
-                          traverse_pgt_from_aux root rec_table_start next_partial_ia level s2 visitor_cb max_call_number mon
+                          traverse_pgt_from_aux root rec_table_start next_partial_ia (next_level level) s2 visitor_cb max_call_number mon
                         | _ => mon
                       end
                     in
@@ -627,12 +667,12 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia level : u64
   end
 .
 
-Definition traverse_pgt_from (root : owner_t) (table_start partial_ia level : u64) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition traverse_pgt_from (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*n512) (Mreturn st)
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list owner_t) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list owner_t) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match roots with
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
@@ -640,7 +680,7 @@ Fixpoint traverse_si_pgt_aux  (visitor_cb : page_table_context -> ghost_simplifi
         | GSMSR_failure _ => st
         | _ =>
           let base := match r with Root a => a end in
-          let st := Mupdate_state (traverse_pgt_from r base b0 b0 s2 visitor_cb) st in
+          let st := Mupdate_state (traverse_pgt_from r base pa0 b0 s2 visitor_cb) st in
           traverse_si_pgt_aux visitor_cb s2 q st
       end
     | [] => st
@@ -737,10 +777,10 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
       if is_desc_valid val then
         (* Tests if the page table is well formed *)
         let
-          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) b0 descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
+          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) pa0 descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
         in
         (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
-        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) b0 descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
+        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) pa0 descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
       else
         (* if the descriptor is invalid, do nothing *)
         Mreturn st
@@ -828,22 +868,22 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
 (*                             Code for zalloc                                            *)
 (******************************************************************************************)
 
-Definition step_zalloc_aux (addr : u64) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
+Definition step_zalloc_aux (addr : phys_addr_t) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   let update s := {| gsmsr_log := nil; gsmsr_data := GSMSR_success (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
   Mupdate_state update st
 .
 
-Fixpoint step_zalloc_all (addr : u64) (st : ghost_simplified_model_step_result) (offs : u64) (max : nat) : ghost_simplified_model_step_result :=
+Fixpoint step_zalloc_all (addr : phys_addr_t) (st : ghost_simplified_model_step_result) (offs : phys_addr_t) (max : nat) : ghost_simplified_model_step_result :=
   match max with
     | O => st
     | S max =>
-      let st := step_zalloc_aux (bv_add addr offs) st in
-      step_zalloc_all addr st (offs b+ (b1)) max
+      let st := step_zalloc_aux (addr pa+ offs) st in
+      step_zalloc_all addr st (offs pa+ (Phys_addr b1)) max
   end
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  step_zalloc_all (bv_shiftr zd.(tzd_addr) (b12)) {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} b0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
+  step_zalloc_all (Phys_addr (bv_shiftr (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := GSMSR_success st|} pa0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
 .
 
 
@@ -943,10 +983,10 @@ Definition should_perform_tlbi (td : TLBI) (ptc : page_table_context) : bool :=
           match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
             | TLBIOp_VA, Regime_EL2, Shareability_ISH
             | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH =>
-              let tlbi_addr := bv_shiftr td.(TLBI_rec).(TLBIRecord_address) 12 in
+              let tlbi_addr := bv_shiftr (phys_addr_val td.(TLBI_rec).(TLBIRecord_address)) 12 in
                 (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level)))) (* Not a leaf *)
-                && (pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
-                && (tlbi_addr b<? (bv_add pte_desc.(ged_ia_region).(range_start) pte_desc.(ged_ia_region).(range_size)))
+                && (phys_addr_val pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
+                && (tlbi_addr b<? phys_addr_val (pte_desc.(ged_ia_region).(range_start) pa+ pte_desc.(ged_ia_region).(range_size)))
             | _,_,_ => true (* This should change depending on the TLBI kind *)
           end
       end
@@ -969,10 +1009,10 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (lo
       match old_desc.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE table_data =>
           (* check if all children are reachable *)
-          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) b0 pte.(ged_level) pte.(ged_s2) clean_reachable st with
+          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) pa0 pte.(ged_level) pte.(ged_s2) clean_reachable st with
             | {| gsmsr_log := logs; gsmsr_data:= GSMSR_success st|} =>
               (* If all children are clean, we can unmark them as PTE *)
-              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) b0 old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) st with
+              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) st with
                 | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log :=  logs1 ++ logs; gsmsr_data := st |}
               end
             | e => e
@@ -1066,7 +1106,7 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
 
 Definition extract_si_root (val : u64) (s2 : bool) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (bv_and val (GENMASK (b47) (b1)))
+  Root (Phys_addr (bv_and val (GENMASK (b47) (b1))))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (s2 : bool) : ghost_simplified_model_step_result :=
@@ -1085,7 +1125,7 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
     match root with
-      |Root r => traverse_pgt_from root r b0 b0 s2 (mark_cb tid) new_st
+      | Root r => traverse_pgt_from root r pa0 l0 s2 (mark_cb tid) new_st
     end
 .
 
@@ -1109,11 +1149,11 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_
 (*                                  Step hint                                             *)
 (******************************************************************************************)
 
-Fixpoint set_owner_root (phys : u64) (root : owner_t) (st : ghost_simplified_memory) (logs : list log_element) (offs : nat) : ghost_simplified_model_step_result :=
+Fixpoint set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simplified_memory) (logs : list log_element) (offs : nat) : ghost_simplified_model_step_result :=
   match offs with
     | O => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
     | S offs =>
-      let addr := bv_add_Z phys (Z.of_nat (offs * 8)) in
+      let addr := phys pa+ (Phys_addr (bv_mul_Z (BV 64 8) (Z.of_nat offs))) in
       match st !! addr with
         | None =>
           {|
@@ -1191,7 +1231,7 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
   end
 .
 
-Definition step_release_table (addr : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition step_release_table (addr : phys_addr_t) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match st !! addr with
     | None =>
       {|
