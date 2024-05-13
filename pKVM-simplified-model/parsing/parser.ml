@@ -110,6 +110,17 @@ let pp_model_result ppf res =
   Fmt.pf ppf "@[<2>@[<2>Logs:@ @[%a@]@]@ @[<2>Result:@ @[%a@]@]@]" Fmt.(list ~sep:comma pp_log)
     res.gsmr_log pp_result res.gsmr_result
 
+let _ = ignore (pp_result, pp_model_result)
+
+let pp_error ppf ((error_code, trans), log) =
+  Fmt.pf ppf
+  "@[<v>@[<2>Logs:@ @[%a@]@]@ @[<2>Error:@ %a.@]@ @[<2>Transition:@ %a@]@]"
+  Fmt.(list ~sep:comma pp_log) (List.rev log)
+  pp_error error_code
+  pp_transition trans
+
+let pp_step_result = Fmt.(result ~ok:(const string "Success!") ~error:pp_error)
+
 (** Entrypoints **)
 
 let with_open_out file f =
@@ -131,9 +142,8 @@ let run_model src =
   let xs = match src with
   | `Text f -> Iters.in_file f transitions
   | `Bin f -> Iters.in_file f marshall_in in
-  let xs = Iters.fold (fun xs x -> x::xs) [] xs |> List.rev in
-  let res = all_steps xs in
-  Fmt.pr "%a@." pp_model_result res
+  let res = Iters.fold_result step_ state_0 xs in
+  Fmt.pr "@[%a@]@." pp_step_result res
 
 (** Cmdline args **)
 

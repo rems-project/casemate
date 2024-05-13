@@ -29,4 +29,4 @@ Set Extraction Optimize.
 Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
-Extraction "coq_executable_sm.ml" all_steps.
+Extraction "coq_executable_sm.ml" all_steps state_0 step_.

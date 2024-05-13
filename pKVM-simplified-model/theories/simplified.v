@@ -1278,4 +1278,20 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
 (* Move me to a more appropriate place... *)
 Inductive result (A B: Type): Type := Ok (a: A) | Error (b: B).
 
+Definition memory_0 := {|
+  gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
+  gsm_memory := gmap_empty;
+  gsm_zalloc := gmap_empty;
+|}.
+
+Definition state_0 := (memory_0, []: list log_element).
+
+Definition step_ '(st, log) trans :=
+  let res := step trans st in
+  let log := gsmsr_log res ++ log in
+  match gsmsr_data res with
+  | GSMSR_success st => Ok _ _ (st, log)
+  | GSMSR_failure e => Error _ _ (e, trans, log)
+  end.
+
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)

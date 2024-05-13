@@ -16,6 +16,14 @@ let fold f z t =
   let acc = ref z in
   t (fun x -> acc := f !acc x);
   !acc
+let fold_result (type a) (f: _ -> _ -> (_, a) result) z t =
+  let module M = struct exception Stop of a end in
+  let acc = ref z in
+  let g x = match f !acc x with Ok z -> acc := z | Error e -> raise (M.Stop e)
+  in
+  match t g with
+  | () -> Ok !acc
+  | exception (M.Stop e) -> Error e
 
 (* IO *)
 
