@@ -138,10 +138,11 @@ let pre_parse bin trace =
   let xs = Iters.in_file trace transitions in
   with_open_out bin @@ fun oc -> marshall_out oc xs
 
-let run_model src =
+let run_model ?limit src =
   let xs = match src with
   | `Text f -> Iters.in_file f transitions
   | `Bin f -> Iters.in_file f marshall_in in
+  let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let res = Iters.fold_result step_ state_0 xs in
   Fmt.pr "@[%a@]@." pp_step_result res
 
@@ -161,6 +162,8 @@ let term =
               ~docv:"FILE" ~doc:"Load a pre-parsed trace. (Cannot have TRACE or --write)"
   and write = value @@ opt (some string) None @@ info ["w"; "write"]
               ~docv:"FILE" ~doc:"Save a pre-parsed trace. (Needs a TRACE, cannot --read.)"
+  and limit = value @@ opt (some int) None @@ info ["limit"]
+              ~docv:"NUM" ~doc:"Check only the first $(docv) events."
   in
   Term.((fun read write trace -> match read, write, trace with
     | None, None, Some f -> Ok (run_model (`Text f))
@@ -168,7 +171,7 @@ let term =
     | None, Some e, Some f -> Ok (pre_parse e f)
     | None, None, None -> Error "no input"
     | _ -> Error "invalid arguments")
-  $$ read $ write $ trace)
+  $$ read $ write $ limit $ trace)
   |> Term.term_result' ~usage:true
 
 let _ = Cmd.v info term |> Cmd.eval

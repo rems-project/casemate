@@ -25,6 +25,11 @@ let fold_result (type a) (f: _ -> _ -> (_, a) result) z t =
   | () -> Ok !acc
   | exception (M.Stop e) -> Error e
 
+let take n t i =
+  let module M = struct exception Stop end in
+  let m = ref 0 in
+  try t (fun x -> incr m; if !m > n then raise M.Stop else i x) with M.Stop -> ()
+
 (* IO *)
 
 let rec lines ic i = match input_line ic with
