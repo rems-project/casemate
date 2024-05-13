@@ -42,7 +42,7 @@ let pp_transition_data ppf = function
         (match typ with WMO_release -> "rel" | WMO_plain -> "")
         p0xZ addr p0xZ value
   | GSMDT_TRANS_MEM_ZALLOC { tzd_addr = addr; tzd_size = size } ->
-      Fmt.pf ppf "ZALLOC %a size %a" p0xZ addr Z0.pp_print size
+      Fmt.pf ppf "ZALLOC %a size %a" p0xZ addr p0xZ size
   | GSMDT_TRANS_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R %a (=%a)" p0xZ addr p0xZ value
   | GSMDT_TRANS_BARRIER _ -> Fmt.pf ppf "barrier"
@@ -74,11 +74,11 @@ let pp_error ppf = function
             "Tried to release a page that was still unclean")
   | GSME_not_a_pte (str, addr) ->
       Fmt.pf ppf "Address %a was expected to be a PTE in function %s"
-        Z0.pp_print addr str
+        p0xZ addr str
   | GSME_inconsistent_read -> Fmt.pf ppf "GSME_inconsistent_read"
   | GSME_uninitialised (str, addr) ->
       Fmt.pf ppf "Address %a was uninitialized in function %s"
-        Z0.pp_print addr str
+        p0xZ addr str
   | GSME_unclean_child -> Fmt.pf ppf "GSME_unclean_child"
   | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
@@ -92,10 +92,10 @@ let pp_error ppf = function
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
       Fmt.pf ppf "Inconsistent read, expected %a, got %a at address %a"
-        Z0.pp_print a Z0.pp_print b Z0.pp_print c
+        p0xZ a p0xZ b p0xZ c
   | Warning_read_write_non_allocd x ->
       Fmt.pf ppf "Read/wrote a non-alloc'd location at address %a"
-        Z0.pp_print x
+        p0xZ x
   | Warning_unsupported_TLBI ->
       Fmt.pf ppf
         "Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."
