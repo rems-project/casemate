@@ -17,6 +17,8 @@ Extract Inlined Constant b63 => "(Big_int_Z.big_int_of_int 63)".
 Extract Inlined Constant b512 => "(Big_int_Z.big_int_of_int 512)".
 Extract Inlined Constant b1023 => "(Big_int_Z.big_int_of_int 1023)".
 
+Extract Inductive result => "Stdlib.result" [ "Ok" "Error" ].
+
 Require Import ExtrOcamlBasic.
 Require Import ExtrOcamlNativeString.
 Require Import ExtrOcamlZBigInt.

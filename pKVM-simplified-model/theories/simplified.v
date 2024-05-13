@@ -1275,5 +1275,7 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
   res <| gsmr_log := rev res.(gsmr_log) |>
 .
 
+(* Move me to a more appropriate place... *)
+Inductive result (A B: Type): Type := Ok (a: A) | Error (b: B).
 
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)
