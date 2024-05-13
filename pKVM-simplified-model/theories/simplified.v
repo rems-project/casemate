@@ -680,7 +680,7 @@ Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplifie
         | GSMSR_failure _ => st
         | _ =>
           let base := match r with Root a => a end in
-          let st := Mupdate_state (traverse_pgt_from r base pa0 b0 s2 visitor_cb) st in
+          let st := Mupdate_state (traverse_pgt_from r base pa0 l0 s2 visitor_cb) st in
           traverse_si_pgt_aux visitor_cb s2 q st
       end
     | [] => st
@@ -772,15 +772,21 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror (GSME_internal_error IET_unexpected_none)
     | Some descriptor =>
-      let new_loc := loc <| sl_val := val |> in
+      (* TODO: save old descriptor *)
+      let descriptor := deconstruct_pte tid descriptor.(ged_ia_region).(range_start) val descriptor.(ged_level) descriptor.(ged_owner) descriptor.(ged_s2) in
+      let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
       let st := st <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
       if is_desc_valid val then
         (* Tests if the page table is well formed *)
-        let
-          st := traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) pa0 descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
-        in
-        (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
-        Mupdate_state (traverse_pgt_from descriptor.(ged_owner) descriptor.(ged_ia_region).(range_start) pa0 descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
+        match descriptor.(ged_pte_kind) with
+          | PTER_PTE_KIND_TABLE map =>
+            let
+              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
+            in
+            (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
+            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
+          | _ => Mreturn st
+        end
       else
         (* if the descriptor is invalid, do nothing *)
         Mreturn st
