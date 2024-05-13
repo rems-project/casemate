@@ -152,7 +152,7 @@ open Cmdliner
 
 let ($$) f a = Term.(const f $ a)
 
-let info = Cmd.info "SM" ~doc:"Describe me"
+let info = Cmd.info "parser" ~doc:"Describe me"
 
 let term =
   let open Arg in
@@ -165,12 +165,12 @@ let term =
   and limit = value @@ opt (some int) None @@ info ["limit"]
               ~docv:"NUM" ~doc:"Check only the first $(docv) events."
   in
-  Term.((fun read write trace -> match read, write, trace with
-    | None, None, Some f -> Ok (run_model (`Text f))
-    | Some f, None, None -> Ok (run_model (`Bin f))
+  Term.((fun read write limit trace -> match read, write, trace with
+    | None, None, Some f -> Ok (run_model ?limit (`Text f))
+    | Some f, None, None -> Ok (run_model ?limit (`Bin f))
     | None, Some e, Some f -> Ok (pre_parse e f)
-    | None, None, None -> Error "no input"
-    | _ -> Error "invalid arguments")
+    | None, None, None -> Error "No input."
+    | _ -> Error "Invalid arguments.")
   $$ read $ write $ limit $ trace)
   |> Term.term_result' ~usage:true
 
