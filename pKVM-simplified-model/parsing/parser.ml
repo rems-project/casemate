@@ -1,3 +1,4 @@
+module Z0 = Z (* Don't overwrite Zarith *)
 open Extraction.Coq_executable_sm
 
 let strip_prefix ~prefix s =
@@ -109,3 +110,55 @@ let pp_model_result ppf res =
   Fmt.pf ppf "@[<2>@[<2>Logs:@ @[%a@]@]@ @[<2>Result:@ @[%a@]@]@]" Fmt.(list ~sep:comma pp_log)
     res.gsmr_log pp_result res.gsmr_result
 
+(** Entrypoints **)
+
+let with_open_out file f =
+  let oc = open_out file in
+  Fun.protect ~finally:(fun () -> close_out oc) (fun () -> f oc)
+
+let marshall_out oc = Iters.iter (fun x -> Marshal.to_channel oc x [])
+let marshall_in ic =
+  let rec go i = match Marshal.from_channel ic with
+  | exception End_of_file -> ()
+  | x -> i x; go i in
+  Iters.of_f go
+
+let pre_parse bin trace =
+  let xs = Iters.in_file trace transitions in
+  with_open_out bin @@ fun oc -> marshall_out oc xs
+
+let run_model src =
+  let xs = match src with
+  | `Text f -> Iters.in_file f transitions
+  | `Bin f -> Iters.in_file f marshall_in in
+  let xs = Iters.fold (fun xs x -> x::xs) [] xs |> List.rev in
+  let res = all_steps xs in
+  Fmt.pr "%a@." pp_model_result res
+
+(** Cmdline args **)
+
+open Cmdliner
+
+let ($$) f a = Term.(const f $ a)
+
+let info = Cmd.info "SM" ~doc:"Describe me"
+
+let term =
+  let open Arg in
+  let trace = value @@ pos 0 (some non_dir_file) None @@ info []
+              ~docv:"TRACE" ~doc:"The trace file."
+  and read  = value @@ opt (some non_dir_file) None @@ info ["r"; "read"]
+              ~docv:"FILE" ~doc:"Load a pre-parsed trace. (Cannot have TRACE or --write)"
+  and write = value @@ opt (some string) None @@ info ["w"; "write"]
+              ~docv:"FILE" ~doc:"Save a pre-parsed trace. (Needs a TRACE, cannot --read.)"
+  in
+  Term.((fun read write trace -> match read, write, trace with
+    | None, None, Some f -> Ok (run_model (`Text f))
+    | Some f, None, None -> Ok (run_model (`Bin f))
+    | None, Some e, Some f -> Ok (pre_parse e f)
+    | None, None, None -> Error "no input"
+    | _ -> Error "invalid arguments")
+  $$ read $ write $ trace)
+  |> Term.term_result' ~usage:true
+
+let _ = Cmd.v info term |> Cmd.eval
