@@ -1840,6 +1840,9 @@ static void step(struct ghost_simplified_model_transition trans)
 	case TRANS_MEM_WRITE:
 		step_write(trans);
 		break;
+	case TRANS_MEM_ZALLOC;
+		// Nothing to do
+		break;
 	case TRANS_MEM_READ:
 		step_read(trans);
 		break;
@@ -2012,6 +2015,10 @@ int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 	return ghost_sprintf(out, "W%s %p %lx", kind, write_data->phys_addr, write_data->val);
 }
 
+int gp_print_zalloc_trans(gp_stream_t *out, struct trans_zalloc_data *zalloc_data) {
+	return ghost_sprintf(out, "ZALLOC %lx size: %lx", zalloc_data->location, zalloc_data->size);
+}
+
 int gp_print_read_trans(gp_stream_t *out, struct trans_read_data *read_data)
 {
 	return ghost_sprintf(out, "R %p (=%lx)", read_data->phys_addr, read_data->val);
@@ -2116,6 +2123,9 @@ int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition
 	switch (trans->kind) {
 	case TRANS_MEM_WRITE:
 		ret = gp_print_write_trans(out, &trans->write_data);
+		break;
+	case TRANS_MEM_ZALLOC:
+		ret = gp_print_zalloc_trans(out, &trans->zalloc_data);
 		break;
 	case TRANS_MEM_READ:
 		ret = gp_print_read_trans(out, &trans->read_data);

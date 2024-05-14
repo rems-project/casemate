@@ -446,6 +446,7 @@ static const char *dsb_kind_names[] = {
 
 enum ghost_simplified_model_transition_kind {
 	TRANS_MEM_WRITE,
+	TRANS_MEM_ZALLOC,
 	TRANS_MEM_READ,
 	TRANS_DSB,
 	TRANS_ISB,
@@ -540,6 +541,11 @@ struct ghost_simplified_model_transition {
 			u64 location;
 			u64 value;
 		} hint_data;
+
+		struct trans_zalloc_data {
+			u64 location;
+			u64 size;
+		} zalloc_data;
 	};
 };
 void GHOST_transprinter(void *p);
@@ -672,13 +678,27 @@ static inline void __ghost_simplified_model_step_hint(struct src_loc src_loc, en
 #define ghost_simplified_model_step_zalloc(...) __ghost_simplified_model_step_zalloc(SRC_LOC, __VA_ARGS__)
 static inline void __ghost_simplified_model_step_zalloc(struct src_loc src_loc, u64 location)
 {
-	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; ZALLOC %lx size: 1 at %s:%d in %s" GHOST_NORMAL "\n", cpu_id(), location, src_loc.file, src_loc.lineno, src_loc. func);
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
+		.kind = TRANS_MEM_ZALLOC,
+		.zalloc_data = (struct trans_zalloc_data){
+			.location = location,
+			.size = 1,
+		},
+	});
 }
 
 #define ghost_simplified_model_step_zalloc_exact(...) __ghost_simplified_model_step_zalloc_exact(SRC_LOC, __VA_ARGS__)
 static inline void __ghost_simplified_model_step_zalloc_exact(struct src_loc src_loc, u64 location, u64 size)
 {
-	ghost_printf(GHOST_WHITE_ON_CYAN "CPU: %d; ZALLOC %lx size: %d at %s:%d in %s" GHOST_NORMAL "\n", cpu_id(), location, size, src_loc.file, src_loc.lineno, src_loc. func);
+		ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
+		.kind = TRANS_MEM_ZALLOC,
+		.zalloc_data = (struct trans_zalloc_data){
+			.location = location,
+			.size = size,
+		},
+	});
 }
 
 #endif /* GHOST_SIMPLIFIED_MODEL_H */
