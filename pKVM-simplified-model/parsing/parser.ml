@@ -65,13 +65,14 @@ let pp_transition ppf trans =
     trans.gsmt_src_loc
 
 let pp_error ppf = function
-  | GSME_bbm_violation violation ->
-      Fmt.pf ppf "@[BBM violation:@ %s@]"
+  | GSME_bbm_violation (violation, addr) ->
+      Fmt.pf ppf "@[BBM violation:@ %s %a@]"
         (match violation with
         | VT_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
         | VT_valid_on_valid -> "Wrote valid on antother valid descriptor"
         | VT_realease_unclean ->
             "Tried to release a page that was still unclean")
+        p0xZ addr
   | GSME_not_a_pte (str, addr) ->
       Fmt.pf ppf "Address %a was expected to be a PTE in function %s"
         p0xZ addr str

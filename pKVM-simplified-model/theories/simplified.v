@@ -388,7 +388,7 @@ Inductive internal_error_type :=
 .
 
 Inductive ghost_simplified_model_error :=
-| GSME_bbm_violation : violation_type -> ghost_simplified_model_error
+| GSME_bbm_violation : violation_type -> phys_addr_t -> ghost_simplified_model_error
 | GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
 | GSME_inconsistent_read
 | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
@@ -795,7 +795,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
 Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
-    (Merror (GSME_bbm_violation VT_valid_on_invalid_unclean))
+    (Merror (GSME_bbm_violation VT_valid_on_invalid_unclean loc.(sl_phys_addr)))
   else
     Mreturn (st <|gsm_memory := <[loc.(sl_phys_addr) := loc <|sl_val := val|> ]> st.(gsm_memory) |>)
 .
@@ -807,7 +807,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
   else
     if is_desc_valid val then
       (* Changing the descriptor is illegal *)
-      {| gsmsr_log := []; gsmsr_data := GSMSR_failure (GSME_bbm_violation VT_valid_on_valid) |}
+      {| gsmsr_log := []; gsmsr_data := GSMSR_failure (GSME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr)) |}
     else
     (
       (* Invalidation of pgt: changing the state to  *)
@@ -904,7 +904,7 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghos
         let new_loc := loc <| sl_val := rd.(trd_val) |> in
       {| gsmsr_log :=
         [
-          Inconsistent_read  loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)
+          Inconsistent_read loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)
         ];
         gsmsr_data := (GSMSR_success (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
     | None =>
@@ -1199,7 +1199,7 @@ Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_s
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
               {|
                 gsmsr_log := [];
-                gsmsr_data := GSMSR_failure (GSME_bbm_violation VT_realease_unclean)
+                gsmsr_data := GSMSR_failure (GSME_bbm_violation VT_realease_unclean ctx.(ptc_addr))
               |}
             | _ => Mreturn ctx.(ptc_state)
           end
