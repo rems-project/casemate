@@ -630,8 +630,6 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                 ptc_s2 := s2;
               |}
             in
-            (* let mon := Mlog ("table start: "%string +s string_of_int table_start) mon in
-            let mon := Mlog ("Visiting cell at addr: "%string +s string_of_int addr) mon in *)
             let mon := Mupdate_state visitor_state_updater mon in
             match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
               | GSMSR_failure r  => mon (* If it fails, it fails *)
@@ -1237,28 +1235,28 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
   end
 .
 
-Definition step_release_table (addr : phys_addr_t) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
-  match st !! addr with
+Definition step_release_table (cpu : thread_identifier) (addr : owner_t) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  match st !! root_val addr with
     | None =>
       {|
         gsmsr_log := [];
-        gsmsr_data := GSMSR_failure (GSME_uninitialised "release"%string addr)
+        gsmsr_data := GSMSR_failure (GSME_uninitialised "release"%string (root_val addr))
       |}
     | Some location =>
       match location.(sl_pte) with
         | None =>
           {|
             gsmsr_log := [];
-            gsmsr_data := GSMSR_failure (GSME_not_a_pte "release"%string addr)
+            gsmsr_data := GSMSR_failure (GSME_not_a_pte "release"%string (root_val addr))
           |}
         | Some desc =>
-          let st := traverse_pgt_from desc.(ged_owner) desc.(ged_ia_region).(range_start) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_s2) step_release_cb st in
-          st
+          let st := traverse_pgt_from addr (root_val desc.(ged_owner)) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_s2) step_release_cb st in
+          Mupdate_state (try_unregister_root (addr) cpu) st
       end
   end
 .
 
-Definition step_hint (hd : trans_hint_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
   match hd.(thd_hint_kind) with
     | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
       (* AFAIK, this only affects the internal locking discipline of the C simplified model and does nothing on the Coq version *)
@@ -1268,7 +1266,7 @@ Definition step_hint (hd : trans_hint_data) (st : ghost_simplified_memory) : gho
       set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] n512
     | GHOST_HINT_RELEASE =>
       (* Can we use the free to detect when pagetables are released? *)
-      step_release_table hd.(thd_location) st
+      step_release_table cpu (Root hd.(thd_location)) st
   end
 .
 
@@ -1288,7 +1286,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_BARRIER (_) => {| gsmsr_log := nil; gsmsr_data := GSMSR_success st|} (* Ignored *)
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data st
   | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data st
-  | GSMDT_TRANS_HINT hint_data => step_hint hint_data st
+  | GSMDT_TRANS_HINT hint_data => step_hint trans.(gsmt_thread_identifier) hint_data st
   end.
 
 
