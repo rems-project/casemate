@@ -12,6 +12,8 @@ Import RecordSetNotations.
 
 Require Import stdpp.gmap.
 
+Require Import Recdef.
+
 
 Definition u64 := bv 64.
 Search (bv _ -> bv _ -> bool).
@@ -1153,32 +1155,35 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_
 (*                                  Step hint                                             *)
 (******************************************************************************************)
 
-Fixpoint set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simplified_memory) (logs : list log_element) (offs : nat) : ghost_simplified_model_step_result :=
-  match offs with
-    | O => {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
-    | S offs =>
-      let addr := phys pa+ (Phys_addr (bv_mul_Z (BV 64 8) (Z.of_nat offs))) in
-      match st !! addr with
-        | None =>
-          {|
-            gsmsr_log :=
-              logs;
-              gsmsr_data := GSMSR_failure (GSME_uninitialised "set_owner_root" addr)
-          |}
-        | Some location =>
-          let new_pte :=
-            match location.(sl_pte) with
-              | None => None
-              | Some pte => Some (pte <| ged_owner := root|>) (* actually change the root *)
-            end
-          in
-          (* Write the change to the global state *)
-          let new_loc := location <| sl_pte := new_pte |> in
-          let new_state := st <|gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
-          set_owner_root phys root new_state logs offs
-      end
-  end
+Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simplified_memory) (logs : list log_element) (offs : Z) {measure Z.abs_nat offs} : ghost_simplified_model_step_result :=
+  if Zle_bool offs 0 then
+    {| gsmsr_log := logs; gsmsr_data := GSMSR_success st |}
+  else
+    let addr := phys pa+ (Phys_addr (bv_mul_Z (BV 64 8) (offs - 1))) in
+    match st !! addr with
+      | None =>
+        {|
+          gsmsr_log :=
+            logs;
+            gsmsr_data := GSMSR_failure (GSME_uninitialised "set_owner_root" addr)
+        |}
+      | Some location =>
+        let new_pte :=
+          match location.(sl_pte) with
+            | None => None
+            | Some pte => Some (pte <| ged_owner := root|>) (* actually change the root *)
+          end
+        in
+        (* Write the change to the global state *)
+        let new_loc := location <| sl_pte := new_pte |> in
+        let new_state := st <|gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
+        set_owner_root phys root new_state logs (offs - 1)
+    end
 .
+Proof.
+intros phys st offs location new_offs offs_pos. intro location0. intro x.
+lia.
+Qed.
 
 Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_step_result :=
     match ctx.(ptc_loc) with
@@ -1263,7 +1268,7 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
     | GHOST_HINT_SET_OWNER_ROOT =>
       (* When ownership is transferred *)
       (* Not sure about the size of the iteration *)
-      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] n512
+      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
     | GHOST_HINT_RELEASE =>
       (* Can we use the free to detect when pagetables are released? *)
       step_release_table cpu (Root hd.(thd_location)) st
