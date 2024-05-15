@@ -671,6 +671,10 @@ Definition traverse_pgt_from (root : owner_t) (table_start partial_ia : phys_add
   traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*n512) (Mreturn st)
 .
 
+Definition traverse_pgt_from_root (root : owner_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (st : ghost_simplified_memory) : ghost_simplified_model_step_result :=
+  traverse_pgt_from root (root_val root) pa0 l0 s2 visitor_cb st
+.
+
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
 Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplified_model_step_result) (s2 : bool) (roots : list owner_t) (st : ghost_simplified_model_step_result) : ghost_simplified_model_step_result :=
   match roots with
@@ -679,8 +683,7 @@ Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplifie
       match st.(gsmsr_data) with
         | GSMSR_failure _ => st
         | _ =>
-          let base := match r with Root a => a end in
-          let st := Mupdate_state (traverse_pgt_from r base pa0 l0 s2 visitor_cb) st in
+          let st := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 s2 visitor_cb) st in
           traverse_si_pgt_aux visitor_cb s2 q st
       end
     | [] => st
@@ -1232,10 +1235,9 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
               st.(gsm_roots) <| pr_s2 := remove addr st.(gsm_roots).(pr_s2) |>
             else
               st.(gsm_roots) <| pr_s1 := remove addr st.(gsm_roots).(pr_s1) |>
-
           in
           let st := st <| gsm_roots := new_roots |> in
-          traverse_si_pgt st (unmark_cb cpu) pte.(ged_s2)
+          traverse_pgt_from_root addr pte.(ged_s2) (unmark_cb cpu) st
       end
   end
 .
