@@ -71,7 +71,7 @@ Infix "pa+" := pa_plus (at level 50).
 Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
 .
-Infix "pa*" := pa_plus (at level 40).
+Infix "pa*" := pa_mul (at level 40).
 Notation "<[ K := V ]> D" := (<[ phys_addr_val K := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
