@@ -2,10 +2,10 @@ all :
 	dune build _build/default/simplified.install --display short
 
 sm-test:
-	dune exe parser
+	dune exe parser ${trace}
 
 sm-coverage:
-	dune exe parser --instrument-with bisect_ppx --force && bisect-ppx-report html
+	dune exe parser --instrument-with bisect_ppx --force ${trace} && bisect-ppx-report html
 
 clean:
 	dune clean
