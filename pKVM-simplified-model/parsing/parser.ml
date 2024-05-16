@@ -1,5 +1,5 @@
 module Z0 = Z (* Don't overwrite Zarith *)
-open Extraction.Coq_executable_sm
+open Coq_executable_sm
 
 let strip_prefix ~prefix s =
   let n = String.length s

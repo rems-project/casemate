@@ -1,6 +1,6 @@
 
 %{
-  open Extraction.Coq_executable_sm
+  open Coq_executable_sm
 %}
 
 %token AT IN
