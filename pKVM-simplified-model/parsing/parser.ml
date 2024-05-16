@@ -101,18 +101,6 @@ let pp_log ppf = function
       Fmt.pf ppf
         "Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."
 
-let pp_result ppf = function
-  | SMR_success -> Fmt.pf ppf "Success!"
-  | SMR_failure (error_code, trans) ->
-      Fmt.pf ppf "@[<2>Error:@ %a.@ @[<2>Transition that failed:@ %a@]@]"
-        pp_error error_code pp_transition trans
-
-let pp_model_result ppf res =
-  Fmt.pf ppf "@[<2>@[<2>Logs:@ @[%a@]@]@ @[<2>Result:@ @[%a@]@]@]" Fmt.(list ~sep:comma pp_log)
-    res.gsmr_log pp_result res.gsmr_result
-
-let _ = ignore (pp_result, pp_model_result)
-
 let pp_error ppf ((error_code, trans), log) =
   Fmt.pf ppf
   "@[<v>@[<2>Logs:@ @[%a@]@]@ @[<2>Error:@ %a.@]@ @[<2>Transition:@ %a@]@]"
@@ -121,6 +109,41 @@ let pp_error ppf ((error_code, trans), log) =
   pp_transition trans
 
 let pp_step_result = Fmt.(result ~ok:(const string "Success!") ~error:pp_error)
+
+module Pp = struct
+  (* Automatically derive printers using pretty evil metaprogramming, with
+     ppx_import and ppx_deriving.show. 
+
+     Each `type foo = [%import: foo] [@@deriving show]` creates the function
+     `pp_foo` and can be replaced with a custom `pp_foo` to control the
+     printing.
+
+     Dear future reader: when ppx_import finally totally breaks, please rewrite
+     the printers by hand.
+  *)
+  let pp_gmap _ _ = assert false
+  let pp_u64 = p0xZ
+  type lIS = [%import: Coq_executable_sm.lIS] [@@deriving show]
+  type lVS = [%import: Coq_executable_sm.lVS] [@@deriving show]
+  type aut_valid = [%import: Coq_executable_sm.aut_valid] [@@deriving show]
+  type phys_addr_t = [%import: Coq_executable_sm.phys_addr_t] [@@deriving show]
+  type owner_t = [%import: Coq_executable_sm.owner_t] [@@deriving show]
+  type thread_identifier = [%import: Coq_executable_sm.thread_identifier] [@@deriving show]
+  type aut_invalid_clean = [%import: Coq_executable_sm.aut_invalid_clean] [@@deriving show]
+  type aut_invalid_unclean = [%import: Coq_executable_sm.aut_invalid_unclean] [@@deriving show]
+  type sm_pte_state = [%import: Coq_executable_sm.sm_pte_state] [@@deriving show]
+  type ghost_addr_range = [%import: Coq_executable_sm.ghost_addr_range] [@@deriving show]
+  type map_data_t = [%import: Coq_executable_sm.map_data_t] [@@deriving show]
+  type table_data_t = [%import: Coq_executable_sm.table_data_t] [@@deriving show]
+  type pte_rec = [%import: Coq_executable_sm.pte_rec] [@@deriving show]
+  type level_t = [%import: Coq_executable_sm.level_t] [@@deriving show]
+  type ghost_exploded_descriptor = [%import: Coq_executable_sm.ghost_exploded_descriptor] [@@deriving show]
+  type sm_location = [%import: Coq_executable_sm.sm_location] [@@deriving show]
+  type ghost_simplified_model_state = [%import: Coq_executable_sm.ghost_simplified_model_state] [@@deriving show]
+  type ghost_simplified_model_zallocd = [%import: Coq_executable_sm.ghost_simplified_model_zallocd] [@@deriving show]
+  type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
+  type ghost_simplified_memory = [%import: Coq_executable_sm.ghost_simplified_memory] [@@deriving show]
+end
 
 (** Entrypoints **)
 
