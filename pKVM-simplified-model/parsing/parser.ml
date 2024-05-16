@@ -138,15 +138,20 @@ module Pp = struct
   type level_t = [%import: Coq_executable_sm.level_t] [@@deriving show]
   type ghost_exploded_descriptor = [%import: Coq_executable_sm.ghost_exploded_descriptor] [@@deriving show]
   type sm_location = [%import: Coq_executable_sm.sm_location] [@@deriving show]
+  let pp_sm_location ppf sl =
+    Fmt.pf ppf "@[%a@ %a%a@]" p0xZ sl.sl_phys_addr p0xZ sl.sl_val
+    (fun ppf -> function
+      | Some pte -> Fmt.pf ppf "@ %a" pp_ghost_exploded_descriptor pte
+      | _ -> ()) sl.sl_pte
   type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
   let pp_ghost_simplified_model_state ppf m =
     let pp_k_v =
       Fmt.pair p0xZ pp_sm_location
-      ~sep:(fun ppf () -> Fmt.pf ppf "@ ->@ ") in
-    Fmt.pf ppf "@[<1>{%a}@]" Fmt.(list ~sep:comma pp_k_v)
+      ~sep:(fun ppf () -> Fmt.pf ppf "@ ->@ ") |> Fmt.box in
+    Fmt.pf ppf "@[<2>{ %a }@]" Fmt.(list ~sep:comma pp_k_v)
     (state_fold (fun k v xs -> (k, v)::xs) [] m)
   let pp_ghost_simplified_model_zallocd ppf m =
-    Fmt.pf ppf "@[<1>{%a}@]" Fmt.(list ~sep:comma p0xZ)
+    Fmt.pf ppf "@[<2>{ %a }@]" Fmt.(list ~sep:comma p0xZ)
     (zallocd_fold (fun x xs -> x::xs) [] m)
   type ghost_simplified_memory = [%import: Coq_executable_sm.ghost_simplified_memory] [@@deriving show]
 end
