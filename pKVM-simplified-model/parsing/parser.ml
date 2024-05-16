@@ -168,13 +168,27 @@ let pre_parse bin trace =
   let xs = Iters.in_file trace transitions in
   with_open_out bin @@ fun oc -> marshall_out oc xs
 
-let run_model ?limit src =
+let dump_st st =
+  Fmt.pr "%a: @[%a@]@." Fmt.(styled `Green string) "STATE"
+  Pp.pp_ghost_simplified_memory st
+
+let dump_tr tr =
+  Fmt.pr "%a: @[%a@]@." Fmt.(styled `Red string) "TRANS"
+  pp_transition tr
+
+let dump_res = Fmt.pr "@[%a@]@." pp_step_result
+
+let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
   let xs = match src with
   | `Text f -> Iters.in_file f transitions
   | `Bin f -> Iters.in_file f marshall_in in
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
-  let res = Iters.fold_result step_ state_0 xs in
-  Fmt.pr "@[%a@]@." pp_step_result res
+  let step (state, log) trans =
+    if dump_state then dump_st state;
+    if dump_trans then dump_tr trans;
+    Coq_executable_sm.step_ (state, log) trans
+  in
+  Iters.fold_result step state_0 xs |> dump_res
 
 (** Cmdline args **)
 
@@ -194,14 +208,18 @@ let term =
               ~docv:"FILE" ~doc:"Save a pre-parsed trace. (Needs a TRACE, cannot --read.)"
   and limit = value @@ opt (some int) None @@ info ["limit"]
               ~docv:"NUM" ~doc:"Check only the first $(docv) events."
+  and dump_s  = value @@ opt bool false @@ info ["dump-states"]
+  and dump_t  = value @@ opt bool false @@ info ["dump-transitions"]
   in
-  Term.((fun read write limit trace -> match read, write, trace with
-    | None, None, Some f -> Ok (run_model ?limit (`Text f))
-    | Some f, None, None -> Ok (run_model ?limit (`Bin f))
+  Term.((fun read write limit dump_state dump_trans trace -> match read, write, trace with
+    | None, None, Some f -> Ok (run_model ~dump_state ~dump_trans ?limit (`Text f))
+    | Some f, None, None -> Ok (run_model ~dump_state ~dump_trans ?limit (`Bin f))
     | None, Some e, Some f -> Ok (pre_parse e f)
     | None, None, None -> Error "No input."
     | _ -> Error "Invalid arguments.")
-  $$ read $ write $ limit $ trace)
+  $$ read $ write $ limit $ dump_s $ dump_t $ trace)
   |> Term.term_result' ~usage:true
 
-let _ = Cmd.v info term |> Cmd.eval
+let _ =
+  Fmt_tty.setup_std_outputs();
+  Cmd.v info term |> Cmd.eval
