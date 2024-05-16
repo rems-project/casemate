@@ -100,15 +100,18 @@ let pp_log ppf = function
   | Warning_unsupported_TLBI ->
       Fmt.pf ppf
         "Warning: unsupported TLBI, defaulting to TLBI VMALLS12E1IS;TLBI ALLE2."
+  | Log (a, x) -> Fmt.pf ppf "%s: %a" a p0xZ x
 
-let pp_error ppf ((error_code, trans), log) =
+
+let pp_logs ppf log = 
+  (Fmt.list ~sep:(fun ppf () -> Fmt.pf ppf "@\n@") pp_log) ppf log
+
+let pp_error ppf (error_code) =
   Fmt.pf ppf
-  "@[<v>@[<2>Logs:@ @[%a@]@]@ @[<2>Error:@ %a.@]@ @[<2>Transition:@ %a@]@]"
-  Fmt.(list ~sep:comma pp_log) (List.rev log)
+  "@[<v>@[<2>Error:@ @[%a@]@]@]"
   pp_error error_code
-  pp_transition trans
 
-let pp_step_result = Fmt.(result ~ok:(const string "Success!") ~error:pp_error)
+let pp_step_result = Fmt.(result ~ok:(const string "Success!\n") ~error:pp_error)
 
 module Pp = struct
   (* Automatically derive printers using pretty evil metaprogramming, with
@@ -137,23 +140,32 @@ module Pp = struct
   type pte_rec = [%import: Coq_executable_sm.pte_rec] [@@deriving show]
   type level_t = [%import: Coq_executable_sm.level_t] [@@deriving show]
   type ghost_exploded_descriptor = [%import: Coq_executable_sm.ghost_exploded_descriptor] [@@deriving show]
-  type sm_location = [%import: Coq_executable_sm.sm_location] [@@deriving show]
+
   let pp_sm_location ppf sl =
-    Fmt.pf ppf "@[%a@ %a%a@]" p0xZ sl.sl_phys_addr p0xZ sl.sl_val
+    Fmt.pf ppf "@[%a@ %a@]" p0xZ sl.sl_val
     (fun ppf -> function
       | Some pte -> Fmt.pf ppf "@ %a" pp_ghost_exploded_descriptor pte
       | _ -> ()) sl.sl_pte
+
   type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
+
   let pp_ghost_simplified_model_state ppf m =
     let pp_k_v =
       Fmt.pair p0xZ pp_sm_location
       ~sep:(fun ppf () -> Fmt.pf ppf "@ ->@ ") |> Fmt.box in
     Fmt.pf ppf "@[<2>{ %a }@]" Fmt.(list ~sep:comma pp_k_v)
-    (state_fold (fun k v xs -> (k, v)::xs) [] m)
+    (state_fold (fun k v xs -> (k, v)::xs) [] m |>
+    (* Only print PTEs *)
+    List.filter (fun x -> Option.is_some (snd x).sl_pte))
+
   let pp_ghost_simplified_model_zallocd ppf m =
     Fmt.pf ppf "@[<2>{ %a }@]" Fmt.(list ~sep:comma p0xZ)
     (zallocd_fold (fun x xs -> x::xs) [] m)
-  type ghost_simplified_memory = [%import: Coq_executable_sm.ghost_simplified_memory] [@@deriving show]
+  let pp_ghost_simplified_memory ppf m = 
+    Fmt.pf ppf "roots:@ @[<2>%a@]@memory:@ @[<2>%a@]" pp_pte_roots m.gsm_roots
+      pp_ghost_simplified_model_state m.gsm_memory
+
+  let _ = ignore (pp_ghost_simplified_model_zallocd)
 end
 
 (** Entrypoints **)
@@ -173,27 +185,36 @@ let pre_parse bin trace =
   let xs = Iters.in_file trace transitions in
   with_open_out bin @@ fun oc -> marshall_out oc xs
 
+let dump_step_res ppf res = Fmt.pf ppf "log:@ @[<2>%a@]@. result:@ @[<2>%a@]"
+  Fmt.(list ~sep:comma pp_log) (List.rev res.gsmsr_log)
+  Fmt.(result ~ok:Pp.pp_ghost_simplified_memory ~error:pp_error) res.gsmsr_data
+
 let dump_st st =
   Fmt.pr "%a: @[%a@]@." Fmt.(styled `Green string) "STATE"
-  Pp.pp_ghost_simplified_memory st
+  dump_step_res st
 
-let dump_tr tr =
-  Fmt.pr "%a: @[%a@]@." Fmt.(styled `Red string) "TRANS"
+let dump_tr ppf tr =
+  Fmt.pf ppf "%a: @[%a@]@." Fmt.(styled `Red string) "TRANS"
   pp_transition tr
-
-let dump_res = Fmt.pr "@[%a@]@." pp_step_result
 
 let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
   let xs = match src with
   | `Text f -> Iters.in_file f transitions
   | `Bin f -> Iters.in_file f marshall_in in
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
-  let step (state, log) trans =
-    if dump_state then dump_st state;
-    if dump_trans then dump_tr trans;
-    Coq_executable_sm.step_ (state, log) trans
+  let step_ state trans =
+    let res = Coq_executable_sm.step trans state in
+    if res.gsmsr_log != [] then (
+      if dump_trans then Fmt.pr "%a@ @[<2>%a@]\n" dump_tr trans pp_logs res.gsmsr_log
+        else Fmt.pr "%a\n" pp_logs res.gsmsr_log;
+      if dump_state then dump_st res;
+    );
+    (* If we reach an error, we dump the transition *)
+    if Result.is_error res.gsmsr_data && dump_trans then
+      dump_tr Fmt.stdout trans;
+    res.gsmsr_data
   in
-  Iters.fold_result step state_0 xs |> dump_res
+  Iters.fold_result step_ memory_0 xs |> pp_step_result Fmt.stdout
 
 (** Cmdline args **)
 
