@@ -267,11 +267,34 @@ Record TLBIRecord  := {
 }.
 
 
-Record TLBI  := {
+Record TLBI := {
   TLBI_rec : TLBIRecord;
   TLBI_shareability : Shareability;
 }.
 
+Inductive TLBI_stage_kind :=
+| TLBI_OP_stage1
+| TLBI_OP_stage2
+| TLBI_OP_both_stages
+.
+
+Record TLBI_op_by_addr_data := {
+  TOBAD_page : phys_addr_t;
+  TOBAD_last_level_only : bool;
+}.
+
+Inductive TLBI_method :=
+| TLBI_by_addr_space : phys_addr_t -> TLBI_method
+| TLBI_by_input_addr : TLBI_op_by_addr_data -> TLBI_method
+| TLBI_by_addr_all
+.
+
+Record TLBI_intermediate := {
+  TI_stage : TLBI_stage_kind;
+  TI_regime : Regime;
+  TI_shootdown : bool;
+  TI_method : TLBI_method;
+}.
 
 
 (***************************************)
@@ -401,7 +424,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
 
-Inductive result (A B: Type): Type 
+Inductive result (A B: Type): Type
   := Ok (a: A) | Error (b: B).
 
 Inductive log_element :=
@@ -1082,9 +1105,48 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI) (ptc : page_tab
   end
 .
 
+Definition decode_tlbi (td : TLBI) : TLBI_intermediate :=
+  {|
+    TI_stage :=
+      match td.(TLBI_rec).(TLBIRecord_op) with
+        | TLBIOp_VA | TLBIOp_VMALL =>
+            TLBI_OP_stage1
+        | TLBIOp_IPAS2  => TLBI_OP_stage1
+        | TLBIOp_VMALLS12 | TLBIOp_ALL => TLBI_OP_both_stages
+        | _ => TLBI_OP_stage1 (* TODO: Fail *)
+      end;
+    TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
+    TI_shootdown :=
+      match td.(TLBI_rec).(TLBIRecord_op) with
+        | TLBIOp_VMALLS12 | TLBIOp_VMALL | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 | TLBIOp_ALL =>
+          match td.(TLBI_shareability) with
+            | Shareability_ISH => true
+            | _ => false
+          end
+        | _ => false (* TODO: fail? *)
+      end;
+    TI_method :=
+      match td.(TLBI_rec).(TLBIRecord_op) with
+        | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
+          TLBI_by_addr_space (Phys_addr b0) (* TODO *)
+        | TLBIOp_VA (* Also VAL? *) =>
+          TLBI_by_input_addr
+            {| (* TODO *)
+                TOBAD_page := (Phys_addr b0);
+                TOBAD_last_level_only :=
+                  match td.(TLBI_rec).(TLBIRecord_regime), td.(TLBI_shareability) with
+                    | Regime_EL2, Shareability_ISH => true
+                    | _,_ => false
+                  end;
+            |}
+        | _ => TLBI_by_addr_all (* TODO: fail *)
+      end
+  |}
+.
+
 
 Definition step_tlbi (tid : thread_identifier) (td : TLBI) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
+  match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime), td.(TLBI_shareability) with
     | TLBIOp_VA, Regime_EL2 , Shareability_ISH =>
       (* traverse all s1 pages*)
       traverse_si_pgt st (tlbi_visitor tid td) false
