@@ -21,11 +21,16 @@ Definition u64_eqb (x y : u64) : bool :=
   bool_decide (x = y).
 
 Definition u64_ltb (x y : u64) : bool :=
-  Z.to_nat (bv_unsigned x) <? Z.to_nat (bv_unsigned y)
+  ((bv_unsigned x) <? (bv_unsigned y))%Z
+.
+
+Definition u64_lte (x y : u64) : bool :=
+  ((bv_unsigned x) <=? (bv_unsigned y))%Z
 .
 
 Infix "b=?" := u64_eqb (at level 70).
 Infix "b<?" := u64_ltb (at level 70).
+Infix "b<=?" := u64_lte (at level 70).
 Infix "b+" := bv_add (at level 50).
 Infix "b*" := bv_mul (at level 40).
 
@@ -101,6 +106,12 @@ Definition next_level (l : level_t) : level_t :=
     | l2 => l3
     | l3 => lerror
     | lerror => lerror
+  end
+.
+Definition is_l3 (l : level_t) : bool :=
+  match l with
+    | l3 => true
+    | _ => false
   end
 .
 Global Instance level_t_eq_decision : EqDecision level_t.
@@ -1003,21 +1014,34 @@ Definition step_dsb (tid : thread_identifier) (dk : DxB) (st : ghost_simplified_
 (*                                     TLBI                                               *)
 (******************************************************************************************)
 
-Definition should_perform_tlbi (td : TLBI) (ptc : page_table_context) : bool :=
+Definition is_leaf (kind : pte_rec) : bool :=
+  match kind with
+    | PTER_PTE_KIND_TABLE _ => false
+    | _ => true
+  end
+.
+
+Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_context) : option bool :=
   match ptc.(ptc_loc) with
-    | None => false (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
+    | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
     | Some loc =>
       match loc.(sl_pte) with
-        | None => false (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
+        | None => Some false (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
         | Some pte_desc =>
-          match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
-            | TLBIOp_VA, Regime_EL2, Shareability_ISH
-            | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH =>
-              let tlbi_addr := bv_shiftr (phys_addr_val td.(TLBI_rec).(TLBIRecord_address)) 12 in
-                (negb (is_desc_table loc.(sl_val) (pte_desc.(ged_level)))) (* Not a leaf *)
-                && (phys_addr_val pte_desc.(ged_ia_region).(range_start) b<? tlbi_addr) (* and in the range of the TLBI *)
-                && (tlbi_addr b<? phys_addr_val (pte_desc.(ged_ia_region).(range_start) pa+ pte_desc.(ged_ia_region).(range_size)))
-            | _,_,_ => true (* This should change depending on the TLBI kind *)
+          match td.(TI_method) with
+            | TLBI_by_input_addr d =>
+              let tlbi_addr := bv_shiftr (phys_addr_val d.(TOBAD_page)) 12 in
+              let ia_start := pte_desc.(ged_ia_region).(range_start) in
+              let ia_end := ia_start pa+ (pte_desc.(ged_ia_region).(range_start)) in
+              if negb (is_leaf pte_desc.(ged_pte_kind) && (phys_addr_val ia_start b<=? tlbi_addr) 
+                       && (tlbi_addr b<=? phys_addr_val ia_end)) then
+                Some false
+              else if (is_l3 pte_desc.(ged_level) && d.(TOBAD_last_level_only)) then
+                Some false
+              else 
+                Some true
+            | TLBI_by_addr_space _ => None
+            | TLBI_by_addr_all => Some true
           end
       end
   end
@@ -1054,10 +1078,10 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (lo
   end
 .
 
-Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI) (ptc : page_table_context) : ghost_simplified_model_result :=
+Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (ptc : page_table_context) : ghost_simplified_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
-      {| gsmsr_log := nil; gsmsr_data := Error _ _ (GSME_uninitialised "tlbi_visitor" td.(TLBI_rec).(TLBIRecord_address)) |}
+      Merror (GSME_uninitialised "tlbi_visitor" ptc.(ptc_addr))
     | Some location =>
       (* Test if there is something to do *)
       if should_perform_tlbi td ptc then
@@ -1075,18 +1099,8 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI) (ptc : page_tab
                     if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
                       let new_substate :=
                         (* Depending on the current state and the TLBI kind, we update the sub-state *)
-                        match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime),td.(TLBI_shareability) with
-                          | TLBIOp_VMALL, Regime_EL10, Shareability_ISH =>
-                            match ai.(ai_lis) with
-                              | LIS_dsbed | LIS_dsb_tlbi_ipa_dsb => LIS_dsb_tlbied
-                              | r => r
-                            end
-                          | TLBIOp_IPAS2, Regime_EL10, Shareability_ISH =>
-                            match ai.(ai_lis) with
-                              | LIS_dsb_tlbi_ipa_dsb => LIS_dsb_tlbi_ipa_dsb
-                              | r => r
-                            end
-                          | _,_,_ => ai.(ai_lis)
+                        match ai.(ai_lis) with
+                          | a => a (* TODO *)
                         end
                       in
                       (* Write the new sub-state in the global automaton *)
@@ -1160,19 +1174,21 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
 
 
 Definition step_tlbi (tid : thread_identifier) (td : TLBI) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  match td.(TLBI_rec).(TLBIRecord_op), td.(TLBI_rec).(TLBIRecord_regime), td.(TLBI_shareability) with
-    | TLBIOp_VA, Regime_EL2 , Shareability_ISH =>
-      (* traverse all s1 pages*)
-      traverse_si_pgt st (tlbi_visitor tid td) false
-    | TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH
-    | TLBIOp_IPAS2, Regime_EL2, Shareability_ISH
-    | TLBIOp_VMALL, Regime_EL10, Shareability_ISH =>
-      (* traverse s2 pages *)
-      traverse_si_pgt st (tlbi_visitor tid td) true
-    | _,_,_ =>
-      (* traverse all page tables and add a warning *)
-      let res := traverse_all_pgt st (tlbi_visitor tid td) in
-      res <| gsmsr_log := (* Warning_unsupported_TLBI :: *) res.(gsmsr_log) |>
+  match decode_tlbi td with
+    | None => Merror GSME_unimplemented
+    | Some decoded_TLBI =>
+      match td.(TLBI_rec).(TLBIRecord_regime) with
+        | Regime_EL2 =>
+          (* traverse all s1 pages*)
+          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) true
+        | Regime_EL10 =>
+          (* traverse s2 pages *)
+          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) false
+        | _ =>
+          (* traverse all page tables and add a warning *)
+          let res := traverse_all_pgt st (tlbi_visitor tid decoded_TLBI) in
+          res <| gsmsr_log := Warning_unsupported_TLBI :: res.(gsmsr_log) |>
+      end
   end
 .
 
