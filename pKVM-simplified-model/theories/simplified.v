@@ -1078,6 +1078,31 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (lo
   end
 .
 
+Definition step_pte_on_tlbi_after_dsb (td: TLBI_intermediate) : option LIS :=
+  match td.(TI_regime) with
+    | Regime_EL2 => Some LIS_dsb_tlbied
+    | Regime_EL10 =>
+      match td.(TI_stage) with
+        | TLBI_OP_stage1 => Some LIS_dsbed (* no effect*)
+        | TLBI_OP_stage2 => Some LIS_dsb_tlbi_ipa
+        | TLBI_OP_both_stages => Some LIS_dsb_tlbied
+      end
+    | _ => None
+  end
+.
+
+Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS :=
+  match td.(TI_regime) with
+    | Regime_EL10 => None
+    | Regime_EL2 =>
+        match td.(TI_stage) with
+          | TLBI_OP_stage1 | TLBI_OP_both_stages => Some LIS_dsb_tlbied
+          | TLBI_OP_stage2 => Some LIS_dsb_tlbi_ipa_dsb
+        end
+    | _ => None
+  end
+.
+
 Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (ptc : page_table_context) : ghost_simplified_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
@@ -1100,13 +1125,19 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                       let new_substate :=
                         (* Depending on the current state and the TLBI kind, we update the sub-state *)
                         match ai.(ai_lis) with
-                          | a => a (* TODO *)
+                          | LIS_dsbed => step_pte_on_tlbi_after_dsb td 
+                          | LIS_dsb_tlbi_ipa_dsb => step_pte_on_tlbi_after_tlbi_ipa td 
+                          | a => Some a (* Otherwise, it does not make the subotomaton change *)
                         end
                       in
-                      (* Write the new sub-state in the global automaton *)
-                      let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
-                      let new_mem := st <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> st.(gsm_memory)|> in
-                      ret <|gsmsr_data := Ok _ _ new_mem|>
+                      match new_substate with
+                        | None => Merror GSME_unimplemented
+                        | Some new_substate =>
+                          (* Write the new sub-state in the global automaton *)
+                          let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
+                          let new_mem := st <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> st.(gsm_memory)|> in
+                          ret <|gsmsr_data := Ok _ _ new_mem|>
+                      end
                     else
                       ret
                   | _ => ret
