@@ -1105,43 +1105,57 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI) (ptc : page_tab
   end
 .
 
-Definition decode_tlbi (td : TLBI) : TLBI_intermediate :=
-  {|
-    TI_stage :=
-      match td.(TLBI_rec).(TLBIRecord_op) with
-        | TLBIOp_VA | TLBIOp_VMALL =>
-            TLBI_OP_stage1
-        | TLBIOp_IPAS2  => TLBI_OP_stage1
-        | TLBIOp_VMALLS12 | TLBIOp_ALL => TLBI_OP_both_stages
-        | _ => TLBI_OP_stage1 (* TODO: Fail *)
-      end;
-    TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
-    TI_shootdown :=
-      match td.(TLBI_rec).(TLBIRecord_op) with
-        | TLBIOp_VMALLS12 | TLBIOp_VMALL | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 | TLBIOp_ALL =>
-          match td.(TLBI_shareability) with
-            | Shareability_ISH => true
-            | _ => false
-          end
-        | _ => false (* TODO: fail? *)
-      end;
-    TI_method :=
-      match td.(TLBI_rec).(TLBIRecord_op) with
-        | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-          TLBI_by_addr_space (Phys_addr b0) (* TODO *)
-        | TLBIOp_VA (* Also VAL? *) =>
+Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
+  let stage := 
+    match td.(TLBI_rec).(TLBIRecord_op) with
+      | TLBIOp_VA | TLBIOp_VMALL =>
+          Some TLBI_OP_stage1
+      | TLBIOp_IPAS2  => Some TLBI_OP_stage1
+      | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
+      | _ => None
+    end
+  in
+  let shootdown := (* Is this ISH? *)
+    match td.(TLBI_rec).(TLBIRecord_op) with
+      | TLBIOp_VMALLS12 | TLBIOp_VMALL | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 | TLBIOp_ALL =>
+        match td.(TLBI_shareability) with
+          | Shareability_ISH => Some true
+          | _ => Some false
+        end
+      | _ => None
+    end
+  in
+  let method :=
+    match td.(TLBI_rec).(TLBIRecord_op) with
+      | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
+        Some (TLBI_by_addr_space (Phys_addr b0)) (* TODO *)
+      | TLBIOp_VA (* Also VAL? *) =>
+        Some (
           TLBI_by_input_addr
-            {| (* TODO *)
-                TOBAD_page := (Phys_addr b0);
+            {| 
+                TOBAD_page := (td.(TLBI_rec).(TLBIRecord_address));
                 TOBAD_last_level_only :=
                   match td.(TLBI_rec).(TLBIRecord_regime), td.(TLBI_shareability) with
                     | Regime_EL2, Shareability_ISH => true
                     | _,_ => false
                   end;
             |}
-        | _ => TLBI_by_addr_all (* TODO: fail *)
-      end
-  |}
+        )
+      | TLBIOp_ALL => Some TLBI_by_addr_all
+      | _ => None (* TODO: fail *)
+    end
+  in
+  match stage, shootdown, method with
+    | Some stage, Some shootdown, Some method => 
+      Some
+      {|
+        TI_stage := stage;
+        TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
+        TI_shootdown := shootdown;
+        TI_method := method;
+      |}
+    | _,_,_ => None
+  end
 .
 
 
