@@ -104,7 +104,7 @@ let pp_log ppf = function
 
 
 let pp_logs ppf log = 
-  (Fmt.list ~sep:(fun ppf () -> Fmt.pf ppf "@\n@") pp_log) ppf log
+  (Fmt.list ~sep:Fmt.comma pp_log) ppf log
 
 let pp_error ppf (error_code) =
   Fmt.pf ppf
@@ -162,7 +162,7 @@ module Pp = struct
     Fmt.pf ppf "@[<2>{ %a }@]" Fmt.(list ~sep:comma p0xZ)
     (zallocd_fold (fun x xs -> x::xs) [] m)
   let pp_ghost_simplified_memory ppf m = 
-    Fmt.pf ppf "roots:@ @[<2>%a@]@memory:@ @[<2>%a@]" pp_pte_roots m.gsm_roots
+    Fmt.pf ppf "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@." pp_pte_roots m.gsm_roots
       pp_ghost_simplified_model_state m.gsm_memory
 
   let _ = ignore (pp_ghost_simplified_model_zallocd)
@@ -185,16 +185,11 @@ let pre_parse bin trace =
   let xs = Iters.in_file trace transitions in
   with_open_out bin @@ fun oc -> marshall_out oc xs
 
-let dump_step_res ppf res = Fmt.pf ppf "log:@ @[<2>%a@]@. result:@ @[<2>%a@]"
-  Fmt.(list ~sep:comma pp_log) (List.rev res.gsmsr_log)
-  Fmt.(result ~ok:Pp.pp_ghost_simplified_memory ~error:pp_error) res.gsmsr_data
-
-let dump_st st =
-  Fmt.pr "%a: @[%a@]@." Fmt.(styled `Green string) "STATE"
-  dump_step_res st
+let pp_state state = 
+  Fmt.(result ~ok:Pp.pp_ghost_simplified_memory ~error:pp_error) state
 
 let dump_tr ppf tr =
-  Fmt.pf ppf "%a: @[%a@]@." Fmt.(styled `Red string) "TRANS"
+  Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS"
   pp_transition tr
 
 let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
@@ -205,12 +200,12 @@ let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
   let step_ state trans =
     let res = Coq_executable_sm.step trans state in
     if res.gsmsr_log != [] then (
-      if dump_trans then Fmt.pr "%a@ @[<2>%a@]\n" dump_tr trans pp_logs res.gsmsr_log
-        else Fmt.pr "%a\n" pp_logs res.gsmsr_log;
-      if dump_state then dump_st res;
+      if dump_trans then Fmt.pr "%a@ @[<2>%a@]@." dump_tr trans pp_logs res.gsmsr_log
+        else Fmt.pr "%a@." pp_logs res.gsmsr_log;
+      if dump_state then Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_state res.gsmsr_data;
     );
     (* If we reach an error, we dump the transition *)
-    if Result.is_error res.gsmsr_data && dump_trans then
+    if Result.is_error res.gsmsr_data && not dump_trans then
       dump_tr Fmt.stdout trans;
     res.gsmsr_data
   in
