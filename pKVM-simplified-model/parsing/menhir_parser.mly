@@ -67,14 +67,14 @@ trans_data:
     let op, regime, shareability =
       match tlbi with
       | "TLBI_vmalls12e1" ->
-          (TLBIOp_VMALLS12, Regime_EL10, Shareability_OSH)
+          (TLBIOp_VMALLS12, Regime_EL10, Shareability_NSH)
           (* not sure shareability *)
       | "TLBI_vmalle1is" -> (TLBIOp_VMALL, Regime_EL10, Shareability_ISH)
       | "TLBI_vmalls12e1is" -> (TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH)
       | "TLBI_vmalle1" ->
           ( TLBIOp_VMALL,
             Regime_EL10,
-            Shareability_OSH (* not sure shareability *) )
+            Shareability_NSH (* not sure shareability *) )
       | _ ->
           Printf.eprintf "Unsupported TLBI operation %s\n" tlbi;
           exit 1
