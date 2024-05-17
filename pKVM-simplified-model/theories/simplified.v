@@ -1160,21 +1160,17 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
       | _ => None
     end
   in
-  let shootdown := (* Is this ISH? *)
-    match td.(TLBI_rec).(TLBIRecord_op) with
-      | TLBIOp_VMALLS12 | TLBIOp_VMALL | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 | TLBIOp_ALL =>
-        match td.(TLBI_shareability) with
-          | Shareability_ISH => Some true
-          | _ => Some false
-        end
-      | _ => None
+  let shootdown :=
+    match td.(TLBI_shareability) with
+      | Shareability_ISH => Some true
+      | _ => Some false
     end
   in
   let method :=
     match td.(TLBI_rec).(TLBIRecord_op) with
       | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
         Some (TLBI_by_addr_space (Phys_addr b0)) (* TODO *)
-      | TLBIOp_VA (* Also VAL? *) =>
+      | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 =>
         Some (
           TLBI_by_input_addr
             {| 
