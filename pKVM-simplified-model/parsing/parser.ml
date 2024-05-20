@@ -125,6 +125,7 @@ module Pp = struct
      the printers by hand.
   *)
   let pp_u64 = p0xZ
+  type stage_t = [%import: Coq_executable_sm.stage_t] [@@deriving show]
   type lIS = [%import: Coq_executable_sm.lIS] [@@deriving show]
   type lVS = [%import: Coq_executable_sm.lVS] [@@deriving show]
   type aut_valid = [%import: Coq_executable_sm.aut_valid] [@@deriving show]

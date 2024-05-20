@@ -122,6 +122,11 @@ Global Instance level_t_eq_decision : EqDecision level_t.
 (********                Automaton definition                        *********)
 (*****************************************************************************)
 
+Inductive stage_t :=
+  | S1
+  | S2
+.
+
 Inductive LVS :=
 | LVS_unguarded
 | LVS_dsbed
@@ -181,13 +186,13 @@ Inductive pte_rec :=
 Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
   ged_ia_region : ghost_addr_range;
   ged_level : level_t;
-  ged_s2 : bool;
+  ged_stage : stage_t;
   ged_pte_kind : pte_rec;
   ged_state : sm_pte_state;
   (* address of the root of the PTE *)
   ged_owner : owner_t;
 }.
-#[export] Instance eta_ghost_exploded_descriptor : Settable _ := settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_s2; ged_pte_kind; ged_state; ged_owner>.
+#[export] Instance eta_ghost_exploded_descriptor : Settable _ := settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_stage; ged_pte_kind; ged_state; ged_owner>.
 
 
 
@@ -459,9 +464,9 @@ Record page_table_context := mk_page_table_context {
   ptc_addr: phys_addr_t;
   ptc_root: owner_t;
   ptc_level: level_t;
-  ptc_s2: bool;
+  ptc_stage: stage_t;
 }.
-#[export] Instance eta_page_table_context : Settable _ := settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_s2>.
+#[export] Instance eta_page_table_context : Settable _ := settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.
 
 
 (*****************************************************************************)
@@ -583,7 +588,7 @@ Infix "!!" := get_location (at level 20) .
 (*                             Page table traversal                                       *)
 (******************************************************************************************)
 
-Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (cpu_id : thread_identifier) (pte_kind : pte_rec) (s2 : bool) : sm_pte_state :=
+Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (cpu_id : thread_identifier) (pte_kind : pte_rec) (stage : stage_t) : sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
       SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
@@ -592,7 +597,7 @@ Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_
   end
 .
 
-Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (root : owner_t) (s2 : bool) : ghost_exploded_descriptor :=
+Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (root : owner_t) (stage : stage_t) : ghost_exploded_descriptor :=
   let pte_kind :=
     if is_desc_valid desc then
       if is_desc_table desc level then
@@ -617,22 +622,22 @@ Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_
         range_size := map_size level (* The mapped (or partially mapped) region only depends on the level *)
       |};
     ged_level := level;
-    ged_s2 := s2;
+    ged_stage := stage;
     ged_pte_kind := pte_kind;
-    ged_state := initial_state partial_ia desc level cpu_id pte_kind s2;
+    ged_state := initial_state partial_ia desc level cpu_id pte_kind stage;
     ged_owner := root;
   |}
 .
 
-Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_result)  (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result)  (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
   match max_call_number with
-   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb b0 max_call_number mon
+   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
             the number of recursive calls is bounded. *)
    {| gsmsr_log := [] ; gsmsr_data := Error _ _ (GSME_internal_error IET_infinite_loop) |}
   end
   (* This is the for loop that iterates over all the entries of a page table *)
-with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
+with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
   match max_call_number with
     | S max_call_number =>
       if i b=? b512 then
@@ -653,7 +658,7 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                 ptc_partial_ia := partial_ia;
                 ptc_root := root;
                 ptc_level:= level;
-                ptc_s2 := s2;
+                ptc_stage := stage;
               |}
             in
             let mon := Mupdate_state visitor_state_updater mon in
@@ -668,7 +673,7 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                       match location.(sl_pte) with
                         | Some pte => pte
                         | None => (* 0 is a placeholder, we do not use it afterwards *)
-                          deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root s2
+                          deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root stage
                       end
                     in
                     let mon :=
@@ -679,11 +684,11 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                           let rec_table_start := table_data.(next_level_table_addr) in
                           let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) pa+ (((Phys_addr i) pa* exploded_desc.(ged_ia_region).(range_size))) in
                           (* recursive call: explore sub-pgt *)
-                          traverse_pgt_from_aux root rec_table_start next_partial_ia (next_level level) s2 visitor_cb max_call_number mon
+                          traverse_pgt_from_aux root rec_table_start next_partial_ia (next_level level) stage visitor_cb max_call_number mon
                         | _ => mon
                       end
                     in
-                    traverse_pgt_from_offs root table_start partial_ia level s2 visitor_cb (bv_add i b1)  max_call_number mon
+                    traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb (bv_add i b1)  max_call_number mon
                 end
             end
         end
@@ -691,41 +696,44 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
   end
 .
 
-Definition traverse_pgt_from (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  traverse_pgt_from_aux root table_start partial_ia level s2 visitor_cb (4*n512) (Mreturn st)
+Definition traverse_pgt_from (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  traverse_pgt_from_aux root table_start partial_ia level stage visitor_cb (4*n512) (Mreturn st)
 .
 
-Definition traverse_pgt_from_root (root : owner_t) (s2 : bool) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  traverse_pgt_from root (root_val root) pa0 l0 s2 visitor_cb st
+Definition traverse_pgt_from_root (root : owner_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  traverse_pgt_from root (root_val root) pa0 l0 stage visitor_cb st
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplified_model_result) (s2 : bool) (roots : list owner_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) (roots : list owner_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
   match roots with
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
       match st.(gsmsr_data) with
         | Error _ _ _ => st
         | _ =>
-          let st := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 s2 visitor_cb) st in
-          traverse_si_pgt_aux visitor_cb s2 q st
+          let st := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) st in
+          traverse_si_pgt_aux visitor_cb stage q st
       end
     | [] => st
   end
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) (s2 : bool) : ghost_simplified_model_result :=
+Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) : ghost_simplified_model_result :=
   let roots :=
-    if s2 then st.(gsm_roots).(pr_s2) else st.(gsm_roots).(pr_s1)
+    match stage with
+      | S2 => st.(gsm_roots).(pr_s2)
+      | S1 => st.(gsm_roots).(pr_s1)
+    end
   in
-  traverse_si_pgt_aux visitor_cb s2 roots {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
+  traverse_si_pgt_aux visitor_cb stage roots {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
 .
 
 Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
-  match traverse_si_pgt st visitor_cb true with
+  match traverse_si_pgt st visitor_cb S1 with
     | {|gsmsr_log := logs; gsmsr_data := Ok _ _ st|} =>
-      let res := traverse_si_pgt st visitor_cb false in
+      let res := traverse_si_pgt st visitor_cb S2 in
       res <| gsmsr_log := res.(gsmsr_log) ++ logs |>
     | err => err
   end
@@ -741,7 +749,7 @@ Definition mark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : gho
         | Some _ =>
           {| gsmsr_log := []; gsmsr_data := Error _ _ GSME_double_use_of_pte |}
         | None =>
-          let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_s2) in
+          let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
           let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
           let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
           Mreturn new_state
@@ -800,7 +808,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
       Merror (GSME_internal_error IET_unexpected_none)
     | Some descriptor =>
       (* TODO: save old descriptor *)
-      let descriptor := deconstruct_pte tid descriptor.(ged_ia_region).(range_start) val descriptor.(ged_level) descriptor.(ged_owner) descriptor.(ged_s2) in
+      let descriptor := deconstruct_pte tid descriptor.(ged_ia_region).(range_start) val descriptor.(ged_level) descriptor.(ged_owner) descriptor.(ged_stage) in
       let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
       let st := st <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
       if is_desc_valid val then
@@ -808,11 +816,11 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
         match descriptor.(ged_pte_kind) with
           | PTER_PTE_KIND_TABLE map =>
             let
-              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_s2) clean_reachable st
+              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_stage) clean_reachable st
             in
             let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
             (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
-            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_s2) (mark_cb tid)) st
+            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_stage) (mark_cb tid)) st
           | _ => Mreturn st
         end
       else
@@ -958,7 +966,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
     | Some location =>
       let pte :=
         match location.(sl_pte) with
-          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_s2)
+          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage)
           | Some pte => pte
         end
       in
@@ -1052,7 +1060,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
 Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_result :=
   let pte := (* build the PTE if it is not done already *)
     match loc.(sl_pte) with
-      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
+      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
       | Some pte => pte
     end
   in
@@ -1060,20 +1068,20 @@ Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (lo
   match pte.(ged_state) with
     | SPS_STATE_PTE_INVALID_UNCLEAN lis =>
       let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
-        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_s2)
+        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
       in
       match old_desc.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE table_data =>
           (* check if all children are reachable *)
-          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) pa0 pte.(ged_level) pte.(ged_s2) clean_reachable st with
+          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) pa0 pte.(ged_level) pte.(ged_stage) clean_reachable st with
             | {| gsmsr_log := logs; gsmsr_data:= Ok _ _ st|} =>
               (* If all children are clean, we can unmark them as PTE *)
-              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_s2) (unmark_cb cpu_id) st with
+              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_stage) (unmark_cb cpu_id) st with
                 | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log :=  logs1 ++ logs; gsmsr_data := st |}
               end
             | e => e
           end
-        | _ => {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
+        | _ => {| gsmsr_log  := nil; gsmsr_data := Ok _ _ st |}
       end
     | _ => (* if it is not invalid unclean, the TLBI has no effect *)
       {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
@@ -1207,10 +1215,10 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (st : ghost_simplifie
       match td.(TLBI_rec).(TLBIRecord_regime) with
         | Regime_EL2 =>
           (* traverse all s1 pages*)
-          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) true
+          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) S1
         | Regime_EL10 =>
           (* traverse s2 pages *)
-          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) false
+          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) S2
         | _ =>
           (* traverse all page tables and add a warning *)
           let res := traverse_all_pgt st (tlbi_visitor tid decoded_TLBI) in
@@ -1231,45 +1239,55 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
   end
 .
 
-Definition extract_si_root (val : u64) (s2 : bool) : owner_t :=
+Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
   Root (Phys_addr (bv_and val (GENMASK (b47) (b1))))
 .
 
-Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (s2 : bool) : ghost_simplified_model_result :=
-  let other_root_levels := (if s2 then pr_s1 else pr_s2) st.(gsm_roots) in
+Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (stage : stage_t) : ghost_simplified_model_result :=
+  let other_root_levels :=
+    match stage with
+      | S1 => pr_s1
+      | S2 => pr_s2
+    end st.(gsm_roots) in
   (* Check that the root does not already exist in the other root list*)
   if si_root_exists root other_root_levels then
     {| gsmsr_log := nil; gsmsr_data := Error _ _ GSME_root_already_exists |}
   else
     (* Add the root to the list of roots*)
     let new_roots :=
-      if s2 then
-        st.(gsm_roots) <| pr_s2 := root :: st.(gsm_roots).(pr_s2) |>
-      else
-        st.(gsm_roots) <| pr_s1 := root :: st.(gsm_roots).(pr_s1) |>
+      match stage with
+        | S2 => st.(gsm_roots) <| pr_s2 := root :: st.(gsm_roots).(pr_s2) |>
+        | S1 => st.(gsm_roots) <| pr_s1 := root :: st.(gsm_roots).(pr_s1) |>
+      end
     in
     let new_st := st <| gsm_roots := new_roots |> in
     (* then mark all its children as PTE *)
     match root with
-      | Root r => traverse_pgt_from root r pa0 l0 s2 (mark_cb tid) new_st
+      | Root r => traverse_pgt_from root r pa0 l0 stage (mark_cb tid) new_st
     end
 .
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  let s2 :=
+  let stage :=
     match md.(tmd_sysreg) with
-      | SYSREG_TTBR_EL2 => true
-      | SYSREG_VTTBR => false
+      | SYSREG_TTBR_EL2 => S2
+      | SYSREG_VTTBR => S1
     end
   in
-  let root := extract_si_root md.(tmd_val) s2 in
+  let root := extract_si_root md.(tmd_val) stage in
   (* The value written to TTRB is a root, it might be new. *)
-  if si_root_exists root ((if s2 then pr_s2 else pr_s1) st.(gsm_roots)) then
+  let roots :=
+    match stage with
+      | S2 =>  pr_s2
+      | S1 => pr_s1
+    end st.(gsm_roots)
+  in
+  if si_root_exists root (match stage with | S2 =>  pr_s2 | S1 => pr_s1 end st.(gsm_roots)) then
     Mreturn st (* If it is already known to be a root, do nothing, it has already been registered *)
   else
     (* Otherwise, register it *)
-    register_si_root tid st root s2
+    register_si_root tid st root stage
 .
 
 (******************************************************************************************)
@@ -1349,13 +1367,13 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
         | None => Merror (GSME_internal_error IET_unexpected_none)
         | Some pte =>
           let new_roots :=
-            if pte.(ged_s2) then
+            if pte.(ged_stage) then
               st.(gsm_roots) <| pr_s2 := remove addr st.(gsm_roots).(pr_s2) |>
             else
               st.(gsm_roots) <| pr_s1 := remove addr st.(gsm_roots).(pr_s1) |>
           in
           let st := st <| gsm_roots := new_roots |> in
-          traverse_pgt_from_root addr pte.(ged_s2) (unmark_cb cpu) st
+          traverse_pgt_from_root addr pte.(ged_stage) (unmark_cb cpu) st
       end
   end
 .
@@ -1375,7 +1393,7 @@ Definition step_release_table (cpu : thread_identifier) (addr : owner_t) (st : g
             gsmsr_data := Error _ _ (GSME_not_a_pte "release"%string (root_val addr))
           |}
         | Some desc =>
-          let st := traverse_pgt_from addr (root_val desc.(ged_owner)) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_s2) step_release_cb st in
+          let st := traverse_pgt_from addr (root_val desc.(ged_owner)) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_stage) step_release_cb st in
           Mupdate_state (try_unregister_root (addr) cpu) st
       end
   end
