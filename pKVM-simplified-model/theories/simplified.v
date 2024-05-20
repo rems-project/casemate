@@ -452,7 +452,7 @@ Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
 #[export] Instance eta_ghost_simplified_model_result : Settable _ := settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
 
 (* Type used as input of the page table visitor function  *)
-Record page_table_context := {
+Record page_table_context := mk_page_table_context {
   ptc_state: ghost_simplified_memory;
   ptc_loc: option sm_location;
   ptc_partial_ia: phys_addr_t;
@@ -461,6 +461,8 @@ Record page_table_context := {
   ptc_level: level_t;
   ptc_s2: bool;
 }.
+#[export] Instance eta_page_table_context : Settable _ := settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_s2>.
+
 
 (*****************************************************************************)
 (********                   Code of the transitions                  *********)
@@ -1111,39 +1113,37 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
       (* Test if there is something to do *)
       if should_perform_tlbi td ptc then
         (* step_pte_on_tlbi: inlined *)
-        match tlbi_invalid_unclean_unmark_children cpu_id location ptc with
-          | {| gsmsr_log := log; gsmsr_data := Ok _ _ st|} as ret =>
-            (* If it worked, then we update the invalid unclean sub-automaton *)
-            match location.(sl_pte) with
-              | None => Merror (GSME_internal_error IET_unexpected_none)
-                (* This cannot happen (otherwise, should_perform_tlbi would be false) *)
-              | Some exploded_desc =>
-                match exploded_desc.(ged_state) with
-                  | SPS_STATE_PTE_INVALID_UNCLEAN ai =>
-                    (* If the CPU that does the transformation is not the one that initiated the invalidation, do nothing *)
-                    if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
-                      let new_substate :=
-                        (* Depending on the current state and the TLBI kind, we update the sub-state *)
-                        match ai.(ai_lis) with
-                          | LIS_dsbed => step_pte_on_tlbi_after_dsb td 
-                          | LIS_dsb_tlbi_ipa_dsb => step_pte_on_tlbi_after_tlbi_ipa td 
-                          | a => Some a (* Otherwise, it does not make the subotomaton change *)
-                        end
-                      in
+        match location.(sl_pte) with
+          | None => Merror (GSME_internal_error IET_unexpected_none)
+            (* This cannot happen (otherwise, should_perform_tlbi would be false) *)
+          | Some exploded_desc =>
+            match exploded_desc.(ged_state) with
+              | SPS_STATE_PTE_INVALID_UNCLEAN ai =>
+                (* If the CPU that does the transformation is not the one that initiated the invalidation, do nothing *)
+                if bool_decide (cpu_id = ai.(ai_invalidator_tid)) then
+                  let new_substate :=
+                    (* Depending on the current state and the TLBI kind, we update the sub-state *)
+                    match ai.(ai_lis) with
+                      | LIS_dsbed => step_pte_on_tlbi_after_dsb td 
+                      | LIS_dsb_tlbi_ipa_dsb => step_pte_on_tlbi_after_tlbi_ipa td 
+                      | a => Some a (* Otherwise, it does not make the subotomaton change *)
+                    end
+                  in
+                  match new_substate with
+                    | None => Merror GSME_unimplemented
+                    | Some new_substate =>
+                      (* Write the new sub-state in the global automaton *)
+                      let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
+                      let new_mem := ptc.(ptc_state) <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> ptc.(ptc_state).(gsm_memory)|> in
                       match new_substate with
-                        | None => Merror GSME_unimplemented
-                        | Some new_substate =>
-                          (* Write the new sub-state in the global automaton *)
-                          let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
-                          let new_mem := st <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> st.(gsm_memory)|> in
-                          ret <|gsmsr_data := Ok _ _ new_mem|>
+                        | LIS_dsb_tlbied => tlbi_invalid_unclean_unmark_children cpu_id new_loc (ptc <| ptc_state := new_mem |> <|ptc_loc := Some new_loc|>)
+                        | _ => Mreturn new_mem
                       end
-                    else
-                      ret
-                  | _ => ret
-                end
+                  end
+                else
+                  Mreturn ptc.(ptc_state)
+              | _ => Mreturn ptc.(ptc_state)
             end
-          | e => e
         end
       else (* In the case where the PTE is not affected by the TLBI, we do nothing *)
         {|gsmsr_log := nil; gsmsr_data := Ok _ _ ptc.(ptc_state) |}
