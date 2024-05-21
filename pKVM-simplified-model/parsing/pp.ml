@@ -59,7 +59,8 @@ let pp_error ppf = function
       Fmt.pf ppf "Address %a was uninitialized in function %s"
         p0xZ addr str
   | GSME_unclean_child loc ->
-      Fmt.pf ppf "An unclean child has been encountered"
+      Fmt.pf ppf "An unclean child has been encountered at address: %a"
+        p0xZ loc
   | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
   | GSME_unimplemented -> Fmt.pf ppf "GSME_unimplemented"

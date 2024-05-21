@@ -436,7 +436,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
 | GSME_inconsistent_read
 | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
-| GSME_unclean_child
+| GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
 | GSME_double_use_of_pte
 | GSME_root_already_exists
 | GSME_unimplemented
@@ -790,14 +790,14 @@ Definition unmark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : g
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
 Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
-    | None => {| gsmsr_log := nil; gsmsr_data := Error _ _ GSME_unclean_child |}
+    | None => Merror (GSME_uninitialised "clean_reachable" ctx.(ptc_addr))
     | Some location =>
       match location.(sl_pte) with
         | None => Mreturn ctx.(ptc_state)
         | Some descriptor =>
           match descriptor.(ged_state) with
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
-              Merror GSME_unclean_child
+              Merror (GSME_unclean_child ctx.(ptc_addr))
             | _ => Mreturn ctx.(ptc_state)
           end
       end
