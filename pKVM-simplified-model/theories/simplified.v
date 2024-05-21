@@ -1373,10 +1373,10 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
         | None => Merror (GSME_internal_error IET_unexpected_none)
         | Some pte =>
           let new_roots :=
-            if pte.(ged_stage) then
-              st.(gsm_roots) <| pr_s2 := remove addr st.(gsm_roots).(pr_s2) |>
-            else
-              st.(gsm_roots) <| pr_s1 := remove addr st.(gsm_roots).(pr_s1) |>
+            match pte.(ged_stage) with
+              | S2 => st.(gsm_roots) <| pr_s2 := remove addr st.(gsm_roots).(pr_s2) |>
+              | S1 => st.(gsm_roots) <| pr_s1 := remove addr st.(gsm_roots).(pr_s1) |>
+            end
           in
           let st := st <| gsm_roots := new_roots |> in
           traverse_pgt_from_root addr pte.(ged_stage) (unmark_cb cpu) st
