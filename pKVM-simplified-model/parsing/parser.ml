@@ -189,7 +189,7 @@ let pre_parse bin trace =
 let pp_state state = 
   Fmt.(result ~ok:Pp.pp_ghost_simplified_memory ~error:pp_error) state
 
-let dump_tr ppf tr =
+let pp_tr ppf tr =
   Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS"
   pp_transition tr
 
@@ -201,16 +201,16 @@ let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
   let step_ state trans =
     let res = Coq_executable_sm.step trans state in
     if res.gsmsr_log != [] then (
-      if dump_trans then Fmt.pr "%a@ @[<2>%a@]@." dump_tr trans pp_logs res.gsmsr_log
+      if dump_trans then Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.gsmsr_log
         else Fmt.pr "%a@." pp_logs res.gsmsr_log;
       if dump_state then Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_state res.gsmsr_data;
     );
     (* If we reach an error, we dump the transition *)
-    if Result.is_error res.gsmsr_data && not dump_trans then
-      dump_tr Fmt.stdout trans;
+    if Result.is_error res.gsmsr_data then
+      Fmt.pr "@[%a@]@." pp_tr trans;
     res.gsmsr_data
   in
-  Iters.fold_result step_ memory_0 xs |> pp_step_result Fmt.stdout
+  Iters.fold_result step_ memory_0 xs |> Fmt.pr "@[%a@]@." pp_step_result
 
 (** Cmdline args **)
 
