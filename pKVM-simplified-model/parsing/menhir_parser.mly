@@ -64,17 +64,12 @@ trans_data:
   | ISB { GSMDT_TRANS_BARRIER (Barrier_ISB ()) }
   | tlbi = TLBI_ALL {
     GSMDT_TRANS_TLBI (
-    let op, regime, shareability =
+    let op, regime, shareability, level =
       match tlbi with
-      | "TLBI_vmalls12e1" ->
-          (TLBIOp_VMALLS12, Regime_EL10, Shareability_NSH)
-          (* not sure shareability *)
-      | "TLBI_vmalle1is" -> (TLBIOp_VMALL, Regime_EL10, Shareability_ISH)
-      | "TLBI_vmalls12e1is" -> (TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH)
-      | "TLBI_vmalle1" ->
-          ( TLBIOp_VMALL,
-            Regime_EL10,
-            Shareability_NSH (* not sure shareability *) )
+      | "TLBI_vmalls12e1" -> (TLBIOp_VMALLS12, Regime_EL10, Shareability_NSH, TLBILevel_Any)
+      | "TLBI_vmalle1is" -> (TLBIOp_VMALL, Regime_EL10, Shareability_ISH, TLBILevel_Any)
+      | "TLBI_vmalls12e1is" -> (TLBIOp_VMALLS12, Regime_EL10, Shareability_ISH, TLBILevel_Any)
+      | "TLBI_vmalle1" -> (TLBIOp_VMALL, Regime_EL10, Shareability_NSH, TLBILevel_Any)
       | _ ->
           Printf.eprintf "Unsupported TLBI operation %s\n" tlbi;
           exit 1
@@ -84,21 +79,19 @@ trans_data:
         {
           tLBIRecord_op = op;
           tLBIRecord_regime = regime;
+          tLBIRecord_level = level;
           tLBIRecord_address = Big_int_Z.zero_big_int;
         };
       tLBI_shareability = shareability;
     })}
   | tlbi = TLBI addr = VAL NUM {
     GSMDT_TRANS_TLBI (
-      let op, regime, shareability =
+      let op, regime, shareability, level =
         match tlbi with
-        | "TLBI_alle1is" -> (TLBIOp_ALL, Regime_EL10, Shareability_ISH)
-        | "TLBI_vale2is" ->
-            ( TLBIOp_VMALL,
-              Regime_EL2,
-              Shareability_ISH (* not sure about operation *) )
-        | "TLBI_vae2is" -> (TLBIOp_VA, Regime_EL2, Shareability_ISH)
-        | "TLBI_ipas2e1is" -> (TLBIOp_IPAS2, Regime_EL10, Shareability_ISH)
+        | "TLBI_alle1is" -> (TLBIOp_ALL, Regime_EL10, Shareability_ISH, TLBILevel_Any)
+        | "TLBI_vale2is" -> (TLBIOp_VA, Regime_EL2, Shareability_ISH, TLBILevel_Last)
+        | "TLBI_vae2is" -> (TLBIOp_VA, Regime_EL2, Shareability_ISH, TLBILevel_Any)
+        | "TLBI_ipas2e1is" -> (TLBIOp_IPAS2, Regime_EL10, Shareability_ISH, TLBILevel_Any)
         | _ ->
             Printf.eprintf "Unsupported TLBI operation %s\n" tlbi;
             exit 1
@@ -108,6 +101,7 @@ trans_data:
           {
             tLBIRecord_op = op;
             tLBIRecord_regime = regime;
+            tLBIRecord_level = level;
             tLBIRecord_address = addr;
           };
         tLBI_shareability = shareability;

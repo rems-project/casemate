@@ -265,7 +265,10 @@ Inductive TLBIOp :=
   | TLBIOp_RPA
   | TLBIOp_PAALL.
 
-(* Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last. *)
+Inductive TLBILevel := 
+  | TLBILevel_Any
+  | TLBILevel_Last
+.
 
 Record TLBIRecord  := {
     TLBIRecord_op : TLBIOp;
@@ -274,7 +277,7 @@ Record TLBIRecord  := {
     TLBIRecord_regime : Regime;
     (* TLBIRecord_vmid : bits 16; *)
     (* TLBIRecord_asid : bits 16; *)
-    (* TLBIRecord_level : TLBILevel; *)
+    TLBIRecord_level : TLBILevel;
     (* TLBIRecord_attr : TLBIMemAttr; *)
     (* TLBIRecord_ipaspace : PASpace; *)
     TLBIRecord_address : phys_addr_t;
@@ -296,7 +299,7 @@ Inductive TLBI_stage_kind :=
 
 Record TLBI_op_by_addr_data := {
   TOBAD_page : phys_addr_t;
-  TOBAD_last_level_only : bool;
+  TOBAD_last_level_only : TLBILevel;
 }.
 
 Inductive TLBI_method :=
@@ -1031,6 +1034,13 @@ Definition is_leaf (kind : pte_rec) : bool :=
   end
 .
 
+Definition is_last_level_only (d : TLBI_op_by_addr_data) : bool :=
+  match d.(TOBAD_last_level_only) with
+    | TLBILevel_Any => false
+    | TLBILevel_Last => true
+  end
+.
+
 Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_context) : option bool :=
   match ptc.(ptc_loc) with
     | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
@@ -1046,7 +1056,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
               if negb (is_leaf pte_desc.(ged_pte_kind) && (phys_addr_val ia_start b<=? tlbi_addr) 
                        && (tlbi_addr b<=? phys_addr_val ia_end)) then
                 Some false
-              else if (is_l3 pte_desc.(ged_level) && d.(TOBAD_last_level_only)) then
+              else if (is_l3 pte_desc.(ged_level) && is_last_level_only d) then
                 Some false
               else 
                 Some true
@@ -1183,15 +1193,11 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
           TLBI_by_input_addr
             {| 
                 TOBAD_page := (td.(TLBI_rec).(TLBIRecord_address));
-                TOBAD_last_level_only :=
-                  match td.(TLBI_rec).(TLBIRecord_regime), td.(TLBI_shareability) with
-                    | Regime_EL2, Shareability_ISH => true
-                    | _,_ => false
-                  end;
+                TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level);
             |}
         )
       | TLBIOp_ALL => Some TLBI_by_addr_all
-      | _ => None (* TODO: fail *)
+      | _ => None
     end
   in
   match stage, shootdown, method with
