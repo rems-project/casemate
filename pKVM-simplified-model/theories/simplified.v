@@ -446,6 +446,7 @@ Inductive ghost_simplified_model_error :=
 | GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
 | GSME_double_use_of_pte
 | GSME_root_already_exists
+| GSME_unaligned_write
 | GSME_unimplemented
 | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
@@ -878,6 +879,8 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
+  if negb ((bv_and (phys_addr_val addr) 7) b=? b0) 
+    then Merror GSME_unaligned_write else
   match st !! addr with
     | Some (loc) =>
       match loc.(sl_pte) with
