@@ -15,7 +15,10 @@ let pp_transition_data ppf = function
   | GSMDT_TRANS_MEM_WRITE
       { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
       Fmt.pf ppf "W%s %a %a"
-        (match typ with WMO_release -> "rel" | WMO_plain -> "")
+        (match typ with
+          | WMO_release -> "rel"
+          | WMO_page -> "page"
+          | WMO_plain -> "")
         p0xZ addr p0xZ value
   | GSMDT_TRANS_MEM_ZALLOC { tzd_addr = addr; tzd_size = size } ->
       Fmt.pf ppf "ZALLOC %a size %a" p0xZ addr p0xZ size

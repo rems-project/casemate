@@ -355,6 +355,7 @@ Inductive Barrier  :=
 (* All those transitions will go in favor of ARM ISA description (except for hints) *)
 Inductive write_memory_order :=
 | WMO_plain
+| WMO_page
 | WMO_release
 .
 
@@ -877,7 +878,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
       end
     ).
 
-Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition __step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -919,7 +920,33 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
               |}
             ]> st.(gsm_memory) |>
         ) |}
-  end.
+  end
+.
+
+Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon : ghost_simplified_model_result) (offs : Z) {measure Z.abs_nat offs} : ghost_simplified_model_result :=
+  if Zle_bool offs 0 then
+    mon
+  else
+    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV 64 8) (offs - 1))) in 
+    let sub_wd := 
+      {|
+        twd_mo := WMO_plain;
+        twd_phys_addr := addr;
+        twd_val := wd.(twd_val);
+      |}
+    in
+    let mon := Mupdate_state (__step_write tid sub_wd) mon in
+    step_write_page tid wd mon (offs - 1)
+.
+Proof. lia. Qed.
+
+Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  match wd.(twd_mo) with
+    | WMO_plain | WMO_release => __step_write tid wd st
+    | WMO_page => step_write_page tid wd (Mreturn st) 512
+  end
+.
+
 
 (******************************************************************************************)
 (*                             Code for zalloc                                            *)
@@ -1341,10 +1368,7 @@ Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simpli
         set_owner_root phys root new_state logs (offs - 1)
     end
 .
-Proof.
-intros phys st offs location new_offs offs_pos. intro location0. intro x.
-lia.
-Qed.
+Proof. lia. Qed.
 
 Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_result :=
     match ctx.(ptc_loc) with

@@ -114,7 +114,7 @@ trans_data:
 write_types:
   | W {WMO_plain}
   | Wrel {WMO_release}
-  | Wpage {WMO_plain}
+  | Wpage {WMO_page}
 
 sysreg:
   | SYSREG_VTTBR {SYSREG_VTTBR}
