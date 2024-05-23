@@ -524,9 +524,11 @@ Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
 
 Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
-Definition GENMASK (h l : u64) : u64 :=
-bv_and (bv_sub (bv_not b0) ((bv_shiftl b1 l) b+ b1))
-(bv_shiftr (((bv_not b0))) (bv_sub b63 h)).
+Definition GENMASK (l r : u64) : u64 :=
+(bv_and
+  ((bv_not b0) ≪ r)
+  ((bv_not b0) ≫ (63 - l))
+)%bv.
 (**  0......0  1....1  0....0
   *  i zeros          j zeros
   *)
