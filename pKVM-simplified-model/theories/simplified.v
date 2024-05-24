@@ -1216,7 +1216,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
     match td.(TLBI_rec).(TLBIRecord_op) with
       | TLBIOp_VA | TLBIOp_VMALL =>
           Some TLBI_OP_stage1
-      | TLBIOp_IPAS2  => Some TLBI_OP_stage1
+      | TLBIOp_IPAS2  => Some TLBI_OP_stage2
       | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
       | _ => None
     end
@@ -1231,7 +1231,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
     match td.(TLBI_rec).(TLBIRecord_op) with
       | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
         Some (TLBI_by_addr_space (Phys_addr b0)) (* TODO *)
-      | TLBIOp_VA (* Also VAL? *) | TLBIOp_IPAS2 =>
+      | TLBIOp_VA | TLBIOp_IPAS2 =>
         Some (
           TLBI_by_input_addr
             {| 
