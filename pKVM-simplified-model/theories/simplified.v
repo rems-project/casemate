@@ -878,7 +878,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
       end
     ).
 
-Definition __step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -935,14 +935,14 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
         twd_val := wd.(twd_val);
       |}
     in
-    let mon := Mupdate_state (__step_write tid sub_wd) mon in
+    let mon := Mupdate_state (step_write_aux tid sub_wd) mon in
     step_write_page tid wd mon (offs - 1)
 .
 Proof. lia. Qed.
 
 Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match wd.(twd_mo) with
-    | WMO_plain | WMO_release => __step_write tid wd st
+    | WMO_plain | WMO_release => step_write_aux tid wd st
     | WMO_page => step_write_page tid wd (Mreturn st) 512
   end
 .
