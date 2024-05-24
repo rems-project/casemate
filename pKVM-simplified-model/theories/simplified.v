@@ -830,11 +830,11 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
         match descriptor.(ged_pte_kind) with
           | PTER_PTE_KIND_TABLE map =>
             let
-              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_stage) clean_reachable st
+              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
             in
             let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
             (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
-            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) descriptor.(ged_level) descriptor.(ged_stage) (mark_cb tid)) st
+            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_cb tid)) st
           | _ => Mreturn st
         end
       else
