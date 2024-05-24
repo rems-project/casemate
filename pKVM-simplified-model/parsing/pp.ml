@@ -104,37 +104,53 @@ let pp_step_result :
    the printers by hand.
 *)
 
-type stage_t = [%import: Coq_executable_sm.stage_t] [@@deriving show]
-type lIS = [%import: Coq_executable_sm.lIS] [@@deriving show]
-type lVS = [%import: Coq_executable_sm.lVS] [@@deriving show]
-type aut_valid = [%import: Coq_executable_sm.aut_valid] [@@deriving show]
 type owner_t = [%import: Coq_executable_sm.owner_t] [@@deriving show]
 
-type thread_identifier = [%import: Coq_executable_sm.thread_identifier]
-[@@deriving show]
+let pp_sm_pte_state ppf state = Fmt.pf ppf
+  (match state with
+    | SPS_STATE_PTE_VALID _ -> "valid"
+    | SPS_STATE_PTE_INVALID_CLEAN _ -> "invalid"
+    | SPS_STATE_PTE_INVALID_UNCLEAN unclean_state -> "unclean " ^^
+        (match unclean_state.ai_lis with
+          | LIS_unguarded -> "unguarded"
+          | LIS_dsbed -> "dsbed"
+          | LIS_dsb_tlbi_all -> "dsb_tlbi_all"
+          | LIS_dsb_tlbi_ipa -> "dsb_tlbi_ipa"
+          | LIS_dsb_tlbied -> "dsb_tlbied"
+          | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb"
+        )
+  )
 
-type aut_invalid_clean = [%import: Coq_executable_sm.aut_invalid_clean]
-[@@deriving show]
+let pp_pte_rec ppf = function
+  | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table: %a" p0xZ t
+  | PTER_PTE_KIND_MAP t ->  Fmt.pf ppf "Table: %a-%a"
+      p0xZ t.range_start
+      p0xZ (Z.add t.range_start t.range_size)
+  | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
-type aut_invalid_unclean = [%import: Coq_executable_sm.aut_invalid_unclean]
-[@@deriving show]
+let pp_stage_t ppf = function
+  | S1 -> Fmt.pf ppf "1"
+  | S2 -> Fmt.pf ppf "2"
 
-type sm_pte_state = [%import: Coq_executable_sm.sm_pte_state] [@@deriving show]
+let pp_level_t ppf = function
+  | L0 -> Fmt.pf ppf "0"
+  | L1 -> Fmt.pf ppf "1"
+  | L2 -> Fmt.pf ppf "2"
+  | L3 -> Fmt.pf ppf "3"
+  | Lerror -> Fmt.pf ppf "error"
 
-type ghost_addr_range = [%import: Coq_executable_sm.ghost_addr_range]
-[@@deriving show]
-
-type map_data_t = [%import: Coq_executable_sm.map_data_t] [@@deriving show]
-type table_data_t = [%import: Coq_executable_sm.table_data_t] [@@deriving show]
-type pte_rec = [%import: Coq_executable_sm.pte_rec] [@@deriving show]
-type level_t = [%import: Coq_executable_sm.level_t] [@@deriving show]
-
-type ghost_exploded_descriptor =
-  [%import: Coq_executable_sm.ghost_exploded_descriptor]
-[@@deriving show]
+let pp_ghost_exploded_descriptor ppf desc =
+  Fmt.pf ppf "{@[<2>@ region: %a-%a;@ level: %a;@ stage: %a;@ owner: %a@ pte kind: %a;@ state: %a;@ @]}"
+    p0xZ desc.ged_ia_region.range_start
+    p0xZ (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
+    pp_level_t desc.ged_level
+    pp_stage_t desc.ged_stage
+    p0xZ desc.ged_owner
+    pp_pte_rec desc.ged_pte_kind
+    pp_sm_pte_state desc.ged_state
 
 let pp_sm_location ppf sl =
-  Fmt.pf ppf "@[loc: %a@ val: %a@ %a@]" p0xZ sl.sl_phys_addr p0xZ sl.sl_val
+  Fmt.pf ppf "@[val: %a@ %a@]" p0xZ sl.sl_val
     (fun ppf -> function
       | Some pte -> Fmt.pf ppf "@ %a" pp_ghost_exploded_descriptor pte
       | _ -> ())
