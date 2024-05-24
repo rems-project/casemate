@@ -1294,13 +1294,13 @@ Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (stage : stage_t) : ghost_simplified_model_result :=
-  let other_root_levels :=
+  let other_root_list :=
     match stage with
-      | S1 => pr_s1
-      | S2 => pr_s2
+      | S1 => pr_s2
+      | S2 => pr_s1
     end st.(gsm_roots) in
   (* Check that the root does not already exist in the other root list*)
-  if si_root_exists root other_root_levels then
+  if si_root_exists root other_root_list then
     {| gsmsr_log := nil; gsmsr_data := Error _ _ GSME_root_already_exists |}
   else
     (* Add the root to the list of roots*)
