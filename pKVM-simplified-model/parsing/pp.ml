@@ -16,9 +16,9 @@ let pp_transition_data ppf = function
       { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
       Fmt.pf ppf "W%s %a %a"
         (match typ with
-          | WMO_release -> "rel"
-          | WMO_page -> "page"
-          | WMO_plain -> "")
+        | WMO_release -> "rel"
+        | WMO_page -> "page"
+        | WMO_plain -> "")
         p0xZ addr p0xZ value
   | GSMDT_TRANS_MEM_ZALLOC { tzd_addr = addr; tzd_size = size } ->
       Fmt.pf ppf "ZALLOC %a size %a" p0xZ addr p0xZ size
@@ -106,31 +106,30 @@ let pp_step_result :
 
 type owner_t = [%import: Coq_executable_sm.owner_t] [@@deriving show]
 
-let pp_sm_pte_state ppf state = Fmt.pf ppf
-  (match state with
+let pp_sm_pte_state ppf state =
+  Fmt.pf ppf
+    (match state with
     | SPS_STATE_PTE_VALID _ -> "valid"
     | SPS_STATE_PTE_INVALID_CLEAN _ -> "invalid"
-    | SPS_STATE_PTE_INVALID_UNCLEAN unclean_state -> "unclean " ^^
-        (match unclean_state.ai_lis with
-          | LIS_unguarded -> "unguarded"
-          | LIS_dsbed -> "dsbed"
-          | LIS_dsb_tlbi_all -> "dsb_tlbi_all"
-          | LIS_dsb_tlbi_ipa -> "dsb_tlbi_ipa"
-          | LIS_dsb_tlbied -> "dsb_tlbied"
-          | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb"
-        )
-  )
+    | SPS_STATE_PTE_INVALID_UNCLEAN unclean_state -> (
+        "unclean "
+        ^^
+        match unclean_state.ai_lis with
+        | LIS_unguarded -> "unguarded"
+        | LIS_dsbed -> "dsbed"
+        | LIS_dsb_tlbi_all -> "dsb_tlbi_all"
+        | LIS_dsb_tlbi_ipa -> "dsb_tlbi_ipa"
+        | LIS_dsb_tlbied -> "dsb_tlbied"
+        | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb"))
 
 let pp_pte_rec ppf = function
   | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table: %a" p0xZ t
-  | PTER_PTE_KIND_MAP t ->  Fmt.pf ppf "Table: %a-%a"
-      p0xZ t.range_start
-      p0xZ (Z.add t.range_start t.range_size)
+  | PTER_PTE_KIND_MAP t ->
+      Fmt.pf ppf "Table: %a-%a" p0xZ t.range_start p0xZ
+        (Z.add t.range_start t.range_size)
   | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
-let pp_stage_t ppf = function
-  | S1 -> Fmt.pf ppf "1"
-  | S2 -> Fmt.pf ppf "2"
+let pp_stage_t ppf = function S1 -> Fmt.pf ppf "1" | S2 -> Fmt.pf ppf "2"
 
 let pp_level_t ppf = function
   | L0 -> Fmt.pf ppf "0"
@@ -140,14 +139,13 @@ let pp_level_t ppf = function
   | Lerror -> Fmt.pf ppf "error"
 
 let pp_ghost_exploded_descriptor ppf desc =
-  Fmt.pf ppf "{@[<2>@ region: %a-%a;@ level: %a;@ stage: %a;@ owner: %a@ pte kind: %a;@ state: %a;@ @]}"
-    p0xZ desc.ged_ia_region.range_start
-    p0xZ (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level
-    pp_stage_t desc.ged_stage
-    p0xZ desc.ged_owner
-    pp_pte_rec desc.ged_pte_kind
-    pp_sm_pte_state desc.ged_state
+  Fmt.pf ppf
+    "{@[<2>@ region: %a-%a;@ level: %a;@ stage: %a;@ owner: %a@ pte kind: %a;@ \
+     state: %a;@ @]}"
+    p0xZ desc.ged_ia_region.range_start p0xZ
+    (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
+    pp_level_t desc.ged_level pp_stage_t desc.ged_stage p0xZ desc.ged_owner
+    pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
 
 let pp_sm_location ppf sl =
   Fmt.pf ppf "@[val: %a@ %a@]" p0xZ sl.sl_val
