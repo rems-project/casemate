@@ -24,6 +24,13 @@ Notation "'if' C 'then' A 'else' B" :=
 
 Definition u64 := bv 64.
 Search (bv _ -> bv _ -> bool).
+
+Definition BV64 (n : Z) {p : BvWf 64 n} : u64 := BV 64 n.
+Definition bv_add {n : N} (a : bv n) (b : bv n) : bv n := bv_add a b.
+Definition bv_mul {n : N} (a : bv n) (b : bv n) : bv n := bv_mul a b.
+Definition bv_sub {n : N} (a : bv n) (b : bv n) : bv n := bv_sub a b.
+Definition bv_mul_Z {n : N} (a : bv n) (b : Z) : bv n := bv_sub_Z a b.
+
 Definition u64_eqb (x y : u64) : bool :=
   bool_decide (x = y).
 
@@ -45,16 +52,16 @@ Infix "+s" := append (right associativity, at level 60).
 
 Definition n512 := 512.
 
-Definition b0 := BV 64 0.
-Definition b1 := BV 64 1.
-Definition b2 := BV 64 2.
-Definition b8 := BV 64 8.
-Definition b12 := BV 64 12.
-Definition b16 := BV 64 16.
-Definition b47 := BV 64 47.
-Definition b63 := BV 64 63.
-Definition b512 := BV 64 512.
-Definition b1023 := BV 64 1023.
+Definition b0 := BV64 0.
+Definition b1 := BV64 1.
+Definition b2 := BV64 2.
+Definition b8 := BV64 8.
+Definition b12 := BV64 12.
+Definition b16 := BV64 16.
+Definition b47 := BV64 47.
+Definition b63 := BV64 63.
+Definition b512 := BV64 512.
+Definition b1023 := BV64 1023.
 
 (*******************)
 (* Numerical types *)
@@ -543,7 +550,7 @@ Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 Definition GENMASK (l r : u64) : u64 :=
 (bv_and
   ((bv_not b0) ≪ r)
-  ((bv_not b0) ≫ (63 - l))
+  ((bv_not b0) ≫ (bv_sub 63 l))
 )%bv.
 (**  0......0  1....1  0....0
   *  i zeros          j zeros
@@ -559,8 +566,8 @@ Definition is_desc_valid (descriptor : u64) : bool :=
 
 Definition OA_shift (level : level_t) : u64 :=
 match level with
-  | l1 => BV 64 (12 + 9 + 9)
-  | l2 => BV 64 (12 + 9 )
+  | l1 => BV64 (12 + 9 + 9)
+  | l2 => BV64 (12 + 9 )
   | l3 => b12
   | _ => b0  (* Should not happen*)
 end
@@ -568,10 +575,10 @@ end
 
 Definition map_size (level : level_t) : phys_addr_t :=
 match level with
-  | l0 => Phys_addr (bv_shiftl b512 (BV 64 30)) (* 512 Go *)
-  | l1 => Phys_addr (bv_shiftl (b1)   (BV 64 30)) (* 1 Go *)
-  | l2 => Phys_addr (bv_shiftl (b12)   (BV 64 20)) (* 2 Mo *)
-  | l3 => Phys_addr (bv_shiftl (BV 64 4)   (BV 64 10)) (* 4 Ko *)
+  | l0 => Phys_addr (bv_shiftl b512     (BV64 30)) (* 512 Go *)
+  | l1 => Phys_addr (bv_shiftl (b1)     (BV64 30)) (* 1 Go *)
+  | l2 => Phys_addr (bv_shiftl (b12)    (BV64 20)) (* 2 Mo *)
+  | l3 => Phys_addr (bv_shiftl (BV64 4) (BV64 10)) (* 4 Ko *)
   | _ => pa0  (* Should not happen*)
 end
 .
@@ -981,7 +988,7 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
   if Zle_bool offs 0 then
     mon
   else
-    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV 64 8) (offs - 1))) in 
+    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in 
     let sub_wd := 
       {|
         twd_mo := WMO_plain;
@@ -1401,7 +1408,7 @@ Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simpli
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |}
   else
-    let addr := phys pa+ (Phys_addr (bv_mul_Z (BV 64 8) (offs - 1))) in
+    let addr := phys pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in
     match st !! addr with
       | None =>
         {|
