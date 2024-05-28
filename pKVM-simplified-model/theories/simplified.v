@@ -552,9 +552,11 @@ Definition GENMASK (l r : u64) : u64 :=
   *  i zeros          j zeros
   *)
 
-Definition PTE_BITS_ADDRESS : u64 := GENMASK b47 b12.
+(* Definition PTE_BITS_ADDRESS : u64 := GENMASK b47 b12. *)
+Definition PTE_BITS_ADDRESS : u64 := BV64 0xfffffffff000%Z.
 
-Definition PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := GENMASK (BV 64 58) (BV 64 55).
+(* Definition PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := GENMASK (BV 64 58) (BV 64 55). *)
+Definition NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := BV64 0x3fffffff%Z.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
   negb ((bv_and descriptor PTE_BIT_VALID) b=? b0)
@@ -569,12 +571,22 @@ match level with
 end
 .
 
+Definition mask_OA_shift (level : level_t) : u64 :=
+  match level with
+    | l1 => BV64 0xffffc0000000%Z
+    | l2 => BV64 0xffffffe00000%Z
+    | l3 => BV64 0xfffffffff000%Z
+    | _ => BV64 0%Z (* Should not happen*)
+  end
+.
+
+
 Definition map_size (level : level_t) : phys_addr_t :=
 match level with
-  | l0 => Phys_addr (bv_shiftl b512     (BV64 30)) (* 512 Go *)
-  | l1 => Phys_addr (bv_shiftl (b1)     (BV64 30)) (* 1 Go *)
-  | l2 => Phys_addr (bv_shiftl (b12)    (BV64 20)) (* 2 Mo *)
-  | l3 => Phys_addr (bv_shiftl (BV64 4) (BV64 10)) (* 4 Ko *)
+  | l0 => Phys_addr (BV64 0x8000000000%Z) (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
+  | l1 => Phys_addr (BV64 0x0040000000%Z) (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
+  | l2 => Phys_addr (BV64 0x0000200000%Z) (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
+  | l3 => Phys_addr (BV64 0x0000001000%Z) (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
   | _ => pa0  (* Should not happen*)
 end
 .
@@ -594,7 +606,7 @@ bv_and pte_val (GENMASK b47 (OA_shift level))
 .
 
 Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
-  Phys_addr (bv_and (phys_addr_val addr) (bv_not b1023))
+  Phys_addr (bv_and (phys_addr_val addr) (BV64 0xfffffffffffffc00%Z) (* bv_not b1023 *))
 .
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
@@ -873,9 +885,9 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
 .
 
 Definition is_only_update_to_sw_bit (old new : u64) : bool :=
-  bv_and old (bv_not PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  bv_and old (NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 b=?
-  bv_and new (bv_not PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  bv_and new (NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 .
 
 Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64) : option bool :=
@@ -1347,7 +1359,7 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
 
 Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (Phys_addr (bv_and val (GENMASK (b47) (b1))))
+  Root (Phys_addr (bv_and val (BV64 0xfffffffffffe%Z) (* GENMASK (b47) (b1) *)))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (stage : stage_t) : ghost_simplified_model_result :=
