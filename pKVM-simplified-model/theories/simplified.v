@@ -26,13 +26,9 @@ Definition u64 := bv 64.
 Search (bv _ -> bv _ -> bool).
 
 Definition BV64 (n : Z) {p : BvWf 64 n} : u64 := BV 64 n.
-Definition bv_add {n : N} (a : bv n) (b : bv n) : bv n := bv_add a b.
-Definition bv_mul {n : N} (a : bv n) (b : bv n) : bv n := bv_mul a b.
-Definition bv_sub {n : N} (a : bv n) (b : bv n) : bv n := bv_sub a b.
-Definition bv_mul_Z {n : N} (a : bv n) (b : Z) : bv n := bv_sub_Z a b.
 
 Definition u64_eqb (x y : u64) : bool :=
-  bool_decide (x = y).
+  (bv_unsigned x =? bv_unsigned y)%Z.
 
 Definition u64_ltb (x y : u64) : bool :=
   ((bv_unsigned x) <? (bv_unsigned y))%Z
