@@ -32,7 +32,7 @@ Extract Inlined Constant bv_mul_Z => "(fun _ a b -> Z.mul a b)".
 
 Extract Inlined Constant ghost_simplified_model_state => "sm_location Cmap.t".
 Extract Inlined Constant ghost_simplified_model_zallocd => "unit Cmap.t".
-Extract Inlined Constant gmap_empty => "(fun _ _ -> Cmap.empty)".
+Extract Inlined Constant gmap_empty => "(fun _ _ -> Cmap.empty ())".
 Extract Inlined Constant lookup => "(fun _ g m -> Cmap.lookup g m)".
 Extract Inlined Constant insert => "(fun _ k a m -> Cmap.insert k a m)".
 
