@@ -6,7 +6,7 @@
 (library
  (name extraction)
  (public_name simplified)
- (libraries zarith)
+ (libraries zarith cmap)
  (wrapped false)
  (instrumentation
   (backend bisect_ppx)))

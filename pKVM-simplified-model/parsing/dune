@@ -9,5 +9,7 @@
 (executable
  (public_name parser)
  (name parser)
- (preprocess (staged_pps ppx_import ppx_deriving.show))
- (libraries str zarith fmt fmt.tty cmdliner extraction))
+ (preprocess
+  (staged_pps ppx_import ppx_deriving.show))
+ (libraries str zarith fmt fmt.tty cmdliner extraction)
+ (package simplified))

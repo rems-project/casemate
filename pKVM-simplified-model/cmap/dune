@@ -1,0 +1,5 @@
+(library
+ (modules cmap)
+ (name cmap)
+ (public_name cmap)
+ (libraries zarith))
