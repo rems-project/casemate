@@ -434,7 +434,7 @@ Record ghost_simplified_model_transition := {
 Inductive violation_type :=
 | VT_valid_on_invalid_unclean
 | VT_valid_on_valid
-| VT_realease_unclean
+| VT_release_unclean
 .
 
 Inductive internal_error_type :=
@@ -1458,7 +1458,7 @@ Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_r
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
               {|
                 gsmsr_log := [];
-                gsmsr_data := Error _ _ (GSME_bbm_violation VT_realease_unclean ctx.(ptc_addr))
+                gsmsr_data := Error _ _ (GSME_bbm_violation VT_release_unclean ctx.(ptc_addr))
               |}
             | _ => Mreturn ctx.(ptc_state)
           end
