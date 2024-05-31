@@ -138,9 +138,9 @@ Inductive stage_t :=
 .
 
 Inductive LVS :=
-| LVS_unguarded
-| LVS_dsbed
-| LVS_dsb_csed
+  | LVS_unguarded
+  | LVS_dsbed
+  | LVS_dsb_csed
 .
 
 Record aut_valid := {
@@ -148,12 +148,12 @@ Record aut_valid := {
 }.
 
 Inductive LIS :=
-| LIS_unguarded
-| LIS_dsbed
-| LIS_dsb_tlbi_all
-| LIS_dsb_tlbi_ipa
-| LIS_dsb_tlbied
-| LIS_dsb_tlbi_ipa_dsb
+  | LIS_unguarded
+  | LIS_dsbed
+  | LIS_dsb_tlbi_all
+  | LIS_dsb_tlbi_ipa
+  | LIS_dsb_tlbied
+  | LIS_dsb_tlbi_ipa_dsb
 .
 
 Record aut_invalid_unclean := mk_aut_invalid_unclean {
@@ -169,9 +169,9 @@ Record aut_invalid_clean := {
 }.
 
 Inductive sm_pte_state :=
-| SPS_STATE_PTE_VALID (valid_state:aut_valid)
-| SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid_unclean)
-| SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state:aut_invalid_clean)
+  | SPS_STATE_PTE_VALID (valid_state:aut_valid)
+  | SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid_unclean)
+  | SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state:aut_invalid_clean)
 .
 
 Record ghost_addr_range := {
@@ -188,9 +188,9 @@ Record map_data_t := {
 }.
 
 Inductive pte_rec :=
-| PTER_PTE_KIND_TABLE (table_data:table_data_t)
-| PTER_PTE_KIND_MAP (map_data:map_data_t)
-| PTER_PTE_KIND_INVALID
+  | PTER_PTE_KIND_TABLE (table_data:table_data_t)
+  | PTER_PTE_KIND_MAP (map_data:map_data_t)
+  | PTER_PTE_KIND_INVALID
 .
 
 Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
@@ -256,7 +256,7 @@ Inductive Shareability := Shareability_NSH | Shareability_ISH | Shareability_OSH
 (***************************************)
 (* TLBI *)
 Inductive TLBIOp :=
-  TLBIOp_DALL
+  | TLBIOp_DALL
   | TLBIOp_DASID
   | TLBIOp_DVA
   | TLBIOp_IALL
@@ -273,12 +273,10 @@ Inductive TLBIOp :=
   | TLBIOp_RVAA
   | TLBIOp_RVA
   | TLBIOp_RPA
-  | TLBIOp_PAALL.
-
-Inductive TLBILevel := 
-  | TLBILevel_Any
-  | TLBILevel_Last
+  | TLBIOp_PAALL
 .
+
+Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last.
 
 Record TLBIRecord  := {
     TLBIRecord_op : TLBIOp;
@@ -302,9 +300,9 @@ Record TLBI := {
 }.
 
 Inductive TLBI_stage_kind :=
-| TLBI_OP_stage1
-| TLBI_OP_stage2
-| TLBI_OP_both_stages
+  | TLBI_OP_stage1
+  | TLBI_OP_stage2
+  | TLBI_OP_both_stages
 .
 
 Record TLBI_op_by_addr_data := {
@@ -313,9 +311,9 @@ Record TLBI_op_by_addr_data := {
 }.
 
 Inductive TLBI_method :=
-| TLBI_by_addr_space : phys_addr_t -> TLBI_method
-| TLBI_by_input_addr : TLBI_op_by_addr_data -> TLBI_method
-| TLBI_by_addr_all
+  | TLBI_by_addr_space : phys_addr_t -> TLBI_method
+  | TLBI_by_input_addr : TLBI_op_by_addr_data -> TLBI_method
+  | TLBI_by_addr_all
 .
 
 Record TLBI_intermediate := {
@@ -332,8 +330,8 @@ Inductive MBReqDomain :=
   | MBReqDomain_Nonshareable
   | MBReqDomain_InnerShareable
   | MBReqDomain_OuterShareable
-  | MBReqDomain_FullSystem.
-
+  | MBReqDomain_FullSystem
+.
 
 (* Inductive MBReqTypes :=
   | MBReqTypes_Reads
@@ -353,13 +351,14 @@ Inductive Barrier  :=
   | Barrier_ISB : unit -> Barrier
   | Barrier_SSBB : unit -> Barrier
   | Barrier_PSSBB : unit -> Barrier
-  | Barrier_SB : unit -> Barrier.
+  | Barrier_SB : unit -> Barrier
+.
 
 (* All those transitions will go in favor of ARM ISA description (except for hints) *)
 Inductive write_memory_order :=
-| WMO_plain
-| WMO_page
-| WMO_release
+  | WMO_plain
+  | WMO_page
+  | WMO_release
 .
 
 Record trans_zalloc_data := {
@@ -372,14 +371,14 @@ Record tlbi_op_method_by_address_space_id_data := {
 }.
 
 Inductive ghost_sysreg_kind :=
-|	SYSREG_VTTBR
-|	SYSREG_TTBR_EL2
+  | SYSREG_VTTBR
+  | SYSREG_TTBR_EL2
 .
 
 Inductive ghost_hint_kind :=
-| GHOST_HINT_SET_ROOT_LOCK
-| GHOST_HINT_SET_OWNER_ROOT
-| GHOST_HINT_RELEASE
+  | GHOST_HINT_SET_ROOT_LOCK
+  | GHOST_HINT_SET_OWNER_ROOT
+  | GHOST_HINT_RELEASE
 .
 
 Record src_loc := {
@@ -411,13 +410,13 @@ Record trans_hint_data := {
 }.
 
 Inductive ghost_simplified_model_transition_data :=
-|	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
-| GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
-|	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
-|	GSMDT_TRANS_BARRIER (dsb_data : Barrier)
-|	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
-|	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
-| GSMDT_TRANS_HINT (hint_data : trans_hint_data)
+  |	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
+  | GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
+  |	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
+  |	GSMDT_TRANS_BARRIER (dsb_data : Barrier)
+  |	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
+  |	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
+  | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
 .
 
 Record ghost_simplified_model_transition := {
@@ -432,37 +431,37 @@ Record ghost_simplified_model_transition := {
 (********               Error reporting datastructures               *********)
 (*****************************************************************************)
 Inductive violation_type :=
-| VT_valid_on_invalid_unclean
-| VT_valid_on_valid
-| VT_release_unclean
+  | VT_valid_on_invalid_unclean
+  | VT_valid_on_valid
+  | VT_release_unclean
 .
 
 Inductive internal_error_type :=
-| IET_infinite_loop
-| IET_unexpected_none
+  | IET_infinite_loop
+  | IET_unexpected_none
 .
 
 Inductive ghost_simplified_model_error :=
-| GSME_bbm_violation : violation_type -> phys_addr_t -> ghost_simplified_model_error
-| GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
-| GSME_inconsistent_read
-| GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
-| GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
-| GSME_double_use_of_pte
-| GSME_root_already_exists
-| GSME_unaligned_write
-| GSME_unimplemented
-| GSME_internal_error : internal_error_type -> ghost_simplified_model_error
+  | GSME_bbm_violation : violation_type -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_inconsistent_read
+  | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
+  | GSME_double_use_of_pte
+  | GSME_root_already_exists
+  | GSME_unaligned_write
+  | GSME_unimplemented
+  | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
 
 Inductive result (A B: Type): Type
   := Ok (a: A) | Error (b: B).
 
 Inductive log_element :=
-| Inconsistent_read : u64 -> u64 -> phys_addr_t -> log_element
-| Warning_read_write_non_allocd : phys_addr_t -> log_element
-| Warning_unsupported_TLBI
-| Log : string -> u64 -> log_element
+  | Inconsistent_read : u64 -> u64 -> phys_addr_t -> log_element
+  | Warning_read_write_non_allocd : phys_addr_t -> log_element
+  | Warning_unsupported_TLBI
+  | Log : string -> u64 -> log_element
 .
 
 Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
@@ -524,7 +523,7 @@ Definition insert_location (loc : sm_location) (st : ghost_simplified_memory) : 
 .
 
 Definition Minsert_location (loc : sm_location) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
-  match mon with 
+  match mon with
     | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
       {|
         gsmsr_log := logs;
@@ -723,7 +722,7 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                       end
                     in
                     let mon :=
-                      (* if it is a valid descriptor, recurisvely call pgt_traversal_from, otherwise, continue *)
+                      (* if it is a valid descriptor, recursively call pgt_traversal_from, otherwise, continue *)
                       match exploded_desc.(ged_pte_kind) with
                         | PTER_PTE_KIND_TABLE table_data =>
                           (* If it is a page table descriptor, we we traverse the sub-page table *)
@@ -865,7 +864,7 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
               st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
             in
             let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
-            (* If it is well formed, mark its children as pagetables, otherwise, return the same error *)
+            (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
             Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_cb tid)) st
           | _ => Mreturn st
         end
@@ -918,7 +917,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
             {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
           | Some pte =>
             let loc := loc <| sl_val := val |>
-              <| sl_pte := 
+              <| sl_pte :=
                 Some (deconstruct_pte tid pte.(ged_ia_region).(range_start) val pte.(ged_level) pte.(ged_owner) pte.(ged_stage)) |>
             in
             Mreturn (insert_location loc st)
@@ -951,7 +950,7 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
-  if negb ((bv_and (phys_addr_val addr) 7) b=? b0) 
+  if negb ((bv_and (phys_addr_val addr) 7) b=? b0)
     then Merror GSME_unaligned_write else
   match st !! addr with
     | Some (loc) =>
@@ -996,8 +995,8 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
   if Zle_bool offs 0 then
     mon
   else
-    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in 
-    let sub_wd := 
+    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in
+    let sub_wd :=
       {|
         twd_mo := WMO_plain;
         twd_phys_addr := addr;
@@ -1161,12 +1160,12 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
               let tlbi_addr := bv_shiftr (phys_addr_val d.(TOBAD_page)) 12 in
               let ia_start := pte_desc.(ged_ia_region).(range_start) in
               let ia_end := ia_start pa+ (pte_desc.(ged_ia_region).(range_start)) in
-              if negb (is_leaf pte_desc.(ged_pte_kind) && (phys_addr_val ia_start b<=? tlbi_addr) 
+              if negb (is_leaf pte_desc.(ged_pte_kind) && (phys_addr_val ia_start b<=? tlbi_addr)
                        && (tlbi_addr b<=? phys_addr_val ia_end)) then
                 Some false
               else if (is_l3 pte_desc.(ged_level) && is_last_level_only d) then
                 Some false
-              else 
+              else
                 Some true
             | TLBI_by_addr_space _ => None
             | TLBI_by_addr_all => Some true
@@ -1253,9 +1252,9 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                       let new_substate :=
                         (* Depending on the current state and the TLBI kind, we update the sub-state *)
                         match ai.(ai_lis) with
-                          | LIS_dsbed => step_pte_on_tlbi_after_dsb td 
-                          | LIS_dsb_tlbi_ipa_dsb => step_pte_on_tlbi_after_tlbi_ipa td 
-                          | a => Some a (* Otherwise, it does not make the subotomaton change *)
+                          | LIS_dsbed => step_pte_on_tlbi_after_dsb td
+                          | LIS_dsb_tlbi_ipa_dsb => step_pte_on_tlbi_after_tlbi_ipa td
+                          | a => Some a (* Otherwise, it does not make the sub-automaton change *)
                         end
                       in
                       match new_substate with
@@ -1281,7 +1280,7 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
 .
 
 Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
-  let stage := 
+  let stage :=
     match td.(TLBI_rec).(TLBIRecord_op) with
       | TLBIOp_VA | TLBIOp_VMALL =>
           Some TLBI_OP_stage1
@@ -1303,7 +1302,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
       | TLBIOp_VA | TLBIOp_IPAS2 =>
         Some (
           TLBI_by_input_addr
-            {| 
+            {|
                 TOBAD_page := (td.(TLBI_rec).(TLBIRecord_address));
                 TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level);
             |}
@@ -1313,7 +1312,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
     end
   in
   match stage, shootdown, method with
-    | Some stage, Some shootdown, Some method => 
+    | Some stage, Some shootdown, Some method =>
       Some
       {|
         TI_stage := stage;
@@ -1523,7 +1522,7 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
       (* Not sure about the size of the iteration *)
       set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
     | GHOST_HINT_RELEASE =>
-      (* Can we use the free to detect when pagetables are released? *)
+      (* Can we use the free to detect when page tables are released? *)
       step_release_table cpu (Root hd.(thd_location)) st
   end
 .
