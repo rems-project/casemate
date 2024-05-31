@@ -1,6 +1,6 @@
 (coq.extraction
  (prelude extraction)
- (theories simplified stdpp stdpp.bitvector RecordUpdate)
+ (theories simplified stdpp stdpp.bitvector RecordUpdate Cmap)
  (extracted_modules coq_executable_sm))
 
 (library

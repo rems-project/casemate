@@ -3,3 +3,9 @@
  (name cmap)
  (public_name cmap)
  (libraries zarith))
+
+(coq.theory
+ (name Cmap)
+ (package cmap)
+ (modules cmap)
+ (theories stdpp stdpp.bitvector))

@@ -5,6 +5,7 @@
 
 Require Import String.
 Require Import stdpp.bitvector.bitvector.
+Require Import Cmap.cmap.
 
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
@@ -222,10 +223,10 @@ Record owner_locks := {
 }.
 
 (* The memory state is a map from address to simplified model location *)
-Definition ghost_simplified_model_state := gmap u64 sm_location.
+Definition ghost_simplified_model_state := cmap sm_location.
 
 (* The zalloc'd memory is stored here *)
-Definition ghost_simplified_model_zallocd := gmap u64 unit.
+Definition ghost_simplified_model_zallocd := gset u64.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
@@ -609,10 +610,7 @@ Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
 .
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
-  match st.(gsm_zalloc) !! (bv_shiftr (phys_addr_val addr) b12) with
-    | Some () => true
-    | None => false
-  end
+  bool_decide ((bv_shiftr (phys_addr_val addr) b12) ∈ st.(gsm_zalloc))
 .
 
 Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
@@ -1019,7 +1017,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
 (******************************************************************************************)
 
 Definition step_zalloc_aux (addr : phys_addr_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
-  let update s := {| gsmsr_log := nil; gsmsr_data := Ok _ _ (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
+  let update s := {| gsmsr_log := nil; gsmsr_data := Ok _ _ (s <| gsm_zalloc := union {[ phys_addr_val addr ]} s.(gsm_zalloc) |>) |} in
   Mupdate_state update st
 .
 
@@ -1570,8 +1568,8 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
             pr_s1 := [];
             pr_s2 := [];
           |};
-        gsm_memory := gmap_empty;
-        gsm_zalloc := gmap_empty;
+        gsm_memory := empty;
+        gsm_zalloc := gset_empty;
       |}
   in
   let res := all_steps_aux transitions [] initial_state in
@@ -1581,8 +1579,8 @@ Definition all_steps (transitions : list ghost_simplified_model_transition) : gh
 
 Definition memory_0 := {|
   gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  gsm_memory := gmap_empty;
-  gsm_zalloc := gmap_empty;
+  gsm_memory := empty;
+  gsm_zalloc := gset_empty;
 |}.
 
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)

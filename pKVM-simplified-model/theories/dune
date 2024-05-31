@@ -3,5 +3,5 @@
  (package simplified)
  (flags :standard)
  (synopsis "simplified")
- (theories RecordUpdate stdpp stdpp.bitvector)
+ (theories RecordUpdate stdpp stdpp.bitvector Cmap)
  (modules simplified))

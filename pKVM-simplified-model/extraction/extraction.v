@@ -3,6 +3,7 @@ Require Import simplified.simplified.
 Require Import stdpp.bitvector.bitvector.
 Require Import stdpp.bitvector.definitions.
 Require Import stdpp.gmap.
+Require Import Cmap.cmap.
 
 Require Coq.extraction.Extraction.
 Extraction Language OCaml.
@@ -29,10 +30,9 @@ Extract Inlined Constant bv_and => "(fun _ a b -> Za.logand a b)".
 Extract Inlined Constant bv_mul_Z => "(fun _ a b -> Za.mul a b)".
 
 Extract Inlined Constant ghost_simplified_model_state => "sm_location Cmap.t".
-Extract Inlined Constant ghost_simplified_model_zallocd => "unit Cmap.t".
-Extract Inlined Constant gmap_empty => "(fun _ _ -> Cmap.empty ())".
-Extract Inlined Constant lookup => "(fun _ g m -> Cmap.lookup g m)".
-Extract Inlined Constant insert => "(fun _ k a m -> Cmap.insert k a m)".
+Extract Inlined Constant cmap_empty => "(Cmap.empty ())".
+Extract Inlined Constant cmap_lookup => "(fun g m -> Cmap.lookup g m)".
+Extract Inlined Constant cmap_insert => "(fun k a m -> Cmap.insert k a m)".
 
 
 Extract Inductive result => "Stdlib.result" [ "Ok" "Error" ].
