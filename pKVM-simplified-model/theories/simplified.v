@@ -555,7 +555,7 @@ Definition GENMASK (l r : u64) : u64 :=
 Definition PTE_BITS_ADDRESS : u64 := BV64 0xfffffffff000%Z.
 
 (* Definition PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := GENMASK (BV 64 58) (BV 64 55). *)
-Definition NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := BV64 0x3fffffff%Z.
+Definition NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := BV64 0x7fffffffffffff%Z.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
   negb ((bv_and descriptor PTE_BIT_VALID) b=? b0)
@@ -884,9 +884,9 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
 .
 
 Definition is_only_update_to_sw_bit (old new : u64) : bool :=
-  bv_and old (NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  (bv_and old NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 b=?
-  bv_and new (NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  (bv_and new NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 .
 
 Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64) : option bool :=
