@@ -1840,7 +1840,7 @@ static void step(struct ghost_simplified_model_transition trans)
 	case TRANS_MEM_WRITE:
 		step_write(trans);
 		break;
-	case TRANS_MEM_ZALLOC;
+	case TRANS_MEM_ZALLOC:
 		// Nothing to do
 		break;
 	case TRANS_MEM_READ:
