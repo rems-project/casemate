@@ -5,7 +5,6 @@
 
 (library
  (name extraction)
- (public_name simplified)
  (libraries zarith cmap)
  (wrapped false)
  (instrumentation
