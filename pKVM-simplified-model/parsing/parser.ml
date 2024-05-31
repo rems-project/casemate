@@ -50,7 +50,8 @@ let pre_parse bin trace =
   let xs = Iters.in_file trace transitions in
   with_open_out bin @@ fun oc -> marshall_out oc xs
 
-let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
+let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
+    ?limit src =
   let xs =
     match src with
     | `Text f -> Iters.in_file f transitions
@@ -63,6 +64,8 @@ let run_model ?(dump_state = false) ?(dump_trans = false) ?limit src =
       if dump_trans then
         Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.gsmsr_log
       else Fmt.pr "%a@." pp_logs res.gsmsr_log;
+      if dump_roots then
+        Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_pte_roots state.gsm_roots;
       if dump_state then
         Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_ghost_simplified_memory state);
     (* If we reach an error, we dump the transition *)
@@ -99,18 +102,19 @@ let term =
     @@ opt (some int) None
     @@ info [ "limit" ] ~docv:"NUM" ~doc:"Check only the first $(docv) events."
   and dump_s = value @@ opt bool false @@ info [ "dump-states" ]
+  and dump_r = value @@ opt bool false @@ info [ "dump-roots" ]
   and dump_t = value @@ opt bool false @@ info [ "dump-transitions" ] in
   Term.(
-    (fun read write limit dump_state dump_trans trace ->
+    (fun read write limit dump_state dump_roots dump_trans trace ->
       match (read, write, trace) with
       | None, None, Some f ->
-          Ok (run_model ~dump_state ~dump_trans ?limit (`Text f))
+          Ok (run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Text f))
       | Some f, None, None ->
-          Ok (run_model ~dump_state ~dump_trans ?limit (`Bin f))
+          Ok (run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Bin f))
       | None, Some e, Some f -> Ok (pre_parse e f)
       | None, None, None -> Error "No input."
       | _ -> Error "Invalid arguments.")
-    $$ read $ write $ limit $ dump_s $ dump_t $ trace)
+    $$ read $ write $ limit $ dump_s $ dump_r $ dump_t $ trace)
   |> Term.term_result' ~usage:true
 
 let _ =
