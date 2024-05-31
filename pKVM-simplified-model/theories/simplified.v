@@ -1291,13 +1291,14 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
   let shootdown :=
     match td.(TLBI_shareability) with
       | Shareability_ISH => Some true
-      | _ => Some false
+      | _ => Some true (* TODO: false *)
     end
   in
   let method :=
     match td.(TLBI_rec).(TLBIRecord_op) with
       | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-        Some (TLBI_by_addr_space (Phys_addr b0)) (* TODO *)
+        (* TODO: Some (TLBI_by_addr_space (Phys_addr Sth)) *)
+        Some TLBI_by_addr_all
       | TLBIOp_VA | TLBIOp_IPAS2 =>
         Some (
           TLBI_by_input_addr
