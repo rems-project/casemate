@@ -908,42 +908,40 @@ Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64)
 
 Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   let old := loc.(sl_val) in
-  match require_bbm tid loc val with (* If no change in memory: no problem*)
-    | None => Merror (GSME_internal_error IET_unexpected_none)
-    | Some false =>
-        (* if the location des not require BBM, then we can update the value and the descriptor *)
-        match loc.(sl_pte) with
-          | None => (* This does not make sense because function is called on a pgt *)
-            {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
-          | Some pte =>
-            let loc := loc <| sl_val := val |>
-              <| sl_pte :=
-                Some (deconstruct_pte tid pte.(ged_ia_region).(range_start) val pte.(ged_level) pte.(ged_owner) pte.(ged_stage)) |>
-            in
-            Mreturn (insert_location loc st)
-        end
-    | Some true =>
-      if is_desc_valid val then
+  if is_desc_valid val then
+    match require_bbm tid loc val with (* If no change in memory: no problem*)
+      | None => Merror (GSME_internal_error IET_unexpected_none)
+      | Some false =>
+          (* if the location des not require BBM, then we can update the value and the descriptor *)
+          match loc.(sl_pte) with
+            | None => (* This does not make sense because function is called on a pgt *)
+              {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
+            | Some pte =>
+              let loc := loc <| sl_val := val |>
+                <| sl_pte :=
+                  Some (deconstruct_pte tid pte.(ged_ia_region).(range_start) val pte.(ged_level) pte.(ged_owner) pte.(ged_stage)) |>
+              in
+              Mreturn (insert_location loc st)
+          end
+      | Some true =>
         (* Changing the descriptor is illegal *)
         {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr)) |}
-      else
-      (
-        (* Invalidation of pgt: changing the state to  *)
-        match loc.(sl_pte) with
-          | None => (* This does not make sense because function is called on a pgt *)
-            {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
-          | Some desc =>
-            let new_desc := desc <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
-            {|
-              gsmsr_log := [Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr))];
-              gsmsr_data := Ok _ _ (st
-                <| gsm_memory :=
-                  (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory))
-                |> );
-            |}
-        end
-      )
-  end
+    end
+  else
+    (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
+    match loc.(sl_pte) with
+      | None => (* This does not make sense because function is called on a pgt *)
+        {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
+      | Some desc =>
+        let new_desc := desc <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
+        {|
+          gsmsr_log := [Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr))];
+          gsmsr_data := Ok _ _ (st
+            <| gsm_memory :=
+              (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory))
+            |> );
+        |}
+    end
 .
 
 Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
