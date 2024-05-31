@@ -162,14 +162,14 @@ let pp_ghost_simplified_model_state ppf m =
   in
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma pp_k_v)
-    (state_fold (fun k v xs -> (k, v) :: xs) [] m
+    (Cmap.fold (fun k v xs -> (k, v) :: xs) m []
     |> (* Only print PTEs *)
     List.filter (fun x -> Option.is_some (snd x).sl_pte))
 
 let pp_ghost_simplified_model_zallocd ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma p0xZ)
-    (zallocd_fold (fun x xs -> x :: xs) [] m)
+    (Cmap.fold (fun x () xs -> x :: xs) m [])
 
 let pp_ghost_simplified_memory ppf m =
   Fmt.pf ppf "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@." pp_pte_roots m.gsm_roots

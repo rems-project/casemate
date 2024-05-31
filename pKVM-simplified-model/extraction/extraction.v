@@ -50,5 +50,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Extraction "coq_executable_sm.ml"
-  all_steps memory_0 step
-  state_fold zallocd_fold.
+  all_steps memory_0 step.

@@ -73,3 +73,17 @@ let lookup x map =
         map.c <- add_to_cache ad line map.c;
         line.(array_bits x)
       with Not_found -> None)
+
+let array_fold_left f ar init =
+  let res = ref init in
+  for i = 0 to Array.length ar - 1 do
+    res := f i ar.(i) !res
+  done;
+  !res
+
+let fold f m init =
+  let g addr =
+    array_fold_left (fun k v ini ->
+        match v with Some v -> f (Z.add addr (Z.of_int k)) v ini | None -> ini)
+  in
+  ZMap.fold g m.map init

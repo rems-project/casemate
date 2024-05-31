@@ -1583,12 +1583,4 @@ Definition memory_0 := {|
   gsm_zalloc := gmap_empty;
 |}.
 
-(* We need to inspect the contents of the maps to print them. *)
-
-Definition state_fold (A: Type) f z (m: ghost_simplified_model_state) :=
-  gmap_fold A f z m.
-
-Definition zallocd_fold (A: Type) f z (m: ghost_simplified_model_zallocd) :=
-  gmap_fold A (fun k 'tt a => f k a) z m.
-
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)
