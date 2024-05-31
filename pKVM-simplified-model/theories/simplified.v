@@ -1155,14 +1155,15 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
         | Some pte_desc =>
           match td.(TI_method) with
             | TLBI_by_input_addr d =>
-              let tlbi_addr := bv_shiftr (phys_addr_val d.(TOBAD_page)) 12 in
+              let tlbi_addr := bv_shiftl (phys_addr_val d.(TOBAD_page)) 12 in
               let ia_start := pte_desc.(ged_ia_region).(range_start) in
-              let ia_end := ia_start pa+ (pte_desc.(ged_ia_region).(range_start)) in
-              if negb (is_leaf pte_desc.(ged_pte_kind) && (phys_addr_val ia_start b<=? tlbi_addr)
-                       && (tlbi_addr b<=? phys_addr_val ia_end)) then
+              let ia_end := ia_start pa+ pte_desc.(ged_ia_region).(range_size) in
+              if negb (is_leaf pte_desc.(ged_pte_kind)
+                       && (phys_addr_val ia_start b<=? tlbi_addr)
+                       && (tlbi_addr b<? phys_addr_val ia_end)) then
                 Some false
-              else if (is_l3 pte_desc.(ged_level) && is_last_level_only d) then
-                Some false
+              else if ((negb (is_l3 pte_desc.(ged_level))) && is_last_level_only d) then
+                Some true
               else
                 Some true
             | TLBI_by_addr_space _ => None
