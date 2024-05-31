@@ -9,12 +9,11 @@ type 'a t = {
      behaves like a functional implementation by updating a counter
      on the callee object, so that if it is reused, only the imperative
      counter will be incremented leading to an assertion fail. *)
-  fn_count : int;
-  mutable imp_count : int;
+  mutable is_valid : bool;
 }
 
 let cache_size = 2
-let empty () = { c = []; map = ZMap.empty; fn_count = 0; imp_count = 0 }
+let empty () = { c = []; map = ZMap.empty; is_valid = true }
 let map_bits x = Z.shift_right x 12
 let array_bits x = Z.(to_int (shift_right (logand x (of_int 0xfff)) 3))
 
@@ -33,7 +32,7 @@ let add_to_cache addr line (cache : 'a cache) =
   (addr, line) :: is_cached addr cache_size cache
 
 let rec insert x va map =
-  assert (map.fn_count = map.imp_count);
+  assert map.is_valid;
   try
     let ad = map_bits x in
     let array =
@@ -45,24 +44,18 @@ let rec insert x va map =
           line
     in
     Array.set array (array_bits x) (Some va);
-    map.imp_count <- map.imp_count + 1;
-    {
-      c = map.c;
-      map = map.map;
-      fn_count = map.fn_count + 1;
-      imp_count = map.imp_count;
-    }
+    map.is_valid <- false;
+    { c = map.c; map = map.map; is_valid = true }
   with Not_found ->
     insert x va
       {
         c = [];
         map = ZMap.add (Z.shift_right x 12) (Array.make 512 None) map.map;
-        fn_count = map.fn_count + 1;
-        imp_count = fst (map.imp_count, (map.imp_count <- map.imp_count + 1));
+        is_valid = true;
       }
 
 let lookup x map =
-  assert (map.fn_count = map.imp_count);
+  assert map.is_valid;
   let ma = map_bits x in
   match lookup_cache ma map.c with
   | Some t -> t.(array_bits x)
@@ -84,6 +77,9 @@ let array_fold_left f ar init =
 let fold f m init =
   let g addr =
     array_fold_left (fun k v ini ->
-        match v with Some v -> f (Z.add addr (Z.of_int k)) v ini | None -> ini)
+        match v with
+        | Some v ->
+            f (Z.add (Z.shift_left addr 12) (Z.shift_left (Z.of_int k) 3)) v ini
+        | None -> ini)
   in
   ZMap.fold g m.map init
