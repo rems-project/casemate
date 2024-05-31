@@ -49,5 +49,6 @@ Set Extraction Optimize.
 Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
+Set Warnings "-extraction-opaque-accessed".
 Extraction "coq_executable_sm.ml"
   all_steps memory_0 step.

@@ -1436,7 +1436,9 @@ Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simpli
         set_owner_root phys root new_state logs (offs - 1)
     end
 .
+Set Warnings "-funind-cannot-build-inversion -funind-cannot-define-graph".
 Proof. lia. Qed.
+Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
 
 Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_result :=
     match ctx.(ptc_loc) with
