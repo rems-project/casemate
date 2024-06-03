@@ -1217,8 +1217,7 @@ Definition step_pte_on_tlbi_after_dsb (td: TLBI_intermediate) : option LIS :=
 
 Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS :=
   match td.(TI_regime) with
-    | Regime_EL10 => None
-    | Regime_EL2 =>
+    | Regime_EL10 =>
         match td.(TI_stage) with
           | TLBI_OP_stage1 | TLBI_OP_both_stages => Some LIS_dsb_tlbied
           | TLBI_OP_stage2 => Some LIS_dsb_tlbi_ipa_dsb
