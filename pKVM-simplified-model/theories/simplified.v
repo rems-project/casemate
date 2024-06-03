@@ -1114,6 +1114,8 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
               [Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr))]
            | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
                 [Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr))]
+           | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
+                [Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr))]
           | _, _ => (* [Log "DSBed: " (phys_addr_val location.(sl_phys_addr))] *) nil
         end
         in
@@ -1226,6 +1228,8 @@ Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS 
   end
 .
 
+Definition id {A : Type} (a:A) := a.
+
 Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (ptc : page_table_context) : ghost_simplified_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
@@ -1256,9 +1260,18 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                       match new_substate with
                         | None => Merror GSME_unimplemented
                         | Some new_substate =>
+                          let log := 
+                            match new_substate, ai.(ai_lis) with
+                              | LIS_dsb_tlbied, LIS_dsbed => Mlog (Log "dsb'd->tlbied" (phys_addr_val ptc.(ptc_addr)))
+                              | LIS_dsb_tlbi_ipa, LIS_dsbed => Mlog (Log "dsb'd->tlbied_ipa" (phys_addr_val ptc.(ptc_addr)))
+                              | LIS_dsb_tlbied, LIS_dsb_tlbi_ipa_dsb => Mlog (Log "dsb_tlbi_ipa_dsbed->tlbied" (phys_addr_val ptc.(ptc_addr)))
+                              | _, _ => @id ghost_simplified_model_result
+                            end
+                          in
                           (* Write the new sub-state in the global automaton *)
                           let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
                           let new_mem := ptc.(ptc_state) <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> ptc.(ptc_state).(gsm_memory)|> in
+                          log
                           match new_substate with
                             | LIS_dsb_tlbied => tlbi_invalid_unclean_unmark_children cpu_id new_loc (ptc <| ptc_state := new_mem |> <|ptc_loc := Some new_loc|>)
                             | _ => Mreturn new_mem
