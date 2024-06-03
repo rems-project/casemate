@@ -88,7 +88,7 @@ Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
 .
 Infix "pa*" := pa_mul (at level 40).
-Notation "<[ K := V ]> D" := (<[ phys_addr_val K := V ]> D) (at level 100).
+Notation "<[ K := V ]> D" := (<[ bv_shiftr (phys_addr_val K) (BV64 3%Z) := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
 Inductive owner_t :=
@@ -614,7 +614,7 @@ Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool
 .
 
 Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
-  match st.(gsm_memory) !! phys_addr_val addr with
+  match st.(gsm_memory) !! bv_shiftr (phys_addr_val addr) 3 with
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with

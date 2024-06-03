@@ -14,8 +14,8 @@ type 'a t = {
 
 let cache_size = 2
 let empty () = { c = []; map = ZMap.empty; is_valid = true }
-let map_bits x = Z.shift_right x 12
-let array_bits x = Z.(to_int (shift_right (logand x (of_int 0xfff)) 3))
+let map_bits x = Z.shift_right x 9
+let array_bits x = Z.(to_int (logand x (of_int 0x1ff)))
 
 let rec lookup_cache addr : 'a cache -> 'b = function
   | [] -> None
@@ -50,7 +50,7 @@ let rec insert x va map =
     insert x va
       {
         c = [];
-        map = ZMap.add (Z.shift_right x 12) (Array.make 512 None) map.map;
+        map = ZMap.add (map_bits x) (Array.make 512 None) map.map;
         is_valid = true;
       }
 
@@ -78,8 +78,7 @@ let fold f m init =
   let g addr =
     array_fold_left (fun k v ini ->
         match v with
-        | Some v ->
-            f (Z.add (Z.shift_left addr 12) (Z.shift_left (Z.of_int k) 3)) v ini
+        | Some v -> f (Z.add (Z.shift_left addr 9) (Z.of_int k)) v ini
         | None -> ini)
   in
   ZMap.fold g m.map init
