@@ -1386,8 +1386,8 @@ Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_mem
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   let stage :=
     match md.(tmd_sysreg) with
-      | SYSREG_TTBR_EL2 => S2
-      | SYSREG_VTTBR => S1
+      | SYSREG_TTBR_EL2 => S1
+      | SYSREG_VTTBR => S2
     end
   in
   let root := extract_si_root md.(tmd_val) stage in
