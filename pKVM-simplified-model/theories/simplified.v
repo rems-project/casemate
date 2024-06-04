@@ -228,6 +228,12 @@ Definition ghost_simplified_model_state := cmap sm_location.
 (* The zalloc'd memory is stored here *)
 Definition ghost_simplified_model_zallocd := gset u64.
 
+(* the map from root to lock address *)
+Definition ghost_simplified_model_lock_addr := gmap u64 u64.
+
+(* the map from lock address to thread that acquired it if any *)
+Definition ghost_simplified_model_lock_state := gmap u64 thread_identifier.
+
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
   pr_s1 : list owner_t;
@@ -240,8 +246,10 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_roots : pte_roots;
   gsm_memory : ghost_simplified_model_state;
   gsm_zalloc : ghost_simplified_model_zallocd;
+  gsm_lock_addr : ghost_simplified_model_lock_addr;
+  gsm_lock_state : ghost_simplified_model_lock_state;
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc>.
+#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state>.
 
 
 
@@ -462,6 +470,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_double_use_of_pte
   | GSME_root_already_exists
   | GSME_unaligned_write
+  | GSME_double_lock_aquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
@@ -637,6 +646,25 @@ Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : op
 
 Infix "!!" := get_location (at level 20) .
 
+
+Definition is_well_locked (cpu : thread_identifier) (location : phys_addr_t) (st : ghost_simplified_memory) : bool :=
+  match st !! location with
+    | None => true
+    | Some location =>
+      match location.(sl_pte) with
+        | None => true
+        | Some pte =>
+          match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
+            | None => false
+            | Some addr =>
+              match lookup addr st.(gsm_lock_state) with
+                | Some lock_owner => bool_decide (lock_owner = cpu)
+                | None => false
+              end
+          end
+      end
+  end
+.
 
 (******************************************************************************************)
 (*                             Page table traversal                                       *)
@@ -1433,6 +1461,10 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (st : ghost_
 (*                                  Step hint                                             *)
 (******************************************************************************************)
 
+Definition step_hint_set_root_lock (root : owner_t) (addr : phys_addr_t) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+    Mreturn (st <| gsm_lock_addr := insert (phys_addr_val (root_val root)) (phys_addr_val addr) st.(gsm_lock_addr)|>)
+.
+
 Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simplified_memory) (logs : list log_element) (offs : Z) {measure Z.abs_nat offs} : ghost_simplified_model_result :=
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |}
@@ -1551,6 +1583,25 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
   end
 .
 
+
+(******************************************************************************************)
+(*                                  Step lock                                             *)
+(******************************************************************************************)
+
+Definition step_lock (cpu : thread_identifier) (hd : trans_lock_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  match hd.(tld_kind), lookup (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) with
+    | LOCK, None => Mreturn (st <| gsm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu st.(gsm_lock_state) |>)
+    | UNLOCK, Some thread =>
+        if bool_decide (thread = cpu) then 
+          Mreturn (st <| gsm_lock_state := delete (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) |>)
+        else
+          Merror (GSME_double_lock_aquire cpu thread)
+    | LOCK, Some thread => Merror (GSME_double_lock_aquire cpu thread)
+    | UNLOCK, None => Merror (GSME_double_lock_aquire cpu cpu)
+  end
+.
+
+
 (******************************************************************************************)
 (*                             Toplevel function                                          *)
 (******************************************************************************************)
@@ -1568,7 +1619,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data st
   | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data st
   | GSMDT_TRANS_HINT hint_data => step_hint trans.(gsmt_thread_identifier) hint_data st
-  | GSMDT_TRANS_LOCK lock_data => Merror GSME_unimplemented
+  | GSMDT_TRANS_LOCK lock_data => step_lock trans.(gsmt_thread_identifier) lock_data st
   end.
 
 
@@ -1584,28 +1635,24 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
   end
 .
 
+
+Definition memory_0 := {|
+  gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
+  gsm_memory := empty;
+  gsm_zalloc := gset_empty;
+  gsm_lock_addr := gmap_empty;
+  gsm_lock_state := gmap_empty;
+|}.
+
 Definition all_steps (transitions : list ghost_simplified_model_transition) : ghost_simplified_model_result :=
   let
-    initial_state :=  (* Initially, the memory is empty *)
-      {|
-        gsm_roots :=
-          {|
-            pr_s1 := [];
-            pr_s2 := [];
-          |};
-        gsm_memory := empty;
-        gsm_zalloc := gset_empty;
-      |}
+    initial_state := memory_0
   in
   let res := all_steps_aux transitions [] initial_state in
   res <| gsmsr_log := rev res.(gsmsr_log) |>
 .
 
 
-Definition memory_0 := {|
-  gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  gsm_memory := empty;
-  gsm_zalloc := gset_empty;
-|}.
+
 
 (* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)

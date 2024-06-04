@@ -67,6 +67,8 @@ let pp_error ppf = function
   | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
   | GSME_unaligned_write -> Fmt.pf ppf "unaligned write"
+  | GSME_double_lock_aquire (i, j) ->
+      Fmt.pf ppf "locking error, locked owned by %i, useb by %i" i j
   | GSME_unimplemented -> Fmt.pf ppf "GSME_unimplemented"
   | GSME_internal_error e ->
       Fmt.pf ppf "@[GSME_internal_error:@ %s@]"
