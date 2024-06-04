@@ -452,6 +452,7 @@ enum ghost_simplified_model_transition_kind {
 	TRANS_ISB,
 	TRANS_TLBI,
 	TRANS_MSR,
+	TRANS_LOCK,
 
 	/**
 	 * @TRANS_HINT - A non-hardware-model transition
@@ -491,6 +492,15 @@ static const char *hint_names[] = {
 	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
 	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
 	ID_STRING(GHOST_HINT_RELEASE_TABLE),
+};
+
+enum ghost_lock_kind {
+	GHOST_SIMPLIFIED_UNLOCK,
+	GHOST_SIMPLIFIED_LOCK,
+};
+static const char *lock_type_names[] = {
+	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
+	[GHOST_SIMPLIFIED_LOCK] = "LOCK",
 };
 
 /**
@@ -546,6 +556,11 @@ struct ghost_simplified_model_transition {
 			u64 location;
 			u64 size;
 		} zalloc_data;
+
+		struct trans_lock_data {
+			u64 address;
+			enum ghost_lock_kind kind;
+		} lock_data;
 	};
 };
 void GHOST_transprinter(void *p);
@@ -697,6 +712,19 @@ static inline void __ghost_simplified_model_step_zalloc_exact(struct src_loc src
 		.zalloc_data = (struct trans_zalloc_data){
 			.location = location,
 			.size = size,
+		},
+	});
+}
+
+#define ghost_simplified_model_step_lock(...) __ghost_simplified_model_step_lock(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_lock(struct src_loc src_loc, enum ghost_lock_kind kind, u64 address)
+{
+		ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
+		.kind = TRANS_LOCK,
+		.lock_data = (struct trans_lock_data){
+			.address = address,
+			.kind = kind,
 		},
 	});
 }

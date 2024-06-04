@@ -1861,6 +1861,8 @@ static void step(struct ghost_simplified_model_transition trans)
 	case TRANS_HINT:
 		step_hint(trans);
 		break;
+	case TRANS_LOCK:
+		break;
 	};
 
 	if (__this_cpu_read(ghost_print_this_hypercall) && ghost_print_on("sm_dump_trans"))
@@ -2111,6 +2113,12 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 	}
 }
 
+int gp_print_lock_trans(gp_stream_t *out, struct trans_lock_data *lock_data)
+{
+
+	return ghost_sprintf(out, "%s %lx", lock_type_names[lock_data->kind], lock_data->address);
+}
+
 int gp_print_src_loc(gp_stream_t *out, struct src_loc *src_loc)
 {
 	return ghost_sprintf(out, "at %s:%d in %s", src_loc->file, src_loc->lineno, src_loc->func);
@@ -2144,6 +2152,9 @@ int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition
 		break;
 	case TRANS_HINT:
 		ret = gp_print_hint_trans(out, &trans->hint_data);
+		break;
+	case TRANS_LOCK:
+		ret = gp_print_lock_trans(out, &trans->lock_data);
 		break;
 	default:
 		BUG();
