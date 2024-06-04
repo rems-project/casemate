@@ -30,6 +30,9 @@
   "GHOST_HINT_RELEASE_TABLE", GHOST_HINT_RELEASE_TABLE;
   (* ZALLOC *)
   "ZALLOC", ZALLOC;
+  (* LOCK *)
+  "LOCK", LOCK;
+  "UNLOCK", UNLOCK;
 ]
 
 let lexicon: (string, token) Hashtbl.t =

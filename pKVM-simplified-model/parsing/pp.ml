@@ -33,6 +33,10 @@ let pp_transition_data ppf = function
         p0xZ value
   | GSMDT_TRANS_TLBI data -> Fmt.pf ppf "TLBI %a" pp_tLBI data
   | GSMDT_TRANS_HINT _ -> Fmt.pf ppf "Hint"
+  | GSMDT_TRANS_LOCK l ->
+      Fmt.pf ppf "%s %a"
+        (match l.tld_kind with LOCK -> "LOCK" | UNLOCK -> "UNLOCK")
+        p0xZ l.tld_addr
 
 let pp_location ppf = function
   | Some loc ->

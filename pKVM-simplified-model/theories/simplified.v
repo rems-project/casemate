@@ -410,6 +410,16 @@ Record trans_hint_data := {
   thd_value : owner_t;
 }.
 
+Inductive lock_kind :=
+  | LOCK
+  | UNLOCK
+.
+
+Record trans_lock_data := {
+  tld_kind : lock_kind;
+  tld_addr : phys_addr_t;
+}.
+
 Inductive ghost_simplified_model_transition_data :=
   |	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
   | GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
@@ -418,6 +428,7 @@ Inductive ghost_simplified_model_transition_data :=
   |	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
   |	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
   | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
+  | GSMDT_TRANS_LOCK (lock_data : trans_lock_data)
 .
 
 Record ghost_simplified_model_transition := {
@@ -1557,6 +1568,7 @@ Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplifi
   | GSMDT_TRANS_TLBI tlbi_data => step_tlbi trans.(gsmt_thread_identifier) tlbi_data st
   | GSMDT_TRANS_MSR msr_data => step_msr trans.(gsmt_thread_identifier) msr_data st
   | GSMDT_TRANS_HINT hint_data => step_hint trans.(gsmt_thread_identifier) hint_data st
+  | GSMDT_TRANS_LOCK lock_data => Merror GSME_unimplemented
   end.
 
 

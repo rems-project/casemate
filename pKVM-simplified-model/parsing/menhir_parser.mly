@@ -20,6 +20,7 @@
 %token HINT
 %token GHOST_HINT_SET_ROOT_LOCK GHOST_HINT_SET_OWNER_ROOT GHOST_HINT_RELEASE_TABLE
 %token ZALLOC SIZE
+%token LOCK UNLOCK
 
 %start trans
 
@@ -110,6 +111,8 @@ trans_data:
   | HINT kind = hint_type loc = VAL value = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = value} }
   | HINT kind = hint_type loc = VAL { GSMDT_TRANS_HINT {thd_hint_kind = kind; thd_location = loc; thd_value = Big_int_Z.big_int_of_int 0} }
   | ZALLOC addr = VAL SIZE COL size = int { GSMDT_TRANS_MEM_ZALLOC {tzd_addr = addr; tzd_size = Big_int_Z.big_int_of_int64 size } }
+  | LOCK addr = VAL {GSMDT_TRANS_LOCK {tld_kind = LOCK; tld_addr = addr}}
+  | UNLOCK addr = VAL {GSMDT_TRANS_LOCK {tld_kind = UNLOCK; tld_addr = addr}}
 
 write_types:
   | W {WMO_plain}
