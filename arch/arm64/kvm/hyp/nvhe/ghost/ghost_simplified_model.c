@@ -1218,6 +1218,7 @@ static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 	}
 	GHOST_LOG_CONTEXT_EXIT();
 }
+#endif /*CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 ////////////////////
@@ -1237,6 +1238,7 @@ static phys_addr_t extract_s1_root(u64 ttb)
 	return ttb & TTBR0_EL2_BADDR_MASK;
 }
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 static void step_msr(struct ghost_simplified_model_transition trans)
 {
 	u64 root;
@@ -1938,6 +1940,7 @@ static void sync_simplified_model_memory(void)
 	try_register_root(GHOST_STAGE1, pkvm_pgd);
 	GHOST_LOG_CONTEXT_EXIT();
 }
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 /*
  * perform some first-time ghost hint transitions
@@ -1948,7 +1951,7 @@ static void initialise_ghost_hint_transitions(void)
 
 	GHOST_LOG_CONTEXT_ENTER();
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-	step((struct ghost_simplified_model_transition){
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
@@ -1957,7 +1960,7 @@ static void initialise_ghost_hint_transitions(void)
 			.value = (u64)&pkvm_pgd_lock,
 		},
 	});
-	step((struct ghost_simplified_model_transition){
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
@@ -1968,7 +1971,6 @@ static void initialise_ghost_hint_transitions(void)
 	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 
 void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
@@ -1985,7 +1987,9 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 	initialise_ghost_ptes_memory(phys, size);
 
 	/* we can now start taking model steps */
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 	initialise_ghost_hint_transitions();
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	sync_simplified_model_memory();
 
 
