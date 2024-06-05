@@ -60,10 +60,13 @@ Infix "b*" := bv_mul_64 (at level 40).
 Infix "+s" := append (right associativity, at level 60).
 
 Definition n512 := 512.
+Definition z512 := 512%Z.
 
 Definition b0 := BV64 0.
 Definition b1 := BV64 1.
 Definition b2 := BV64 2.
+Definition b3 := BV64 3.
+Definition b7 := BV64 7.
 Definition b8 := BV64 8.
 Definition b12 := BV64 12.
 Definition b16 := BV64 16.
@@ -100,7 +103,7 @@ Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
 .
 Infix "pa*" := pa_mul (at level 40).
-Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) (BV64 3%Z) := V ]> D) (at level 100).
+Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
 Inductive owner_t :=
@@ -614,12 +617,17 @@ Definition mask_OA_shift (level : level_t) : u64 :=
 .
 
 
+Definition _map_size_l0 := BV64 0x8000000000%Z. (* bv_shiftl b512     (BV64 30) *) (* 512 Go *) 
+Definition _map_size_l1 := BV64 0x0040000000%Z. (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)   
+Definition _map_size_l2 := BV64 0x0000200000%Z. (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)   
+Definition _map_size_l3 := BV64 0x0000001000%Z. (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)   
+
 Definition map_size (level : level_t) : phys_addr_t :=
 match level with
-  | l0 => Phys_addr (BV64 0x8000000000%Z) (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
-  | l1 => Phys_addr (BV64 0x0040000000%Z) (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
-  | l2 => Phys_addr (BV64 0x0000200000%Z) (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
-  | l3 => Phys_addr (BV64 0x0000001000%Z) (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
+  | l0 => Phys_addr _map_size_l0 (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
+  | l1 => Phys_addr _map_size_l1 (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
+  | l2 => Phys_addr _map_size_l2 (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
+  | l3 => Phys_addr _map_size_l3 (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
   | _ => pa0  (* Should not happen*)
 end
 .
@@ -638,8 +646,9 @@ Definition extract_output_address (pte_val : u64) (level : level_t) :=
 bv_and_64 pte_val (GENMASK b47 (OA_shift level))
 .
 
+Definition _align_4k_big_bv := BV64 0xfffffffffffffc00%Z. (* bv_not b1023 *)
 Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
-  Phys_addr (bv_and_64 (phys_addr_val addr) (BV64 0xfffffffffffffc00%Z) (* bv_not b1023 *))
+  Phys_addr (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
 .
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
@@ -647,7 +656,7 @@ Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool
 .
 
 Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
-  match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) 3 with
+  match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with
@@ -998,7 +1007,7 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
-  if negb ((bv_and_64 (phys_addr_val addr) 7) b=? b0)
+  if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
     then Merror GSME_unaligned_write else
   if negb (is_well_locked tid addr st)
     then Merror (GSME_transition_without_lock addr) else
@@ -1045,7 +1054,7 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
   if Zle_bool offs 0 then
     mon
   else
-    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z_64 (BV64 8) (offs - 1))) in
+    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z_64 b8 (offs - 1))) in
     let sub_wd :=
       {|
         twd_mo := WMO_plain;
@@ -1065,7 +1074,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
   end
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd st
-    | WMO_page => step_write_page tid wd (Mreturn st) 512
+    | WMO_page => step_write_page tid wd (Mreturn st) z512
   end
 .
 
@@ -1213,7 +1222,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
         | Some pte_desc =>
           match td.(TI_method) with
             | TLBI_by_input_addr d =>
-              let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) 12 in
+              let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) b12 in
               let ia_start := pte_desc.(ged_ia_region).(range_start) in
               let ia_end := ia_start pa+ pte_desc.(ged_ia_region).(range_size) in
               (* TODO: check that this is correct *)
@@ -1423,9 +1432,10 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
   end
 .
 
+Definition _extract_si_root_big_bv := BV64 0xfffffffffffe%Z. (* GENMASK (b47) (b1) *)
 Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (Phys_addr (bv_and_64 val (BV64 0xfffffffffffe%Z) (* GENMASK (b47) (b1) *)))
+  Root (Phys_addr (bv_and_64 val _extract_si_root_big_bv))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (stage : stage_t) : ghost_simplified_model_result :=
@@ -1486,7 +1496,7 @@ Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simpli
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |}
   else
-    let addr := phys pa+ (Phys_addr (bv_mul_Z_64 (BV64 8) (offs - 1))) in
+    let addr := phys pa+ (Phys_addr (bv_mul_Z_64 b8 (offs - 1))) in
     match st !! addr with
       | None =>
         {|
@@ -1595,7 +1605,7 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
     | GHOST_HINT_SET_OWNER_ROOT =>
       (* When ownership is transferred *)
       (* Not sure about the size of the iteration *)
-      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] 512
+      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) st [] z512
     | GHOST_HINT_RELEASE =>
       (* Can we use the free to detect when page tables are released? *)
       step_release_table cpu (Root hd.(thd_location)) st
