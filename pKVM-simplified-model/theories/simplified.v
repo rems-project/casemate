@@ -26,6 +26,18 @@ Notation "'if' C 'then' A 'else' B" :=
 Definition u64 := bv 64.
 Search (bv _ -> bv _ -> bool).
 
+Definition _64 := 64%N.
+
+Instance bv_64_eq_dec : EqDecision (bv 64) := @bv_eq_dec _64.
+Instance bv_64_countable : Countable (bv 64) := @bv_countable _64.
+
+Definition bv_add_64 := @bv_add _64.
+Definition bv_mul_64 := @bv_mul _64.
+Definition bv_mul_Z_64 := @bv_mul_Z _64.
+Definition bv_shiftr_64 := @bv_shiftr _64.
+Definition bv_shiftl_64 := @bv_shiftl _64.
+Definition bv_and_64 := @bv_and _64.
+
 Definition BV64 (n : Z) {p : BvWf 64 n} : u64 := BV 64 n.
 
 Definition u64_eqb (x y : u64) : bool :=
@@ -42,8 +54,8 @@ Definition u64_lte (x y : u64) : bool :=
 Infix "b=?" := u64_eqb (at level 70).
 Infix "b<?" := u64_ltb (at level 70).
 Infix "b<=?" := u64_lte (at level 70).
-Infix "b+" := bv_add (at level 50).
-Infix "b*" := bv_mul (at level 40).
+Infix "b+" := bv_add_64 (at level 50).
+Infix "b*" := bv_mul_64 (at level 40).
 
 Infix "+s" := append (right associativity, at level 60).
 
@@ -88,7 +100,7 @@ Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
 .
 Infix "pa*" := pa_mul (at level 40).
-Notation "<[ K := V ]> D" := (<[ bv_shiftr (phys_addr_val K) (BV64 3%Z) := V ]> D) (at level 100).
+Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) (BV64 3%Z) := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
 Inductive owner_t :=
@@ -565,7 +577,7 @@ Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
 Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
 Definition GENMASK (l r : u64) : u64 :=
-(bv_and
+(bv_and_64
   ((bv_not b0) ≪ r)
   ((bv_not b0) ≫ (bv_sub 63 l))
 )%bv.
@@ -580,7 +592,7 @@ Definition PTE_BITS_ADDRESS : u64 := BV64 0xfffffffff000%Z.
 Definition NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := BV64 0x7fffffffffffff%Z.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
-  negb ((bv_and descriptor PTE_BIT_VALID) b=? b0)
+  negb ((bv_and_64 descriptor PTE_BIT_VALID) b=? b0)
 .
 
 Definition OA_shift (level : level_t) : u64 :=
@@ -615,27 +627,27 @@ end
 Definition is_desc_table (descriptor : u64) (level : level_t) :=
   match level with
     | l3 => false
-    | _ => (bv_and descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE
+    | _ => (bv_and_64 descriptor PTE_BIT_TABLE) b=? PTE_BIT_TABLE
   end
 .
 
 Definition extract_table_address (pte_val : u64) : phys_addr_t :=
-Phys_addr (bv_and pte_val PTE_BITS_ADDRESS).
+Phys_addr (bv_and_64 pte_val PTE_BITS_ADDRESS).
 
 Definition extract_output_address (pte_val : u64) (level : level_t) :=
-bv_and pte_val (GENMASK b47 (OA_shift level))
+bv_and_64 pte_val (GENMASK b47 (OA_shift level))
 .
 
 Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
-  Phys_addr (bv_and (phys_addr_val addr) (BV64 0xfffffffffffffc00%Z) (* bv_not b1023 *))
+  Phys_addr (bv_and_64 (phys_addr_val addr) (BV64 0xfffffffffffffc00%Z) (* bv_not b1023 *))
 .
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
-  bool_decide ((bv_shiftr (phys_addr_val addr) b12) ∈ st.(gsm_zalloc))
+  bool_decide ((bv_shiftr_64 (phys_addr_val addr) b12) ∈ st.(gsm_zalloc))
 .
 
 Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
-  match st.(gsm_memory) !! bv_shiftr (phys_addr_val addr) 3 with
+  match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) 3 with
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with
@@ -771,7 +783,7 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
                         | _ => mon
                       end
                     in
-                    traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb (bv_add i b1)  max_call_number mon
+                    traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb (bv_add_64 i b1)  max_call_number mon
                 end
             end
         end
@@ -922,9 +934,9 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
 .
 
 Definition is_only_update_to_sw_bit (old new : u64) : bool :=
-  (bv_and old NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  (bv_and_64 old NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 b=?
-  (bv_and new NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  (bv_and_64 new NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 .
 
 Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64) : option bool :=
@@ -986,7 +998,7 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
-  if negb ((bv_and (phys_addr_val addr) 7) b=? b0)
+  if negb ((bv_and_64 (phys_addr_val addr) 7) b=? b0)
     then Merror GSME_unaligned_write else
   if negb (is_well_locked tid addr st)
     then Merror (GSME_transition_without_lock addr) else
@@ -1033,7 +1045,7 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
   if Zle_bool offs 0 then
     mon
   else
-    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in
+    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z_64 (BV64 8) (offs - 1))) in
     let sub_wd :=
       {|
         twd_mo := WMO_plain;
@@ -1077,7 +1089,7 @@ Fixpoint step_zalloc_all (addr : phys_addr_t) (st : ghost_simplified_model_resul
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  step_zalloc_all (Phys_addr (bv_shiftr (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
+  step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
 .
 
 
@@ -1201,7 +1213,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
         | Some pte_desc =>
           match td.(TI_method) with
             | TLBI_by_input_addr d =>
-              let tlbi_addr := bv_shiftl (phys_addr_val d.(TOBAD_page)) 12 in
+              let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) 12 in
               let ia_start := pte_desc.(ged_ia_region).(range_start) in
               let ia_end := ia_start pa+ pte_desc.(ged_ia_region).(range_size) in
               (* TODO: check that this is correct *)
@@ -1413,7 +1425,7 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
 
 Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (Phys_addr (bv_and val (BV64 0xfffffffffffe%Z) (* GENMASK (b47) (b1) *)))
+  Root (Phys_addr (bv_and_64 val (BV64 0xfffffffffffe%Z) (* GENMASK (b47) (b1) *)))
 .
 
 Definition register_si_root (tid : thread_identifier) (st : ghost_simplified_memory) (root : owner_t) (stage : stage_t) : ghost_simplified_model_result :=
@@ -1474,7 +1486,7 @@ Function set_owner_root (phys : phys_addr_t) (root : owner_t) (st : ghost_simpli
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |}
   else
-    let addr := phys pa+ (Phys_addr (bv_mul_Z (BV64 8) (offs - 1))) in
+    let addr := phys pa+ (Phys_addr (bv_mul_Z_64 (BV64 8) (offs - 1))) in
     match st !! addr with
       | None =>
         {|
