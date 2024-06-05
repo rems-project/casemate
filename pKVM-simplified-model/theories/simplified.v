@@ -471,6 +471,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_root_already_exists
   | GSME_unaligned_write
   | GSME_double_lock_aquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
+  | GSME_transition_without_lock : phys_addr_t -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
@@ -987,6 +988,8 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and (phys_addr_val addr) 7) b=? b0)
     then Merror GSME_unaligned_write else
+  if negb (is_well_locked tid addr st)
+    then Merror (GSME_transition_without_lock addr) else
   match st !! addr with
     | Some (loc) =>
       match loc.(sl_pte) with
@@ -1573,7 +1576,9 @@ Definition step_release_table (cpu : thread_identifier) (addr : owner_t) (st : g
 
 Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match hd.(thd_hint_kind) with
-    | GHOST_HINT_SET_ROOT_LOCK => Mreturn st
+    | GHOST_HINT_SET_ROOT_LOCK =>
+      (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
+      step_hint_set_root_lock (Root hd.(thd_location)) (root_val hd.(thd_value)) st
       (* AFAIK, this only affects the internal locking discipline of the C simplified model and does nothing on the Coq version *)
     | GHOST_HINT_SET_OWNER_ROOT =>
       (* When ownership is transferred *)

@@ -69,6 +69,10 @@ let pp_error ppf = function
   | GSME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | GSME_double_lock_aquire (i, j) ->
       Fmt.pf ppf "locking error, locked owned by %i, useb by %i" i j
+  | GSME_transition_without_lock i ->
+      Fmt.pf ppf
+        "Tried to take make a step without owning the lock at address: %a" p0xZ
+        i
   | GSME_unimplemented -> Fmt.pf ppf "GSME_unimplemented"
   | GSME_internal_error e ->
       Fmt.pf ppf "@[GSME_internal_error:@ %s@]"
@@ -168,7 +172,7 @@ let pp_ghost_simplified_model_state ppf m =
   in
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma pp_k_v)
-    (Cmap.fold (fun k v xs -> (k, v) :: xs) m []
+    (Cmap.fold (fun k v xs -> (Big_int_Z.shift_left_big_int k 3, v) :: xs) m []
     |> (* Only print PTEs *)
     List.filter (fun x -> Option.is_some (snd x).sl_pte))
 
