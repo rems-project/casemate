@@ -1012,7 +1012,7 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
       end
     | None =>
       (* If the location has not been written to, it is not a pgt, just save its value *)
-      {| gsmsr_log := [Warning_read_write_non_allocd addr];
+      {| gsmsr_log := [];
         gsmsr_data := Ok _ _ (
           st <| gsm_memory :=
             <[ addr :=
@@ -1044,6 +1044,10 @@ Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon 
 Proof. lia. Qed.
 
 Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  match st !! wd.(twd_phys_addr) with
+    | Some _ => id
+    | None  => Mlog (Warning_read_write_non_allocd wd.(twd_phys_addr))
+  end
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd st
     | WMO_page => step_write_page tid wd (Mreturn st) 512
@@ -1268,8 +1272,6 @@ Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS 
   end
 .
 
-Definition id {A : Type} (a:A) := a.
-
 Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (ptc : page_table_context) : ghost_simplified_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
@@ -1305,7 +1307,7 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                               | LIS_dsb_tlbied, LIS_dsbed => Mlog (Log "dsb'd->tlbied" (phys_addr_val ptc.(ptc_addr)))
                               | LIS_dsb_tlbi_ipa, LIS_dsbed => Mlog (Log "dsb'd->tlbied_ipa" (phys_addr_val ptc.(ptc_addr)))
                               | LIS_dsb_tlbied, LIS_dsb_tlbi_ipa_dsb => Mlog (Log "dsb_tlbi_ipa_dsbed->tlbied" (phys_addr_val ptc.(ptc_addr)))
-                              | _, _ => @id ghost_simplified_model_result
+                              | _, _ => id
                             end
                           in
                           (* Write the new sub-state in the global automaton *)
