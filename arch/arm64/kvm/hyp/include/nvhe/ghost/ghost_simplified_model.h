@@ -266,6 +266,15 @@ struct owner_locks {
 };
 
 /**
+ * struct lock_status - Map of the locks to their status.
+ */
+struct lock_status {
+	u64 len;
+	hyp_spinlock_t *address[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+	thread_identifier locker[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+};
+
+/**
  * owner_lock() - Get hyp spinlock for an owner.
  *
  * Returns NULL if no lock for that owner_id.
@@ -281,6 +290,8 @@ hyp_spinlock_t *owner_lock(sm_owner_t owner_id);
  * @s1_roots: set of known EL2 stage1 pagetable roots.
  * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
  * @s2_roots: set of known EL2 stage2 pagetable roots.
+ * @locks: map from root physical address to lock physical address.
+ * @locks_status: map from lock physical address to thread which owns the lock.
  */
 struct ghost_simplified_model_state {
 	u64 base_addr;
@@ -294,6 +305,7 @@ struct ghost_simplified_model_state {
 	u64 s1_roots[MAX_ROOTS];
 
 	struct owner_locks locks;
+	struct lock_status locks_status;
 };
 
 
@@ -495,12 +507,12 @@ static const char *hint_names[] = {
 };
 
 enum ghost_lock_kind {
-	GHOST_SIMPLIFIED_UNLOCK,
 	GHOST_SIMPLIFIED_LOCK,
+	GHOST_SIMPLIFIED_UNLOCK,
 };
 static const char *lock_type_names[] = {
-	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
 	[GHOST_SIMPLIFIED_LOCK] = "LOCK",
+	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
 };
 
 /**

@@ -808,6 +808,16 @@ static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	}
 }
 
+static bool is_correctly_locked(hyp_spinlock_t *lock)
+{
+	for (int i = 0; i < the_ghost_state->locks_status.len; i++) {
+		if (the_ghost_state->locks_status.address[i] == lock) {
+			return the_ghost_state->locks_status.locker[i] == cpu_id();
+		}
+	}
+	return false;
+}
+
 /**
  * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
  */
@@ -820,7 +830,7 @@ void assert_owner_locked(struct sm_location *loc)
 	hyp_spinlock_t *lock = owner_lock(owner_id);
 	if (!lock)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
-	if (!hyp_spin_is_locked(lock))
+	if (!is_correctly_locked(lock))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
 
@@ -1820,6 +1830,67 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 	}
 }
 
+//////////////////////
+// LOCK
+
+static void __step_lock(hyp_spinlock_t *lock_addr)
+{
+	int len = the_ghost_state->locks_status.len;
+	// look for the address in the map
+	for (int i = 0; i < len; i++)
+	{
+		if (the_ghost_state->locks_status.address[i] == lock_addr) {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to lock a component that was alerady held");
+		}
+	}
+	// If the lock is not yet in the map, we append it
+	ghost_assert(len < GHOST_SIMPLIFIED_MODEL_MAX_LOCKS);
+
+	the_ghost_state->locks_status.address[len] = lock_addr;
+	the_ghost_state->locks_status.locker[len] = cpu_id();
+
+	the_ghost_state->locks_status.len ++;
+
+}
+
+static void __step_unlock(hyp_spinlock_t *lock_addr)
+{
+	int len = the_ghost_state->locks_status.len;
+	// look for the address in the map
+	for (int i = 0; i < len; i++)
+	{
+		if (the_ghost_state->locks_status.address[i] == lock_addr) {
+			if (the_ghost_state->locks_status.locker[i] == cpu_id()){
+				// unlock the position
+				len--;
+				the_ghost_state->locks_status.locker[i] = the_ghost_state->locks_status.locker[len];
+				the_ghost_state->locks_status.address[i] = the_ghost_state->locks_status.address[len];
+				the_ghost_state->locks_status.len--;
+						
+				return;
+			} else {
+				GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to unlock a cpmponent that was held by another thread");
+			}
+		}
+	}
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to unlock a component that was not held");
+}
+
+static void step_lock(struct ghost_simplified_model_transition trans)
+{
+	switch (trans.lock_data.kind) {
+	case GHOST_SIMPLIFIED_LOCK:
+		__step_lock((hyp_spinlock_t *) trans.lock_data.address);
+		break;
+	case GHOST_SIMPLIFIED_UNLOCK:
+		__step_unlock((hyp_spinlock_t *) trans.lock_data.address);
+		break;
+	default:
+		BUG(); // unreachable;
+	}
+}
+
+
 ///////////////////////////
 /// Generic Step
 
@@ -1864,6 +1935,8 @@ static void step(struct ghost_simplified_model_transition trans)
 		step_hint(trans);
 		break;
 	case TRANS_LOCK:
+		ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
+		step_lock(trans);
 		break;
 	};
 
@@ -1880,7 +1953,16 @@ static void step(struct ghost_simplified_model_transition trans)
 
 	GHOST_LOG_CONTEXT_EXIT();
 }
+#else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+static void step(struct ghost_simplified_model_transition trans)
+{
+	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
+	transition_id++;
+}
+
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+
+
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
@@ -1888,8 +1970,7 @@ void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 	lock_sm();
 
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
-	transition_id++;
+	step(trans);
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 	if (is_initialised) {
 	    step(trans);
@@ -1951,22 +2032,22 @@ static void initialise_ghost_hint_transitions(void)
 
 	GHOST_LOG_CONTEXT_ENTER();
 	pkvm_pgd = extract_s1_root(read_sysreg(ttbr0_el2));
-	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
 			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
 			.location = pkvm_pgd,
-			.value = (u64)&pkvm_pgd_lock,
+			.value = hyp_virt_to_phys(&pkvm_pgd_lock),
 		},
 	});
-	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
 		.hint_data = (struct trans_hint_data){
 			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
 			.location = (u64)hyp_virt_to_phys(host_mmu.pgt.pgd),
-			.value = (u64)&host_mmu.lock,
+			.value = hyp_virt_to_phys(&host_mmu.lock),
 		},
 	});
 	GHOST_LOG_CONTEXT_EXIT();
