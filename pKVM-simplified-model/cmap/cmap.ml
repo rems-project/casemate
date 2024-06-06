@@ -19,13 +19,13 @@ let array_bits x = Z.(to_int (logand x (of_int 0x1ff)))
 
 let rec lookup_cache addr : 'a cache -> 'b = function
   | [] -> None
-  | (a, t) :: _ when a = addr -> Some t
+  | (a, t) :: _ when Z.equal a addr -> Some t
   | _ :: q -> lookup_cache addr q
 
 let rec is_cached x i : 'a cache -> 'a cache = function
   | [] -> []
   | _ when i = 0 -> []
-  | (a, _) :: q when a = x -> q
+  | (a, _) :: q when Z.equal a x -> q
   | t :: q -> t :: is_cached x (i - 1) q
 
 let add_to_cache addr line (cache : 'a cache) =
