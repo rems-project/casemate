@@ -4,7 +4,7 @@
 
 
 Require Import String.
-Require Import stdpp.bitvector.bitvector.
+Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
 
 (* uses https://github.com/tchajed/coq-record-update *)
@@ -23,44 +23,61 @@ Notation "'if' C 'then' A 'else' B" :=
   end)
 (at level 200, right associativity).
 
-Definition u64 := bv 64.
-Search (bv _ -> bv _ -> bool).
+Module bv64.
 
-Definition _64 := 64%N.
+  Import stdpp.bitvector.bitvector.
+  Export stdpp.bitvector.definitions (bv).
 
-Instance bv_64_eq_dec : EqDecision (bv 64) := @bv_eq_dec _64.
-Instance bv_64_countable : Countable (bv 64) := @bv_countable _64.
+  #[local] Definition _64 := 64%N.
 
-Definition bv_add_64 := @bv_add _64.
-Definition bv_mul_64 := @bv_mul _64.
-Definition bv_mul_Z_64 := @bv_mul_Z _64.
-Definition bv_shiftr_64 := @bv_shiftr _64.
-Definition bv_shiftl_64 := @bv_shiftl _64.
-Definition bv_and_64 := @bv_and _64.
+  Definition BV64 (n : Z) {p : BvWf 64 n} : bv 64 := BV 64 n.
 
-Definition BV64 (n : Z) {p : BvWf 64 n} : u64 := BV 64 n.
+  #[global] Instance bv_64_eq_dec : EqDecision (bv 64) := @bv_eq_dec _64.
+  #[global] Instance bv_64_countable : Countable (bv 64) := @bv_countable _64.
 
-Definition u64_eqb (x y : u64) : bool :=
-  (bv_unsigned x =? bv_unsigned y)%Z.
+  Definition bv_add_64 := @bv_add _64.
+  Definition bv_mul_64 := @bv_mul _64.
+  Definition bv_mul_Z_64 := @bv_mul_Z _64.
+  Definition bv_shiftr_64 := @bv_shiftr _64.
+  Definition bv_shiftl_64 := @bv_shiftl _64.
+  Definition bv_and_64 := @bv_and _64.
+  Definition bv_not_64 := @bv_not _64.
+  Definition bv_sub_64 := @bv_sub _64.
 
-Definition u64_ltb (x y : u64) : bool :=
-  ((bv_unsigned x) <? (bv_unsigned y))%Z
-.
+  Definition to_nat (n: bv 64) := Z.to_nat (bv_unsigned n).
 
-Definition u64_lte (x y : u64) : bool :=
-  ((bv_unsigned x) <=? (bv_unsigned y))%Z
-.
+  Definition u64_eqb (x y : bv 64) : bool :=
+    (bv_unsigned x =? bv_unsigned y)%Z .
 
-Infix "b=?" := u64_eqb (at level 70).
-Infix "b<?" := u64_ltb (at level 70).
-Infix "b<=?" := u64_lte (at level 70).
-Infix "b+" := bv_add_64 (at level 50).
-Infix "b*" := bv_mul_64 (at level 40).
+  Definition u64_ltb (x y : bv 64) : bool :=
+    ((bv_unsigned x) <? (bv_unsigned y))%Z .
+
+  Definition u64_lte (x y : bv 64) : bool :=
+    ((bv_unsigned x) <=? (bv_unsigned y))%Z .
+
+  Declare Scope bv64_scope.
+  Delimit Scope bv64_scope with bv64.
+
+  Infix "b=?" := u64_eqb (at level 70) : bv64_scope.
+  Infix "b<?" := u64_ltb (at level 70) : bv64_scope.
+  Infix "b<=?" := u64_lte (at level 70) : bv64_scope.
+  Infix "b+" := bv_add_64 (at level 50) : bv64_scope.
+  Infix "b*" := bv_mul_64 (at level 40) : bv64_scope.
+  Infix "`b*Z`" := bv_mul_Z_64 (at level 40) : bv64_scope.
+  Infix "≫" := bv_shiftr_64 (at level 35) : bv64_scope.
+  Infix "≪" := bv_shiftl_64 (at level 35) : bv64_scope.
+
+End bv64.
+
+Import bv64.
+Open Scope bv64_scope.
 
 Infix "+s" := append (right associativity, at level 60).
 
 Definition n512 := 512.
 Definition z512 := 512%Z.
+
+Definition u64 := bv 64.
 
 Definition b0 := BV64 0.
 Definition b1 := BV64 1.
@@ -581,9 +598,9 @@ Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
 Definition GENMASK (l r : u64) : u64 :=
 (bv_and_64
-  ((bv_not b0) ≪ r)
-  ((bv_not b0) ≫ (bv_sub 63 l))
-)%bv.
+  ((bv_not_64 b0) ≪ r)
+  ((bv_not_64 b0) ≫ (bv_sub_64 (BV64 63) l))
+).
 (**  0......0  1....1  0....0
   *  i zeros          j zeros
   *)
@@ -1098,7 +1115,7 @@ Fixpoint step_zalloc_all (addr : phys_addr_t) (st : ghost_simplified_model_resul
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (Z.to_nat (bv_unsigned zd.(tzd_size)))
+  step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (to_nat zd.(tzd_size))
 .
 
 
