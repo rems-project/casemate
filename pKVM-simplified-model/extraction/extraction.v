@@ -10,7 +10,7 @@ Extraction Language OCaml.
 
 Extract Inlined Constant n512 => "512".
 
-Extract Inlined Constant BV64 => "".
+Extract Inlined Constant bv64.BV64 => "".
 Extract Inlined Constant Z_to_bv_checked => "(fun _ _ -> ())".
 Extract Inlined Constant b0 => "(Za.of_int 0)".
 Extract Inlined Constant b1 => "(Za.of_int 1)".
@@ -23,11 +23,12 @@ Extract Inlined Constant b63 => "(Za.of_int 63)".
 Extract Inlined Constant b512 => "(Za.of_int 512)".
 Extract Inlined Constant b1023 => "(Za.of_int 1023)".
 
-Extract Inlined Constant bv_add => "(fun _ -> Za.add)".
-Extract Inlined Constant bv_sub => "(fun _ -> Za.sub)".
-Extract Inlined Constant bv_mul => "(fun _ -> Za.mul)".
-Extract Inlined Constant bv_and => "(fun _ -> Za.logand)".
-Extract Inlined Constant bv_mul_Z => "(fun _ -> Za.mul)".
+Extract Inlined Constant bv64.bv_add_64 => "Za.add64".
+Extract Inlined Constant bv64.bv_mul_64 => "Za.mul64".
+Extract Inlined Constant bv64.bv_mul_Z_64 => "Za.mul64".
+Extract Inlined Constant bv64.bv_and_64 => "Za.and64".
+Extract Inlined Constant bv64.bv_shiftr_64 => "Za.shr64".
+Extract Inlined Constant bv64.bv_shiftl_64 => "Za.shl64".
 
 Extract Inlined Constant ghost_simplified_model_state => "(sm_location Cmap.t)".
 Extract Inlined Constant cmap_empty => "(Cmap.empty ())".
