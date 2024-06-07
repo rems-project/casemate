@@ -1,4 +1,3 @@
-
 Require Import simplified.simplified.
 Require Import stdpp.bitvector.bitvector.
 Require Import stdpp.bitvector.definitions.

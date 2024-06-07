@@ -2,5 +2,4 @@
  (name simplified)
  (flags :standard)
  (synopsis "simplified")
- (theories RecordUpdate stdpp stdpp.bitvector Cmap)
- (modules simplified))
+ (theories RecordUpdate stdpp stdpp.bitvector Cmap))
