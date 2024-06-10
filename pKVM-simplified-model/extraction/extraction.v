@@ -8,20 +8,8 @@ Require Import Zmap.zmap.
 Require Coq.extraction.Extraction.
 Extraction Language OCaml.
 
-Extract Inlined Constant n512 => "512".
-
 Extract Inlined Constant bv64.BV64 => "".
 Extract Inlined Constant Z_to_bv_checked => "(fun _ _ -> ())".
-Extract Inlined Constant b0 => "(Za.of_int 0)".
-Extract Inlined Constant b1 => "(Za.of_int 1)".
-Extract Inlined Constant b2 => "(Za.of_int 2)".
-Extract Inlined Constant b8 => "(Za.of_int 8)".
-Extract Inlined Constant b12 => "(Za.of_int 12)".
-Extract Inlined Constant b16 => "(Za.of_int 16)".
-Extract Inlined Constant b47 => "(Za.of_int 47)".
-Extract Inlined Constant b63 => "(Za.of_int 63)".
-Extract Inlined Constant b512 => "(Za.of_int 512)".
-Extract Inlined Constant b1023 => "(Za.of_int 1023)".
 
 Extract Inlined Constant bv64.bv_add_64 => "Za.add64".
 Extract Inlined Constant bv64.bv_mul_64 => "Za.mul64".

@@ -307,12 +307,16 @@ match level with
 end
 .
 
+Definition _mask_OA_shift_l1 := BV64 0xffffc0000000%Z.
+Definition _mask_OA_shift_l2 := BV64 0xffffffe00000%Z.
+Definition _mask_OA_shift_l3 := BV64 0xfffffffff000%Z.
+
 Definition mask_OA_shift (level : level_t) : u64 :=
   match level with
-    | l1 => BV64 0xffffc0000000%Z
-    | l2 => BV64 0xffffffe00000%Z
-    | l3 => BV64 0xfffffffff000%Z
-    | _ => BV64 0%Z (* Should not happen*)
+    | l1 => _mask_OA_shift_l1
+    | l2 => _mask_OA_shift_l2
+    | l3 => _mask_OA_shift_l3
+    | _ => b0 (* Should not happen*)
   end
 .
 
@@ -348,7 +352,7 @@ Definition extract_table_address (pte_val : u64) : phys_addr_t :=
 Phys_addr (bv_and_64 pte_val PTE_BITS_ADDRESS).
 
 Definition extract_output_address (pte_val : u64) (level : level_t) :=
-bv_and_64 pte_val (GENMASK b47 (OA_shift level))
+bv_and_64 pte_val (mask_OA_shift level)
 .
 
 Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (cpu_id : thread_identifier) (pte_kind : pte_rec) (stage : stage_t) : sm_pte_state :=
