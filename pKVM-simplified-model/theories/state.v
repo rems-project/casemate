@@ -1,6 +1,7 @@
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
+Require Import Zmap.zmap.
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
@@ -121,13 +122,13 @@ Record owner_locks := {
 Definition ghost_simplified_model_state := cmap sm_location.
 
 (* The zalloc'd memory is stored here *)
-Definition ghost_simplified_model_zallocd := gset u64.
+Definition ghost_simplified_model_zallocd := zmap unit.
 
 (* the map from root to lock address *)
-Definition ghost_simplified_model_lock_addr := gmap u64 u64.
+Definition ghost_simplified_model_lock_addr := zmap u64.
 
 (* the map from lock address to thread that acquired it if any *)
-Definition ghost_simplified_model_lock_state := gmap u64 thread_identifier.
+Definition ghost_simplified_model_lock_state := zmap thread_identifier.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
@@ -146,7 +147,10 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
 #[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state>.
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
-  bool_decide ((bv_shiftr_64 (phys_addr_val addr) b12) ∈ st.(gsm_zalloc))
+  match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
+    | Some _ => true
+    | None => false
+  end
 .
 
 Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=

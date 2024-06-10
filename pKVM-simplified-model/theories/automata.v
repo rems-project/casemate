@@ -3,6 +3,7 @@
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
+Require Import Zmap.zmap.
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
@@ -197,7 +198,7 @@ Proof. lia. Qed.
 Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match st !! wd.(twd_phys_addr) with
     | Some _ => id
-    | None  => Mlog (Warning_read_write_non_allocd wd.(twd_phys_addr))
+    | None  => id (*Mlog ( Warning_read_write_non_allocd wd.(twd_phys_addr) *)
   end
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd st
@@ -211,7 +212,7 @@ Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : gh
 (******************************************************************************************)
 
 Definition step_zalloc_aux (addr : phys_addr_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
-  let update s := {| gsmsr_log := nil; gsmsr_data := Ok _ _ (s <| gsm_zalloc := union {[ phys_addr_val addr ]} s.(gsm_zalloc) |>) |} in
+  let update s := {| gsmsr_log := nil; gsmsr_data := Ok _ _ (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
   Mupdate_state update st
 .
 
@@ -225,7 +226,7 @@ Fixpoint step_zalloc_all (addr : phys_addr_t) (st : ghost_simplified_model_resul
 .
 
 Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (b12))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (to_nat zd.(tzd_size))
+  step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (bv64.BV64 9))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ st|} pa0 (to_nat zd.(tzd_size))
 .
 
 

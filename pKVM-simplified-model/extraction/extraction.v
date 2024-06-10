@@ -3,6 +3,7 @@ Require Import stdpp.bitvector.bitvector.
 Require Import stdpp.bitvector.definitions.
 Require Import stdpp.gmap.
 Require Import Cmap.cmap.
+Require Import Zmap.zmap.
 
 Require Coq.extraction.Extraction.
 Extraction Language OCaml.
@@ -33,6 +34,15 @@ Extract Inlined Constant ghost_simplified_model_state => "(sm_location Cmap.t)".
 Extract Inlined Constant cmap_empty => "(Cmap.empty ())".
 Extract Inlined Constant cmap_lookup => "Cmap.lookup".
 Extract Inlined Constant cmap_insert => "Cmap.insert".
+
+
+Extract Inlined Constant ghost_simplified_model_zallocd => "(unit Zmap.t)".
+Extract Inlined Constant ghost_simplified_model_lock_addr => "(u64 Zmap.t)".
+Extract Inlined Constant ghost_simplified_model_lock_state => "(thread_identifier Zmap.t)".
+Extract Inlined Constant zmap_empty => "Zmap.empty".
+Extract Inlined Constant zmap_lookup => "Zmap.find_opt".
+Extract Inlined Constant zmap_insert => "Zmap.add".
+Extract Inlined Constant zmap_delete => "Zmap.remove".
 
 
 Extract Inductive result => "Stdlib.result" [ "Ok" "Error" ].

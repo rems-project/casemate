@@ -179,16 +179,15 @@ let pp_ghost_simplified_model_state ppf m =
 let pp_ghost_simplified_model_zallocd ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma p0xZ)
-    (Cmap.fold (fun x () xs -> x :: xs) m [])
+    (Zmap.fold (fun x () xs -> x :: xs) m [])
 
 let pp_ghost_simplified_memory ppf m =
-  Fmt.pf ppf "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@." pp_pte_roots m.gsm_roots
-    pp_ghost_simplified_model_state m.gsm_memory
+  Fmt.pf ppf "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@."
+    pp_pte_roots m.gsm_roots pp_ghost_simplified_model_state m.gsm_memory
+    pp_ghost_simplified_model_zallocd m.gsm_zalloc
 
 let pp_state state =
   Fmt.(result ~ok:pp_ghost_simplified_memory ~error:pp_error) state
 
 let pp_tr ppf tr =
   Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS" pp_transition tr
-
-let _ = ignore pp_ghost_simplified_model_zallocd

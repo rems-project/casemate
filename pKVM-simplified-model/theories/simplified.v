@@ -3,6 +3,7 @@
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
+Require Import Zmap.zmap.
 (* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
@@ -49,9 +50,9 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
 Definition memory_0 := {|
   gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
   gsm_memory := empty;
-  gsm_zalloc := gset_empty;
-  gsm_lock_addr := gmap_empty;
-  gsm_lock_state := gmap_empty;
+  gsm_zalloc := zmap_empty;
+  gsm_lock_addr := zmap_empty;
+  gsm_lock_state := zmap_empty;
 |}.
 
 
