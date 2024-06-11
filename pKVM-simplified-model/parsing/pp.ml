@@ -172,19 +172,38 @@ let pp_ghost_simplified_model_state ppf m =
   in
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma pp_k_v)
-    (Cmap.fold (fun k v xs -> (Big_int_Z.shift_left_big_int k 3, v) :: xs) m []
-    |> (* Only print PTEs *)
-    List.filter (fun x -> Option.is_some (snd x).sl_pte))
+    (Cmap.fold
+       (fun k v xs ->
+         match v.sl_pte with
+         | Some _ -> (Big_int_Z.shift_left_big_int k 3, v) :: xs
+         | None -> xs)
+       m [])
 
 let pp_ghost_simplified_model_zallocd ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma p0xZ)
-    (Zmap.fold (fun x () xs -> x :: xs) m [])
+    (Zmap.fold (fun x () xs -> Big_int_Z.shift_left_big_int x 12 :: xs) m [])
+
+let pp_lock_entry ppf (root, addr, status) =
+  match status with
+  | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
+  | Some x -> Fmt.pf ppf "%a -> %a locked by %d" p0xZ root p0xZ addr x
+
+let pp_ghost_simplified_model_locks ppf m =
+  Fmt.pf ppf "@[<2>{ %a }@]"
+    Fmt.(list ~sep:comma pp_lock_entry)
+    (Zmap.fold
+       (fun root addr xs ->
+         (root, addr, Zmap.find_opt addr m.gsm_lock_state) :: xs)
+       m.gsm_lock_addr [])
 
 let pp_ghost_simplified_memory ppf m =
-  Fmt.pf ppf "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@."
+  Fmt.pf ppf
+    "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
+     @[<2>%a@]@."
     pp_pte_roots m.gsm_roots pp_ghost_simplified_model_state m.gsm_memory
     pp_ghost_simplified_model_zallocd m.gsm_zalloc
+    pp_ghost_simplified_model_locks m
 
 let pp_state state =
   Fmt.(result ~ok:pp_ghost_simplified_memory ~error:pp_error) state
