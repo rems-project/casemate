@@ -471,35 +471,44 @@ Definition traverse_pgt_from_root (root : owner_t) (stage : stage_t) (visitor_cb
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) (roots : list owner_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Fixpoint traverse_si_pgt_aux (th : option thread_identifier) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) (roots : list owner_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
   match roots with
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
       match st.(gsmsr_data) with
         | Error _ _ _ => st
         | _ =>
-          let st := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) st in
-          traverse_si_pgt_aux visitor_cb stage q st
+          let updater s := 
+            let should_update :=
+            match th with
+              | None => true
+              | Some tid => is_well_locked tid (root_val r) s
+            end
+            in
+            if should_update then traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb s else Mreturn s
+          in
+          let st :=  Mupdate_state updater st in
+          traverse_si_pgt_aux th visitor_cb stage q st
       end
     | [] => st
   end
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) : ghost_simplified_model_result :=
+Definition traverse_si_pgt (th : option thread_identifier) (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) : ghost_simplified_model_result :=
   let roots :=
     match stage with
       | S2 => st.(gsm_roots).(pr_s2)
       | S1 => st.(gsm_roots).(pr_s1)
     end
   in
-  traverse_si_pgt_aux visitor_cb stage roots {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
+  traverse_si_pgt_aux th visitor_cb stage roots {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
 .
 
-Definition traverse_all_pgt (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
-  match traverse_si_pgt st visitor_cb S1 with
+Definition traverse_all_pgt (th : option thread_identifier) (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
+  match traverse_si_pgt th st visitor_cb S1 with
     | {|gsmsr_log := logs; gsmsr_data := Ok _ _ st|} =>
-      let res := traverse_si_pgt st visitor_cb S2 in
+      let res := traverse_si_pgt th st visitor_cb S2 in
       res <| gsmsr_log := res.(gsmsr_log) ++ logs |>
     | err => err
   end

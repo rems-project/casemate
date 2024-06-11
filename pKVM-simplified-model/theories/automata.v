@@ -320,7 +320,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
 
 Definition step_dsb (tid : thread_identifier) (dk : DxB) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   (* walk the pgt with dsb_visitor*)
-  traverse_all_pgt st (dsb_visitor dk tid)
+  traverse_all_pgt (Some tid) st (dsb_visitor dk tid)
 .
 
 (******************************************************************************************)
@@ -489,13 +489,13 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (st : ghost_simplifie
       match td.(TLBI_rec).(TLBIRecord_regime) with
         | Regime_EL2 =>
           (* traverse all s1 pages*)
-          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) S1
+          traverse_si_pgt (Some tid) st (tlbi_visitor tid decoded_TLBI) S1
         | Regime_EL10 =>
           (* traverse s2 pages *)
-          traverse_si_pgt st (tlbi_visitor tid decoded_TLBI) S2
+          traverse_si_pgt (Some tid) st (tlbi_visitor tid decoded_TLBI) S2
         | _ =>
           (* traverse all page tables and add a warning *)
-          let res := traverse_all_pgt st (tlbi_visitor tid decoded_TLBI) in
+          let res := traverse_all_pgt (Some tid) st (tlbi_visitor tid decoded_TLBI) in
           res <| gsmsr_log := Warning_unsupported_TLBI :: res.(gsmsr_log) |>
       end
   end
