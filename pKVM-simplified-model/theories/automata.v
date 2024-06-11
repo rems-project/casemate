@@ -198,7 +198,7 @@ Proof. lia. Qed.
 Definition step_write (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match st !! wd.(twd_phys_addr) with
     | Some _ => id
-    | None  => id (*Mlog ( Warning_read_write_non_allocd wd.(twd_phys_addr) *)
+    | None  => Mlog ( Warning_read_write_non_allocd wd.(twd_phys_addr))
   end
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd st
@@ -216,12 +216,14 @@ Definition step_zalloc_aux (addr : phys_addr_t) (st : ghost_simplified_model_res
   Mupdate_state update st
 .
 
+Definition _step_zalloc_step_size := Phys_addr (bv_shiftl_64 b1 (bv64.BV64 3)).
+
 Fixpoint step_zalloc_all (addr : phys_addr_t) (st : ghost_simplified_model_result) (offs : phys_addr_t) (max : nat) : ghost_simplified_model_result :=
   match max with
     | O => st
     | S max =>
       let st := step_zalloc_aux (addr pa+ offs) st in
-      step_zalloc_all addr st (offs pa+ (Phys_addr b1)) max
+      step_zalloc_all addr st (offs pa+ (_step_zalloc_step_size)) max
   end
 .
 
