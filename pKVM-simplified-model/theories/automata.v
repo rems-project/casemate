@@ -707,9 +707,9 @@ Definition step_lock (cpu : thread_identifier) (hd : trans_lock_data) (st : ghos
         if bool_decide (thread = cpu) then 
           Mreturn (st <| gsm_lock_state := delete (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) |>)
         else
-          Merror (GSME_double_lock_aquire cpu thread)
-    | LOCK, Some thread => Merror (GSME_double_lock_aquire cpu thread)
-    | UNLOCK, None => Merror (GSME_double_lock_aquire cpu cpu)
+          Merror (GSME_double_lock_acquire cpu thread)
+    | LOCK, Some thread => Merror (GSME_double_lock_acquire cpu thread)
+    | UNLOCK, None => Merror (GSME_double_lock_acquire cpu cpu)
   end
 .
 

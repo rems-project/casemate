@@ -201,7 +201,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_double_use_of_pte
   | GSME_root_already_exists
   | GSME_unaligned_write
-  | GSME_double_lock_aquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
+  | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
   | GSME_transition_without_lock : phys_addr_t -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
