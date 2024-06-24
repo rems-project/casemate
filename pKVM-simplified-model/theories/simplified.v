@@ -49,10 +49,11 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
 
 Definition memory_0 := {|
   gsm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  gsm_memory := empty;
-  gsm_zalloc := zmap_empty;
-  gsm_lock_addr := zmap_empty;
-  gsm_lock_state := zmap_empty;
+  gsm_memory := ∅;
+  gsm_zalloc := ∅;
+  gsm_lock_addr := ∅;
+  gsm_lock_state := ∅;
+  gsm_lock_authorization := ∅;
 |}.
 
 

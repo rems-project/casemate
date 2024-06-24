@@ -143,5 +143,6 @@ Inductive log_element :=
 Inductive internal_error_type :=
   | IET_infinite_loop
   | IET_unexpected_none
+  | IET_no_write_authorization
 .
 

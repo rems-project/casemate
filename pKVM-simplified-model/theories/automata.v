@@ -131,51 +131,96 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
     end
 .
 
+Definition is_valid (st: sm_pte_state) : bool :=
+  match st with
+    | SPS_STATE_PTE_VALID _ => true
+    | _ => false
+  end
+.
+
+Definition is_well_locked_write (cpu : thread_identifier) (addr : phys_addr_t) (type : write_memory_order) (descriptor : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  match st !! addr with
+    | None => Mreturn st
+    | Some location =>
+      match location.(sl_pte) with
+        | None => Mreturn st
+        | Some pte =>
+          match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
+            | None => Mreturn st
+            | Some addr_lock =>
+              match lookup addr_lock st.(gsm_lock_state) with
+                | Some lock_owner =>
+                  if bool_decide (lock_owner = cpu) then
+                    match type with
+                      | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
+                        match lookup addr_lock st.(gsm_lock_authorization) with
+                          | None => Merror (GSME_internal_error IET_no_write_authorization)
+                          | Some write_authorized => Mlog (Log "wrote plain on authorized"%string (phys_addr_val addr)) (Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>))
+                          | Some write_unauthorized =>
+                            if (is_desc_valid descriptor) || is_valid pte.(ged_state) then
+                              Merror (GSME_write_without_authorization addr)
+                            else
+                              Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
+                        end
+                      | WMO_release => (* drop the authorization*)
+                        Mlog (Log "wrote release" (phys_addr_val addr)) (Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>))
+                    end
+                  else
+                    Merror (GSME_transition_without_lock addr)
+                | None => Merror (GSME_transition_without_lock addr)
+              end
+          end
+      end
+  end
+.
+
 Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
     then Merror GSME_unaligned_write else
-  if negb (is_well_locked tid addr st)
-    then Merror (GSME_transition_without_lock addr) else
-  match st !! addr with
-    | Some (loc) =>
-      match loc.(sl_pte) with
-        | Some desc =>
-          (* If we write to a page table, depending on its state, we update them  *)
-          match desc.(ged_state) with
-            | SPS_STATE_PTE_VALID av =>
-                (step_write_on_valid tid wmo loc val st)
-            | SPS_STATE_PTE_INVALID_CLEAN av =>
-                (step_write_on_invalid tid wmo loc val st)
-            | SPS_STATE_PTE_INVALID_UNCLEAN av =>
-                (step_write_on_invalid_unclean tid wmo loc val st)
-          end
-        | None => (* If it is not a pte, we just update the value *)
-          let new_loc := loc <| sl_val := val |> in
-          {|
-            gsmsr_log := nil;
-            gsmsr_data :=
-              Ok _ _ (
-                st <| gsm_memory := <[ addr := new_loc ]> st.(gsm_memory) |>
-              );
-          |}
-      end
-    | None =>
-      (* If the location has not been written to, it is not a pgt, just save its value *)
-      {| gsmsr_log := [];
-        gsmsr_data := Ok _ _ (
-          st <| gsm_memory :=
-            <[ addr :=
-              {|
-                sl_phys_addr := addr;
-                sl_val := val;
-                sl_pte := None;
-              |}
-            ]> st.(gsm_memory) |>
-        ) |}
-  end
+  let new_st := is_well_locked_write tid addr wd.(twd_mo) wd.(twd_val) st in
+  let write_update s :=
+    match s !! addr with
+      | Some (loc) =>
+        match loc.(sl_pte) with
+          | Some desc =>
+            (* If we write to a page table, depending on its state, we update them  *)
+            match desc.(ged_state) with
+              | SPS_STATE_PTE_VALID av =>
+                  (step_write_on_valid tid wmo loc val s)
+              | SPS_STATE_PTE_INVALID_CLEAN av =>
+                  (step_write_on_invalid tid wmo loc val s)
+              | SPS_STATE_PTE_INVALID_UNCLEAN av =>
+                  (step_write_on_invalid_unclean tid wmo loc val s)
+            end
+          | None => (* If it is not a pte, we just update the value *)
+            let new_loc := loc <| sl_val := val |> in
+            {|
+              gsmsr_log := nil;
+              gsmsr_data :=
+                Ok _ _ (
+                  s <| gsm_memory := <[ addr := new_loc ]> s.(gsm_memory) |>
+                );
+            |}
+        end
+      | None =>
+        (* If the location has not been written to, it is not a pgt, just save its value *)
+        {| gsmsr_log := [];
+          gsmsr_data := Ok _ _ (
+            s <| gsm_memory :=
+              <[ addr :=
+                {|
+                  sl_phys_addr := addr;
+                  sl_val := val;
+                  sl_pte := None;
+                |}
+              ]> s.(gsm_memory) |>
+          ) |}
+    end
+  in
+  Mupdate_state write_update new_st
 .
 
 Function step_write_page (tid : thread_identifier) (wd : trans_write_data) (mon : ghost_simplified_model_result) (offs : Z) {measure Z.abs_nat offs} : ghost_simplified_model_result :=
@@ -319,8 +364,29 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
       {| gsmsr_log := log; gsmsr_data := Ok _ _ new_state |}
   end
 .
+Fixpoint reset_write_authorizations_aux (roots: list owner_t)(st : ghost_simplified_memory) : ghost_simplified_memory :=
+  match roots with
+    | [] => st
+    | h :: q => 
+      match lookup (phys_addr_val (root_val h)) st.(gsm_lock_addr) with
+        | Some lock_addr =>
+          reset_write_authorizations_aux q
+            (st <| gsm_lock_authorization := insert lock_addr write_authorized st.(gsm_lock_authorization) |>)
+        | None => reset_write_authorizations_aux q st
+      end
+  end
+.
+
+
+Definition reset_write_authorizations (st : ghost_simplified_memory) : ghost_simplified_memory :=
+  (* Reset the authorizations for both states *)
+  reset_write_authorizations_aux st.(gsm_roots).(pr_s2)
+    (reset_write_authorizations_aux st.(gsm_roots).(pr_s1) st)
+.
 
 Definition step_dsb (tid : thread_identifier) (dk : DxB) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+  (* There is enough barrier now to write plain again *)
+  let st := reset_write_authorizations st in
   (* walk the pgt with dsb_visitor*)
   traverse_all_pgt (Some tid) st (dsb_visitor dk tid)
 .
@@ -702,7 +768,9 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
 
 Definition step_lock (cpu : thread_identifier) (hd : trans_lock_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match hd.(tld_kind), lookup (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) with
-    | LOCK, None => Mreturn (st <| gsm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu st.(gsm_lock_state) |>)
+    | LOCK, None =>(* lock and authorize to write to that page-table *)
+        Mreturn (st <| gsm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu st.(gsm_lock_state) |>
+                    <| gsm_lock_authorization := insert (phys_addr_val hd.(tld_addr)) write_authorized st.(gsm_lock_authorization)|>)
     | UNLOCK, Some thread =>
         if bool_decide (thread = cpu) then 
           Mreturn (st <| gsm_lock_state := delete (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) |>)

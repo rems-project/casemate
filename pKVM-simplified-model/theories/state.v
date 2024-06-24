@@ -130,6 +130,13 @@ Definition ghost_simplified_model_lock_addr := zmap u64.
 (* the map from lock address to thread that acquired it if any *)
 Definition ghost_simplified_model_lock_state := zmap thread_identifier.
 
+Inductive write_authorization :=
+  | write_authorized
+  | write_unauthorized
+.
+
+Definition ghost_simplified_model_lock_write_authorization := zmap write_authorization.
+
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
   pr_s1 : list owner_t;
@@ -143,8 +150,9 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_zalloc : ghost_simplified_model_zallocd;
   gsm_lock_addr : ghost_simplified_model_lock_addr;
   gsm_lock_state : ghost_simplified_model_lock_state;
+  gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state>.
+#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
   match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
@@ -203,6 +211,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_unaligned_write
   | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
   | GSME_transition_without_lock : phys_addr_t -> ghost_simplified_model_error
+  | GSME_write_without_authorization : phys_addr_t -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
 .
@@ -258,7 +267,6 @@ Definition Minsert_location (loc : sm_location) (mon : ghost_simplified_model_re
     | e => e
   end
 .
-
 
 
 (** States about page tables *)

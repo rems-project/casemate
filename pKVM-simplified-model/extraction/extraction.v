@@ -18,15 +18,13 @@ Extract Inlined Constant bv64.bv_and_64 => "Za.and64".
 Extract Inlined Constant bv64.bv_shiftr_64 => "Za.shr64".
 Extract Inlined Constant bv64.bv_shiftl_64 => "Za.shl64".
 
-Extract Inlined Constant ghost_simplified_model_state => "(sm_location Cmap.t)".
+Extract Constant cmap "'x" => "'x Cmap.t".
 Extract Inlined Constant cmap_empty => "(Cmap.empty ())".
 Extract Inlined Constant cmap_lookup => "Cmap.lookup".
 Extract Inlined Constant cmap_insert => "Cmap.insert".
 
 
-Extract Inlined Constant ghost_simplified_model_zallocd => "(unit Zmap.t)".
-Extract Inlined Constant ghost_simplified_model_lock_addr => "(u64 Zmap.t)".
-Extract Inlined Constant ghost_simplified_model_lock_state => "(thread_identifier Zmap.t)".
+Extract Constant zmap "'x" => "'x Zmap.t". 
 Extract Inlined Constant zmap_empty => "Zmap.empty".
 Extract Inlined Constant zmap_lookup => "Zmap.find_opt".
 Extract Inlined Constant zmap_insert => "Zmap.add".

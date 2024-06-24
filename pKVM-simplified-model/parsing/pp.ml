@@ -78,7 +78,9 @@ let pp_error ppf = function
       Fmt.pf ppf "@[GSME_internal_error:@ %s@]"
         (match e with
         | IET_infinite_loop -> "the maximum number of iterations was reached."
-        | IET_unexpected_none -> "a None was found where it was unexpected.")
+        | IET_unexpected_none -> "a None was found where it was unexpected."
+        | IET_no_write_authorization -> "no write authorization was found.")
+  | GSME_write_without_authorization addr -> Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ addr
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
