@@ -808,11 +808,14 @@ static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	}
 }
 
-static bool is_correctly_locked(hyp_spinlock_t *lock)
+static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
 {
 	for (int i = 0; i < the_ghost_state->locks_status.len; i++) {
 		if (the_ghost_state->locks_status.address[i] == lock) {
-			return the_ghost_state->locks_status.locker[i] == cpu_id();
+			if (state != NULL) {
+				*state = &the_ghost_state->locks_status.locker[i];
+			}
+			return the_ghost_state->locks_status.locker[i].id == cpu_id();
 		}
 	}
 	return false;
@@ -821,7 +824,7 @@ static bool is_correctly_locked(hyp_spinlock_t *lock)
 /**
  * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
  */
-void assert_owner_locked(struct sm_location *loc)
+void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 {
 	sm_owner_t owner_id = loc->owner;
 	// assume 0 cannot be a valid owner id
@@ -830,7 +833,7 @@ void assert_owner_locked(struct sm_location *loc)
 	hyp_spinlock_t *lock = owner_lock(owner_id);
 	if (!lock)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
-	if (!is_correctly_locked(lock))
+	if (!is_correctly_locked(lock, state))
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 }
 
@@ -1377,7 +1380,23 @@ static void __step_write(struct ghost_simplified_model_transition trans)
 	}
 
 	// must own the lock on the pgtable this pte is in.
-	assert_owner_locked(loc);
+	struct lock_state *state_of_lock;
+	assert_owner_locked(loc, &state_of_lock);
+	switch (state_of_lock->write_authorization) {
+		case AUTHORIZED:
+			// We are not authorized to write plain on it anymore
+			state_of_lock->write_authorization = UNAUTHORIZED;
+			break;
+		case UNAUTHORIZED:
+			// We cannot write plain (exept invalid on invalid)
+			if (trans.write_data.mo == WMO_plain) {
+				if (loc->state.kind == STATE_PTE_VALID || is_desc_valid(val))
+					GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote plain without authorization");
+			}
+			break;
+		default:
+			BUG();
+	}
 
 	// since it's a pte, we can deconstruct the descriptor
 	__update_descriptor_on_write(loc, val);
@@ -1504,12 +1523,23 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 	}
 }
 
+static void reset_write_authorizations(void) {
+	int len = the_ghost_state->locks_status.len;
+	struct lock_state *states = the_ghost_state->locks_status.locker;
+	for (int i = 0; i < len; i++) {
+		states[i].write_authorization = AUTHORIZED;
+	}
+}
+
 static void step_dsb(struct ghost_simplified_model_transition trans)
 {
 	// annoyingly, DSBs aren't annotated with their addresses.
 	// so we do the really dumb thing: we go through every pagetable that we know about
 	// and step any we find in the right state.
 	traverse_all_pgtables(dsb_visitor, &trans.dsb_data);
+
+	// The DSBs also enforce a sufficient barrier to allow plain writes again
+	reset_write_authorizations();
 }
 
 ///////////////////
@@ -1847,7 +1877,8 @@ static void __step_lock(hyp_spinlock_t *lock_addr)
 	ghost_assert(len < GHOST_SIMPLIFIED_MODEL_MAX_LOCKS);
 
 	the_ghost_state->locks_status.address[len] = lock_addr;
-	the_ghost_state->locks_status.locker[len] = cpu_id();
+	the_ghost_state->locks_status.locker[len].id = cpu_id();
+	the_ghost_state->locks_status.locker[len].write_authorization = AUTHORIZED;
 
 	the_ghost_state->locks_status.len ++;
 
@@ -1860,7 +1891,7 @@ static void __step_unlock(hyp_spinlock_t *lock_addr)
 	for (int i = 0; i < len; i++)
 	{
 		if (the_ghost_state->locks_status.address[i] == lock_addr) {
-			if (the_ghost_state->locks_status.locker[i] == cpu_id()){
+			if (the_ghost_state->locks_status.locker[i].id == cpu_id()){
 				// unlock the position
 				len--;
 				the_ghost_state->locks_status.locker[i] = the_ghost_state->locks_status.locker[len];

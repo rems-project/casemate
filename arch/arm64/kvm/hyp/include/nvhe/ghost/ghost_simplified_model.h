@@ -265,13 +265,21 @@ struct owner_locks {
 	hyp_spinlock_t *locks[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
 };
 
+struct lock_state {
+	thread_identifier id;
+	enum write_authorization {
+		AUTHORIZED,
+		UNAUTHORIZED,
+	} write_authorization;
+};
+
 /**
  * struct lock_status - Map of the locks to their status.
  */
 struct lock_status {
 	u64 len;
 	hyp_spinlock_t *address[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
-	thread_identifier locker[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+	struct lock_state locker[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
 };
 
 /**
