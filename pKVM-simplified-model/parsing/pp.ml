@@ -80,7 +80,9 @@ let pp_error ppf = function
         | IET_infinite_loop -> "the maximum number of iterations was reached."
         | IET_unexpected_none -> "a None was found where it was unexpected."
         | IET_no_write_authorization -> "no write authorization was found.")
-  | GSME_write_without_authorization addr -> Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ addr
+  | GSME_write_without_authorization addr ->
+      Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ
+        addr
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -186,17 +188,26 @@ let pp_ghost_simplified_model_zallocd ppf m =
     Fmt.(list ~sep:comma p0xZ)
     (Zmap.fold (fun x () xs -> Big_int_Z.shift_left_big_int x 12 :: xs) m [])
 
-let pp_lock_entry ppf (root, addr, status) =
+let pp_lock_entry ppf (root, addr, status, auth) =
   match status with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
-  | Some x -> Fmt.pf ppf "%a -> %a locked by %d" p0xZ root p0xZ addr x
+  | Some x ->
+      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x
+        (match auth with
+        | None -> ""
+        | Some Write_authorized -> "; authorized to write"
+        | Some Write_unauthorized -> "; unauthorized to write")
 
 let pp_ghost_simplified_model_locks ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma pp_lock_entry)
     (Zmap.fold
        (fun root addr xs ->
-         (root, addr, Zmap.find_opt addr m.gsm_lock_state) :: xs)
+         ( root,
+           addr,
+           Zmap.find_opt addr m.gsm_lock_state,
+           Zmap.find_opt addr m.gsm_lock_authorization )
+         :: xs)
        m.gsm_lock_addr [])
 
 let pp_ghost_simplified_memory ppf m =

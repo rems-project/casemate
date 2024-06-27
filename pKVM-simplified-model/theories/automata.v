@@ -155,7 +155,7 @@ Definition is_well_locked_write (cpu : thread_identifier) (addr : phys_addr_t) (
                       | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
                         match lookup addr_lock st.(gsm_lock_authorization) with
                           | None => Merror (GSME_internal_error IET_no_write_authorization)
-                          | Some write_authorized => Mlog (Log "wrote plain on authorized"%string (phys_addr_val addr)) (Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>))
+                          | Some write_authorized => Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
                           | Some write_unauthorized =>
                             if (is_desc_valid descriptor) || is_valid pte.(ged_state) then
                               Merror (GSME_write_without_authorization addr)
@@ -163,7 +163,7 @@ Definition is_well_locked_write (cpu : thread_identifier) (addr : phys_addr_t) (
                               Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
                         end
                       | WMO_release => (* drop the authorization*)
-                        Mlog (Log "wrote release" (phys_addr_val addr)) (Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>))
+                        Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
                     end
                   else
                     Merror (GSME_transition_without_lock addr)
