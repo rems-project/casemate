@@ -120,15 +120,24 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
     match loc.(sl_pte) with
       | None => (* This does not make sense because function is called on a pgt *)
         {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
-      | Some desc =>
-        let new_desc := desc <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
-        {|
-          gsmsr_log := [Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr))];
-          gsmsr_data := Ok _ _ (st
+      | Some descriptor =>
+        let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
+        let st := (st
             <| gsm_memory :=
               (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory))
-            |> );
-        |}
+            |> )
+        in
+        Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
+                match descriptor.(ged_pte_kind) with
+          | PTER_PTE_KIND_TABLE map =>
+            let
+              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
+            in
+            let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
+            (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
+            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_not_writable_cb tid)) st
+          | _ => Mreturn st
+        end
     end
 .
 
@@ -195,6 +204,8 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
                   (step_write_on_invalid tid wmo loc val s)
               | SPS_STATE_PTE_INVALID_UNCLEAN av =>
                   (step_write_on_invalid_unclean tid wmo loc val s)
+              | SPS_STATE_PTE_NOT_WRITABLE =>
+                  (Merror (GSME_write_on_not_writable addr))
             end
           | None => (* If it is not a pte, we just update the value *)
             let new_loc := loc <| sl_val := val |> in
@@ -307,6 +318,33 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghos
 (******************************************************************************************)
 (*                                      DSB                                               *)
 (******************************************************************************************)
+Definition dsb_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_result :=
+  let pte := (* build the PTE if it is not done already *)
+    match loc.(sl_pte) with
+      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
+      | Some pte => pte
+    end
+  in
+  let st := ptc.(ptc_state) in
+  match pte.(ged_state) with
+    | SPS_STATE_PTE_INVALID_UNCLEAN lis =>
+      let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
+        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
+      in
+      match old_desc.(ged_pte_kind) with
+        | PTER_PTE_KIND_TABLE table_data =>
+          (* The children are clean, and not writable, otherwise, it would catch fire *)
+          match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_stage) (unmark_cb cpu_id) st with
+            | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log :=  logs1; gsmsr_data := st |}
+          end
+        | _ => {| gsmsr_log  := nil; gsmsr_data := Ok _ _ st |}
+      end
+    | _ => (* if it is not invalid unclean, the TLBI has no effect *)
+      {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
+  end
+.
+
+
 Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
@@ -351,18 +389,28 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
       (* then update state and return *)
       let new_loc := (location <| sl_pte := Some new_pte |>) in
       let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
-      let log := (* Log "DSB on"%string (phys_addr_val new_loc.(sl_phys_addr)) :: *)
+      let log :=
         match pte.(ged_state), new_pte.(ged_state) with
           | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
-              [Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr))]
-           | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-                [Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr))]
-           | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-                [Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr))]
-          | _, _ => (* [Log "DSBed: " (phys_addr_val location.(sl_phys_addr))] *) nil
+            Some (Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr)))
+          | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
+            Some (Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+          | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
+            Some (Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+          | _, _ => None
         end
-        in
-      {| gsmsr_log := log; gsmsr_data := Ok _ _ new_state |}
+      in
+      let new_state := 
+        match pte.(ged_state), new_pte.(ged_state) with
+          | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
+            dsb_invalid_unclean_unmark_children cpu_id new_loc (ctx <| ptc_state := new_state |> <|ptc_loc := Some new_loc|>)
+          | _, _ => Mreturn new_state
+        end
+      in
+      match log with
+        | Some txt => Mlog txt new_state
+        | None => new_state
+      end
   end
 .
 Fixpoint reset_write_authorizations_aux (roots: list owner_t)(st : ghost_simplified_memory) : ghost_simplified_memory :=
@@ -438,36 +486,6 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
   end
 .
 
-Definition tlbi_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_result :=
-  let pte := (* build the PTE if it is not done already *)
-    match loc.(sl_pte) with
-      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
-      | Some pte => pte
-    end
-  in
-  let st := ptc.(ptc_state) in
-  match pte.(ged_state) with
-    | SPS_STATE_PTE_INVALID_UNCLEAN lis =>
-      let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
-        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
-      in
-      match old_desc.(ged_pte_kind) with
-        | PTER_PTE_KIND_TABLE table_data =>
-          (* check if all children are reachable *)
-          match traverse_pgt_from pte.(ged_owner) pte.(ged_ia_region).(range_start) pa0 pte.(ged_level) pte.(ged_stage) clean_reachable st with
-            | {| gsmsr_log := logs; gsmsr_data:= Ok _ _ st|} =>
-              (* If all children are clean, we can unmark them as PTE *)
-              match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_stage) (unmark_cb cpu_id) st with
-                | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log :=  logs1 ++ logs; gsmsr_data := st |}
-              end
-            | e => e
-          end
-        | _ => {| gsmsr_log  := nil; gsmsr_data := Ok _ _ st |}
-      end
-    | _ => (* if it is not invalid unclean, the TLBI has no effect *)
-      {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
-  end
-.
 
 Definition step_pte_on_tlbi_after_dsb (td: TLBI_intermediate) : option LIS :=
   match td.(TI_regime) with
@@ -534,11 +552,7 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                           (* Write the new sub-state in the global automaton *)
                           let new_loc := location <| sl_pte := Some (exploded_desc <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (ai <| ai_lis := new_substate|>) |>)|> in
                           let new_mem := ptc.(ptc_state) <| gsm_memory := <[location.(sl_phys_addr) := new_loc]> ptc.(ptc_state).(gsm_memory)|> in
-                          log
-                          match new_substate with
-                            | LIS_dsb_tlbied => tlbi_invalid_unclean_unmark_children cpu_id new_loc (ptc <| ptc_state := new_mem |> <|ptc_loc := Some new_loc|>)
-                            | _ => Mreturn new_mem
-                          end
+                          log (Mreturn new_mem)
                       end
                     else
                       Mreturn ptc.(ptc_state)

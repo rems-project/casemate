@@ -64,6 +64,8 @@ let pp_error ppf = function
       Fmt.pf ppf "Address %a was uninitialized in function %s" p0xZ addr str
   | GSME_unclean_child loc ->
       Fmt.pf ppf "An unclean child has been encountered at address: %a" p0xZ loc
+  | GSME_write_on_not_writable loc ->
+      Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ loc
   | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
   | GSME_unaligned_write -> Fmt.pf ppf "unaligned write"
@@ -133,7 +135,8 @@ let pp_sm_pte_state ppf state =
         | LIS_dsb_tlbi_all -> "dsb_tlbi_all"
         | LIS_dsb_tlbi_ipa -> "dsb_tlbi_ipa"
         | LIS_dsb_tlbied -> "dsb_tlbied"
-        | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb"))
+        | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb")
+    | SPS_STATE_PTE_NOT_WRITABLE -> "Clean, Not writable")
 
 let pp_pte_rec ppf = function
   | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table: %a" p0xZ t

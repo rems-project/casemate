@@ -45,6 +45,7 @@ Inductive sm_pte_state :=
   | SPS_STATE_PTE_VALID (valid_state:aut_valid)
   | SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid_unclean)
   | SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state:aut_invalid_clean)
+  | SPS_STATE_PTE_NOT_WRITABLE : sm_pte_state
 .
 
 Record ghost_addr_range := {
@@ -206,6 +207,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_inconsistent_read
   | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
   | GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
+  | GSME_write_on_not_writable : phys_addr_t -> ghost_simplified_model_error
   | GSME_double_use_of_pte
   | GSME_root_already_exists
   | GSME_unaligned_write
