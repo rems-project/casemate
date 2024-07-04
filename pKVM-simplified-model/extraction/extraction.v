@@ -1,4 +1,4 @@
-Require Import simplified.simplified.
+Require Export simplified.main.
 Require Import stdpp.bitvector.bitvector.
 Require Import stdpp.bitvector.definitions.
 Require Import stdpp.gmap.
@@ -44,4 +44,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Set Warnings "-extraction-opaque-accessed -extraction-axiom-to-realize".
-Extraction "coq_executable_sm.ml" all_steps memory_0 step.
+Extraction "coq_executable_sm.ml" all_steps memory_0 take_step.

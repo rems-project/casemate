@@ -10,14 +10,14 @@ Import RecordSetNotations.
 Require Import stdpp.gmap.
 Require Import Recdef.
 
-Require Export automata.
+Require Export step.
 
 
 (******************************************************************************************)
 (*                             Toplevel function                                          *)
 (******************************************************************************************)
 
-Definition step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition take_step (trans : ghost_simplified_model_transition) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
     step_write trans.(gsmt_thread_identifier) wd st
@@ -38,7 +38,7 @@ Fixpoint all_steps_aux (transitions : list ghost_simplified_model_transition) (l
   match transitions with
     | [] => {| gsmsr_log := logs; gsmsr_data := Ok _ _ st; |}
     | h :: t =>
-      match step h st with
+      match take_step h st with
         | {| gsmsr_log := logs1; gsmsr_data := Ok _ _ st |} => all_steps_aux t (logs1 ++ logs) st
         | {| gsmsr_log := logs1; gsmsr_data := Error _ _ f |} =>
             {| gsmsr_log := logs1 ++ logs; gsmsr_data := Error _ _ f; |}

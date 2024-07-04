@@ -11,6 +11,7 @@ Require Import stdpp.gmap.
 Require Import Recdef.
 
 Require Export state.
+Require Export genericWalk.
 Require Export transition.
 
 (******************************************************************************************)
