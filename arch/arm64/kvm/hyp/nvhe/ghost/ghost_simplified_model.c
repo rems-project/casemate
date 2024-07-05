@@ -1150,6 +1150,26 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 	loc->is_pte = false;
 }
 
+/**
+ * walker function to mark the PTE as not writable. This function is not exercised in
+ * pKVM.
+ */
+void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+
+	if (! loc->initialised) {
+		// unreachable
+		BUG();
+	} else if (!loc->is_pte) {
+		// unreachable
+		BUG();
+	} else {
+		// mark the child as not writable
+		loc->state.kind = STATE_PTE_NOT_WRITABLE;
+	}
+}
+
 ///////////////////
 // Pagetable roots
 
@@ -1416,6 +1436,8 @@ static void __step_write(struct ghost_simplified_model_transition trans)
 	case STATE_PTE_INVALID:
 		step_write_on_invalid(mo, loc, val);
 		break;
+	case STATE_PTE_NOT_WRITABLE:
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote on a page with an unclean parent");
 	default:
 		BUG(); // unreachable;
 	}
@@ -1474,6 +1496,47 @@ static void step_read(struct ghost_simplified_model_transition trans)
 /////////////////
 // Step on a DSB
 
+/*
+ * when invalidating a zeroed table entry
+ * unmark them as now no longer owned by the parent
+ *
+ * TODO: BS: is this correct?
+ * TODO: TF: This is not tested as pKVM does not invalidate table descriptors.
+ */
+static void step_dsb_invalid_unclean_unmark_children(struct sm_location *loc)
+{
+	u64 old;
+	struct aut_invalid aut;
+	struct ghost_exploded_descriptor old_desc;
+
+	if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
+		return;
+	}
+
+	GHOST_LOG_CONTEXT_ENTER();
+
+	aut = loc->state.invalid_unclean_state;
+	old = aut.old_valid_desc;
+	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.stage);
+
+
+	// look at the old entry, and see if it was a table.
+	if (old_desc.kind == PTE_KIND_TABLE) {
+		// if we zero child entry, then zero the table entry
+		// require that the child entries were TLBI'd first.
+		// this means we don't have to recursively check the olds all the way down...
+		// TODO: BS: is this too strong?
+		if (! pre_all_reachable_clean(loc)) {
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
+		}
+
+		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.stage, unmark_cb, NULL);
+	}
+
+	GHOST_LOG_CONTEXT_EXIT();
+}
+
+
 void dsb_visitor(struct pgtable_traverse_context *ctxt)
 {
 	thread_identifier this_cpu = cpu_id();
@@ -1506,7 +1569,9 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 		case LIS_dsb_tlbied:
 			// if DSB+TLBI'd already, this DSB then propagates that TLBI everywhere,
 			// but only if it's the right kind of DSB
+			// also release the children
 			if (dsb_kind == DSB_ish) {
+				step_dsb_invalid_unclean_unmark_children(loc);
 				loc->state.kind = STATE_PTE_INVALID;
 				loc->state.invalid_clean_state.invalidator_tid = this_cpu;
 			}
@@ -1548,45 +1613,6 @@ static void step_dsb(struct ghost_simplified_model_transition trans)
 
 ///////////////////
 // Step on a TLBI
-
-/*
- * when invalidating a zeroed table entry
- * unmark them as now no longer owned by the parent
- *
- * TODO: BS: is this correct?
- */
-static void step_tlbi_invalid_unclean_unmark_children(struct sm_location *loc)
-{
-	u64 old;
-	struct aut_invalid aut;
-	struct ghost_exploded_descriptor old_desc;
-
-	if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
-		return;
-	}
-
-	GHOST_LOG_CONTEXT_ENTER();
-
-	aut = loc->state.invalid_unclean_state;
-	old = aut.old_valid_desc;
-	old_desc = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level, loc->descriptor.stage);
-
-
-	// look at the old entry, and see if it was a table.
-	if (old_desc.kind == PTE_KIND_TABLE) {
-		// if we zero child entry, then zero the table entry
-		// require that the child entries were TLBI'd first.
-		// this means we don't have to recursively check the olds all the way down...
-		// TODO: BS: is this too strong?
-		if (! pre_all_reachable_clean(loc)) {
-			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
-		}
-
-		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.stage, unmark_cb, NULL);
-	}
-
-	GHOST_LOG_CONTEXT_EXIT();
-}
 
 static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, struct sm_tlbi_op *tlbi)
 {
@@ -1678,13 +1704,6 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 	default:
 		/* if clean, no effect */
 		break;
-	}
-
-	// if we just finished cleaning a table entry
-	// there may have been children that we were still tracking
-	// so go clear those, too.
-	if (loc->state.invalid_unclean_state.lis == LIS_dsb_tlbied) {
-		step_tlbi_invalid_unclean_unmark_children(loc);
 	}
 }
 
@@ -2332,6 +2351,8 @@ int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 		return ghost_sprintf(out, "%s%I%s %ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	case STATE_PTE_VALID:
 		return ghost_sprintf(out, "%s%I", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN);
+	case STATE_PTE_NOT_WRITABLE:
+		return ghost_sprintf(out, "%s%I%s %ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	}
 }
 
@@ -2574,6 +2595,7 @@ bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2)
 	case STATE_PTE_INVALID_UNCLEAN:
 		return sm_aut_invalid_eq(&s1->invalid_unclean_state, &s2->invalid_unclean_state);
 	case STATE_PTE_VALID:
+	case STATE_PTE_NOT_WRITABLE:
 		// TODO: per-CPU LVS
 		return true;
 	}
