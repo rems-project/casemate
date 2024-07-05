@@ -128,12 +128,12 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
             |> )
         in
         Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
-                match descriptor.(ged_pte_kind) with
+        match descriptor.(ged_pte_kind) with
           | PTER_PTE_KIND_TABLE map =>
             let
               st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
             in
-            let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
+            let st := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) st in
             (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
             Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_not_writable_cb tid)) st
           | _ => Mreturn st
@@ -318,29 +318,16 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghos
 (******************************************************************************************)
 (*                                      DSB                                               *)
 (******************************************************************************************)
-Definition dsb_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (ptc : page_table_context) : ghost_simplified_model_result :=
-  let pte := (* build the PTE if it is not done already *)
-    match loc.(sl_pte) with
-      | None => deconstruct_pte cpu_id ptc.(ptc_partial_ia) loc.(sl_val) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
-      | Some pte => pte
-    end
-  in
+Definition dsb_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc : sm_location) (lis : aut_invalid_unclean) (ptc : page_table_context) : ghost_simplified_model_result :=
   let st := ptc.(ptc_state) in
-  match pte.(ged_state) with
-    | SPS_STATE_PTE_INVALID_UNCLEAN lis =>
-      let old_desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
-        deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
-      in
-      match old_desc.(ged_pte_kind) with
-        | PTER_PTE_KIND_TABLE table_data =>
-          (* The children are clean, and not writable, otherwise, it would catch fire *)
-          match traverse_pgt_from old_desc.(ged_owner) old_desc.(ged_ia_region).(range_start) pa0 old_desc.(ged_level) old_desc.(ged_stage) (unmark_cb cpu_id) st with
-            | {| gsmsr_log := logs1; gsmsr_data := st|} => {|gsmsr_log :=  logs1; gsmsr_data := st |}
-          end
-        | _ => {| gsmsr_log  := nil; gsmsr_data := Ok _ _ st |}
-      end
-    | _ => (* if it is not invalid unclean, the TLBI has no effect *)
-      {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
+  let desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
+    deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
+  in
+  match desc.(ged_pte_kind) with
+    | PTER_PTE_KIND_TABLE map =>
+      (* The children are clean, and not writable, otherwise, it would catch fire *)
+      traverse_pgt_from desc.(ged_owner) map.(next_level_table_addr) desc.(ged_ia_region).(range_start) (next_level desc.(ged_level)) desc.(ged_stage) (unmark_cb cpu_id) st
+    | _ => {| gsmsr_log  := nil; gsmsr_data := Ok _ _ st |}
   end
 .
 
@@ -402,8 +389,9 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
       in
       let new_state := 
         match pte.(ged_state), new_pte.(ged_state) with
-          | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
-            dsb_invalid_unclean_unmark_children cpu_id new_loc (ctx <| ptc_state := new_state |> <|ptc_loc := Some new_loc|>)
+          | SPS_STATE_PTE_INVALID_UNCLEAN lis , SPS_STATE_PTE_INVALID_CLEAN _ =>
+            dsb_invalid_unclean_unmark_children cpu_id new_loc lis
+                (ctx <| ptc_state := new_state |> <|ptc_loc := Some new_loc|>)
           | _, _ => Mreturn new_state
         end
       in
@@ -413,6 +401,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
       end
   end
 .
+
 Fixpoint reset_write_authorizations_aux (roots: list owner_t)(st : ghost_simplified_memory) : ghost_simplified_memory :=
   match roots with
     | [] => st
