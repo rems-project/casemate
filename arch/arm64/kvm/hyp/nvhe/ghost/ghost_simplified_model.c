@@ -833,8 +833,12 @@ void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 	hyp_spinlock_t *lock = owner_lock(owner_id);
 	if (!lock)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
-	if (!is_correctly_locked(lock, state))
+	if (!is_correctly_locked(lock, state)) {
+		ghost_printf("%g(sm_loc)", loc);
+		ghost_printf("%g(sm_locks)", the_ghost_state->locks);
+		
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
+	}
 }
 
 ///////////////////
@@ -1966,7 +1970,6 @@ static void step(struct ghost_simplified_model_transition trans)
 		step_hint(trans);
 		break;
 	case TRANS_LOCK:
-		ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
 		step_lock(trans);
 		break;
 	};
@@ -2461,18 +2464,23 @@ int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
 int gp_print_sm_locks(gp_stream_t *out, struct owner_locks *locks)
 {
 	int ret;
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	struct lock_state *state;
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	ret = ghost_sprintf(out, "%s", "locks: [");
 	if (ret)
 		return ret;
 
 	if (locks->len > 0) {
-		ret = ghost_sprintf(out, "(%p,%p)", locks->owner_ids[0], locks->locks[0]);
-		if (ret)
-			return ret;
 
-		for (u64 i = 1; i < locks->len; i++) {
-			ret = ghost_sprintf(out, ", (%p,%p)", locks->owner_ids[i], locks->locks[i]);
+		for (u64 i = 0; i < locks->len; i++) {
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+			if (is_correctly_locked(locks->locks[i], &state)) 
+				ret = ghost_sprintf(out, ", (%p,%p, locked by thread %ld, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorizd" : "write not authorized");
+			else
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+				ret = ghost_sprintf(out, ", (%p,%p)", locks->owner_ids[i], locks->locks[i]);
 			if (ret)
 				return ret;
 		}
