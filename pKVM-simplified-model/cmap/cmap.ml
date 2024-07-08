@@ -75,6 +75,7 @@ let array_fold_left f ar init =
   !res
 
 let fold f m init =
+  assert m.is_valid;
   let g addr =
     array_fold_left (fun k v ini ->
         match v with

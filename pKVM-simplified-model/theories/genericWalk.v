@@ -260,7 +260,7 @@ Definition mark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : gho
     | Some location =>
       match location.(sl_pte) with
         | Some _ =>
-          {| gsmsr_log := []; gsmsr_data := Error _ _ GSME_double_use_of_pte |}
+          {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_double_use_of_pte ctx.(ptc_addr)) |}
         | None =>
           let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
           let new_location :=  (location <| sl_pte := (Some new_descriptor) |>) in
@@ -282,7 +282,7 @@ Definition unmark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : g
         | Some desc =>
           let new_loc := location <|sl_pte := None |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := nil; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+          {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))]; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
         | None =>
           {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr)) |}
       end

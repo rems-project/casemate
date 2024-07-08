@@ -208,7 +208,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
   | GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
   | GSME_write_on_not_writable : phys_addr_t -> ghost_simplified_model_error
-  | GSME_double_use_of_pte
+  | GSME_double_use_of_pte : phys_addr_t -> ghost_simplified_model_error
   | GSME_root_already_exists
   | GSME_unaligned_write
   | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error

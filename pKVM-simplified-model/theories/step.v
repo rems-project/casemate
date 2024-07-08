@@ -124,7 +124,7 @@ Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_ord
         let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
         let st := (st
             <| gsm_memory :=
-              (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> ]> st.(gsm_memory))
+              (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> st.(gsm_memory))
             |> )
         in
         Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
@@ -402,29 +402,38 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
   end
 .
 
-Fixpoint reset_write_authorizations_aux (roots: list owner_t)(st : ghost_simplified_memory) : ghost_simplified_memory :=
+Fixpoint reset_write_authorizations_aux (tid : thread_identifier) (roots: list owner_t) (st : ghost_simplified_memory) : ghost_simplified_memory :=
   match roots with
     | [] => st
     | h :: q => 
       match lookup (phys_addr_val (root_val h)) st.(gsm_lock_addr) with
         | Some lock_addr =>
-          reset_write_authorizations_aux q
-            (st <| gsm_lock_authorization := insert lock_addr write_authorized st.(gsm_lock_authorization) |>)
-        | None => reset_write_authorizations_aux q st
+          let new_st :=
+            match lookup lock_addr st.(gsm_lock_state) with
+              | None => st
+              | Some thread =>
+                if bool_decide (thread = tid) then
+                  (st <| gsm_lock_authorization := insert lock_addr write_authorized st.(gsm_lock_authorization) |>)
+                else
+                  st
+            end
+          in
+          reset_write_authorizations_aux tid q new_st
+        | None => reset_write_authorizations_aux tid q st
       end
   end
 .
 
 
-Definition reset_write_authorizations (st : ghost_simplified_memory) : ghost_simplified_memory :=
+Definition reset_write_authorizations (tid : thread_identifier) (st : ghost_simplified_memory) : ghost_simplified_memory :=
   (* Reset the authorizations for both states *)
-  reset_write_authorizations_aux st.(gsm_roots).(pr_s2)
-    (reset_write_authorizations_aux st.(gsm_roots).(pr_s1) st)
+  reset_write_authorizations_aux tid st.(gsm_roots).(pr_s2)
+    (reset_write_authorizations_aux tid st.(gsm_roots).(pr_s1) st)
 .
 
 Definition step_dsb (tid : thread_identifier) (dk : DxB) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   (* There is enough barrier now to write plain again *)
-  let st := reset_write_authorizations st in
+  let st := reset_write_authorizations tid st in
   (* walk the pgt with dsb_visitor*)
   traverse_all_pgt (Some tid) st (dsb_visitor dk tid)
 .

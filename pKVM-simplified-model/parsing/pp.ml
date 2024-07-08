@@ -66,7 +66,8 @@ let pp_error ppf = function
       Fmt.pf ppf "An unclean child has been encountered at address: %a" p0xZ loc
   | GSME_write_on_not_writable loc ->
       Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ loc
-  | GSME_double_use_of_pte -> Fmt.pf ppf "GSME_double_use_of_pte"
+  | GSME_double_use_of_pte loc ->
+      Fmt.pf ppf "PTE at address %a is used in two page-tables" p0xZ loc
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
   | GSME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | GSME_double_lock_acquire (i, j) ->
