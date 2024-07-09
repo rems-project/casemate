@@ -126,7 +126,7 @@ let pp_sm_pte_state ppf state =
   Fmt.pf ppf
     (match state with
     | SPS_STATE_PTE_VALID _ -> "valid"
-    | SPS_STATE_PTE_INVALID_CLEAN _ -> "invalid"
+    | SPS_STATE_PTE_INVALID_CLEAN _ -> "invalid clean"
     | SPS_STATE_PTE_INVALID_UNCLEAN unclean_state -> (
         "unclean "
         ^^

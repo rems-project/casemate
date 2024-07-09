@@ -332,72 +332,73 @@ Definition dsb_invalid_unclean_unmark_children (cpu_id : thread_identifier) (loc
 .
 
 
+Definition new_pte_after_dsb (cpu_id : thread_identifier) (pte : ghost_exploded_descriptor) (kind : DxB) : ghost_exploded_descriptor :=
+  match pte.(ged_state) with
+    | SPS_STATE_PTE_INVALID_UNCLEAN sst =>
+      (* DSB has an effect on invalid unclean state only *)
+      if negb (bool_decide (sst.(ai_invalidator_tid) = cpu_id)) then
+        pte (* If it is another CPU that did the invalidation, do noting*)
+      else
+        (* Otherwise, update the state invalid unclean sub-automaton *)
+        match sst.(ai_lis) with
+          | LIS_unguarded =>
+            pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
+          | LIS_dsbed => pte
+          | LIS_dsb_tlbied =>
+            match kind.(DxB_domain) with
+              | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
+                pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
+                    <|ged_pte_kind := PTER_PTE_KIND_INVALID |>
+              | _ => pte
+            end
+          | LIS_dsb_tlbi_ipa =>
+              match kind.(DxB_domain) with
+                | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
+            pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
+                | _ => pte
+              end
+          | _ => pte
+        end
+    | _ => pte (* If not invalid unclean, then do nothing *)
+  end
+.
+
 Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
       (* Question: should we ignore it and return the state? *)
-      {| gsmsr_log := nil; gsmsr_data := Error _ _ (GSME_uninitialised "dsb_visitor"%string ctx.(ptc_addr)) |}
+      Merror (GSME_uninitialised "dsb_visitor"%string ctx.(ptc_addr))
     | Some location =>
-      let pte :=
-        match location.(sl_pte) with
-          | None => deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage)
-          | Some pte => pte
-        end
-      in
-      let new_pte :=
-        match pte.(ged_state) with
-          | SPS_STATE_PTE_INVALID_UNCLEAN sst =>
-            (* DSB has an effect on invalid unclean state only *)
-            if negb (bool_decide (sst.(ai_invalidator_tid) = cpu_id)) then
-              pte (* If it is another CPU that did the invalidation, do noting*)
-            else
-              (* Otherwise, update the state invalid unclean sub-automaton *)
-              match sst.(ai_lis) with
-                | LIS_unguarded =>
-                  pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
-                | LIS_dsbed => pte
-                | LIS_dsb_tlbied =>
-                  match kind.(DxB_domain) with
-                    | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
-                      pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
-                    | _ => pte
-                  end
-                | LIS_dsb_tlbi_ipa =>
-                    match kind.(DxB_domain) with
-                      | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
-                  pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
-                      | _ => pte
-                    end
-                | _ => pte
-              end
-          | _ => pte (* If not invalid unclean, then do nothing *)
-        end
-      in
-      (* then update state and return *)
-      let new_loc := (location <| sl_pte := Some new_pte |>) in
-      let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
-      let log :=
-        match pte.(ged_state), new_pte.(ged_state) with
-          | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
-            Some (Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr)))
-          | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-            Some (Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr)))
-          | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-            Some (Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr)))
-          | _, _ => None
-        end
-      in
-      let new_state := 
-        match pte.(ged_state), new_pte.(ged_state) with
-          | SPS_STATE_PTE_INVALID_UNCLEAN lis , SPS_STATE_PTE_INVALID_CLEAN _ =>
-            dsb_invalid_unclean_unmark_children cpu_id new_loc lis
-                (ctx <| ptc_state := new_state |> <|ptc_loc := Some new_loc|>)
-          | _, _ => Mreturn new_state
-        end
-      in
-      match log with
-        | Some txt => Mlog txt new_state
-        | None => new_state
+      match location.(sl_pte) with
+        | None => Merror (GSME_not_a_pte "dsb_visitor" ctx.(ptc_addr))
+        | Some pte => 
+          let new_pte := new_pte_after_dsb cpu_id pte kind in
+          (* then update state and return *)
+          let new_loc := (location <| sl_pte := Some new_pte |>) in
+          let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) |> in
+          let log :=
+            match pte.(ged_state), new_pte.(ged_state) with
+              | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
+                Some (Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr)))
+              | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
+                Some (Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+              | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
+                Some (Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+              | _, _ => None
+            end
+          in
+          let new_state :=
+            match pte.(ged_state), new_pte.(ged_state) with
+              | SPS_STATE_PTE_INVALID_UNCLEAN lis , SPS_STATE_PTE_INVALID_CLEAN _ =>
+                dsb_invalid_unclean_unmark_children cpu_id new_loc lis
+                    (ctx <| ptc_state := new_state |> <|ptc_loc := Some new_loc|>)
+              | _, _ => Mreturn new_state
+            end
+          in
+          match log with
+            | Some txt => Mlog txt new_state
+            | None => new_state
+          end
       end
   end
 .

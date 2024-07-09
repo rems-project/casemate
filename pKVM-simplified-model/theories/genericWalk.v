@@ -93,7 +93,7 @@ Definition extract_output_address (pte_val : u64) (level : level_t) :=
 bv_and_64 pte_val (mask_OA_shift level)
 .
 
-Definition initial_state (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (cpu_id : thread_identifier) (pte_kind : pte_rec) (stage : stage_t) : sm_pte_state :=
+Definition initial_state (cpu_id : thread_identifier) (pte_kind : pte_rec) : sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
       SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
@@ -129,7 +129,7 @@ Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_
     ged_level := level;
     ged_stage := stage;
     ged_pte_kind := pte_kind;
-    ged_state := initial_state partial_ia desc level cpu_id pte_kind stage;
+    ged_state := initial_state cpu_id pte_kind;
     ged_owner := root;
   |}.
 
