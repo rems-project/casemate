@@ -110,8 +110,9 @@ Record sm_location := mk_sm_location {
   sl_phys_addr : phys_addr_t;
   sl_val : u64;
   sl_pte : option ghost_exploded_descriptor;
+  sl_thread_owner : option thread_identifier;
 }.
-#[export] Instance eta_sm_location : Settable _ := settable! mk_sm_location < sl_phys_addr; sl_val; sl_pte>.
+#[export] Instance eta_sm_location : Settable _ := settable! mk_sm_location < sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
 
 (* Do we need locks? *)
 Record owner_locks := {
@@ -172,7 +173,7 @@ Definition get_location
     | Some loc => Some loc
     | None =>
       match is_zallocd st addr with
-        | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; |}
+        | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; sl_thread_owner := None |}
         | false => None
       end
   end

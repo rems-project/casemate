@@ -341,11 +341,10 @@ Definition unmark_cb
           {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))];
              gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
         | None =>
-          {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr)) |}
+          Merror (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := [];
-           gsmsr_data := Error _ _ (GSME_uninitialised "unmark_cb" ctx.(ptc_addr)) |}
+        Merror (GSME_uninitialised "unmark_cb" ctx.(ptc_addr))
   end
 .
 
@@ -355,16 +354,19 @@ Definition mark_not_writable_cb
   ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | Some location =>
-      match location.(sl_pte) with
-        | Some desc =>
-          let new_loc := location <| sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
-          let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := []; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
-        | None =>
-          {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr)) |}
-      end
+        match location.(sl_thread_owner) with
+          | None => Merror (GSME_unimplemented)
+          | Some _ =>
+            match location.(sl_pte) with
+              | Some desc =>
+                let new_loc := location <| sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
+                let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
+                {| gsmsr_log := []; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+              | None =>
+                Merror (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
+            end
+        end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {| gsmsr_log := [];
-           gsmsr_data := Error _ _ (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr)) |}
+        Merror (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr))
   end
 .

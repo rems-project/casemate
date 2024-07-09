@@ -248,7 +248,11 @@ Definition is_well_locked_write
   end
 .
 
-Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_write_aux
+  (tid : thread_identifier)
+  (wd : trans_write_data)
+  (st : ghost_simplified_memory) : 
+  ghost_simplified_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -291,6 +295,8 @@ Definition step_write_aux (tid : thread_identifier) (wd : trans_write_data) (st 
                   sl_phys_addr := addr;
                   sl_val := val;
                   sl_pte := None;
+                  (* TODO: right? *)
+                  sl_thread_owner := Some tid;
                 |}
               ]> s.(gsm_memory) |>
           ) |}
@@ -357,7 +363,11 @@ Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) :
 (*                             Code for read                                              *)
 (******************************************************************************************)
 
-Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_read
+  (tid : thread_identifier)
+  (rd : trans_read_data)
+  (st : ghost_simplified_memory) : 
+  ghost_simplified_model_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match st !! rd.(trd_phys_addr) with
     | Some loc => 
@@ -365,17 +375,15 @@ Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghos
           Mreturn st
         else
           let new_loc := loc <| sl_val := rd.(trd_val) |> in
-        {| gsmsr_log :=
-          [
-            Inconsistent_read loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)
-          ];
-          gsmsr_data := (Ok _ _ (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
+          {| gsmsr_log :=
+              [Inconsistent_read loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)];
+             gsmsr_data := (Ok _ _ (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
     | None =>
-        let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
+        let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None; sl_thread_owner := Some tid |} in
         let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
         {| gsmsr_log :=
             [Warning_read_write_non_allocd loc.(sl_phys_addr)];
-            gsmsr_data := Ok _ _ st
+           gsmsr_data := Ok _ _ st
         |}
   end
 .
