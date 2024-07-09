@@ -33,7 +33,8 @@ Record aut_invalid_unclean := mk_aut_invalid_unclean {
   ai_old_valid_desc : u64;
   ai_lis : LIS;
 }.
-#[export] Instance eta_aut_invalid_unclean : Settable _ := settable! mk_aut_invalid_unclean <ai_invalidator_tid; ai_old_valid_desc; ai_lis>.
+#[export] Instance eta_aut_invalid_unclean : Settable _ :=
+  settable! mk_aut_invalid_unclean <ai_invalidator_tid; ai_old_valid_desc; ai_lis>.
 
 
 Record aut_invalid_clean := {
@@ -100,7 +101,7 @@ Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
   (* address of the root of the PTE *)
   ged_owner : owner_t;
 }.
-#[export] Instance eta_ghost_exploded_descriptor : Settable _ := 
+#[export] Instance eta_ghost_exploded_descriptor : Settable _ :=
   settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_stage; ged_pte_kind; ged_state; ged_owner>.
 
 
@@ -153,7 +154,7 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_lock_state : ghost_simplified_model_lock_state;
   gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ := 
+#[export] Instance eta_ghost_simplified_memory : Settable _ :=
   settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
@@ -163,7 +164,10 @@ Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool
   end
 .
 
-Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : option sm_location :=
+Definition get_location
+  (st : ghost_simplified_memory)
+  (addr : phys_addr_t) :
+  option sm_location :=
   match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
     | Some loc => Some loc
     | None =>
@@ -226,15 +230,17 @@ Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
   gsmsr_log : list log_element;
   gsmsr_data : result ghost_simplified_memory ghost_simplified_model_error
 }.
-#[export] Instance eta_ghost_simplified_model_result : Settable _ := settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
+
+#[export] Instance eta_ghost_simplified_model_result : Settable _ :=
+  settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
 
 Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   {| gsmsr_log := nil;
-    gsmsr_data := Ok _ _ st |}.
+     gsmsr_data := Ok _ _ st |}.
 
 Definition Mbind
   (r : ghost_simplified_model_result)
-  (f : ghost_simplified_memory -> ghost_simplified_model_result) : 
+  (f : ghost_simplified_memory -> ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match r.(gsmsr_data) with
   | Error _ _ s => r
@@ -257,7 +263,7 @@ Definition Mlog
 
 Definition Mupdate_state
   (updater : ghost_simplified_memory -> ghost_simplified_model_result)
-  (st : ghost_simplified_model_result) : 
+  (st : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match st with
     | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
@@ -269,14 +275,14 @@ Definition Mupdate_state
 
 Definition insert_location
   (loc : sm_location)
-  (st : ghost_simplified_memory) : 
+  (st : ghost_simplified_memory) :
   ghost_simplified_memory :=
   (st <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> st.(gsm_memory) |>)
 .
 
 Definition Minsert_location
   (loc : sm_location)
-  (mon : ghost_simplified_model_result) : 
+  (mon : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match mon with
     | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
@@ -301,5 +307,5 @@ Record page_table_context := mk_page_table_context {
   ptc_level: level_t;
   ptc_stage: stage_t;
 }.
-#[export] Instance eta_page_table_context : Settable _ := 
+#[export] Instance eta_page_table_context : Settable _ :=
   settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.

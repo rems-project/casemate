@@ -54,10 +54,17 @@ Definition step_write_on_invalid
         (* Tests if the page table is well formed *)
         match descriptor.(ged_pte_kind) with
           | PTER_PTE_KIND_TABLE map =>
-            let
-              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
-            in
-            let st := Mlog (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
+            let st := traverse_pgt_from
+              descriptor.(ged_owner)
+              map.(next_level_table_addr)
+              descriptor.(ged_ia_region).(range_start)
+              (next_level descriptor.(ged_level))
+              descriptor.(ged_stage)
+              clean_reachable 
+              st in
+            let st := Mlog
+              (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr)))
+              st in
             (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
             Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_cb tid)) st
           | _ => Mreturn st
@@ -90,7 +97,7 @@ Definition is_only_update_to_sw_bit (old new : u64) : bool :=
 Definition require_bbm
   (tid : thread_identifier)
   (loc : sm_location)
-  (val : u64) : 
+  (val : u64) :
   option bool :=
   match loc.(sl_pte) with
     | None => None (* PTE cannot be valid if it is not a PTE *)
@@ -108,61 +115,124 @@ Definition require_bbm
   end
 .
 
-Definition step_write_on_valid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  let old := loc.(sl_val) in
-  if is_desc_valid val then
-    match require_bbm tid loc val with (* If no change in memory: no problem*)
-      | None => Merror (GSME_internal_error IET_unexpected_none)
-      | Some false =>
-          (* if the location des not require BBM, then we can update the value and the descriptor *)
-          match loc.(sl_pte) with
-            | None => (* This does not make sense because function is called on a pgt *)
-              {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
-            | Some pte =>
-              let loc := loc <| sl_val := val |>
-                <| sl_pte :=
-                  Some (deconstruct_pte tid pte.(ged_ia_region).(range_start) val pte.(ged_level) pte.(ged_owner) pte.(ged_stage)) |>
-              in
-              Mreturn (insert_location loc st)
-          end
-      | Some true =>
-        (* Changing the descriptor is illegal *)
-        {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr)) |}
-    end
-  else
-    (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
-    match loc.(sl_pte) with
-      | None => (* This does not make sense because function is called on a pgt *)
-        {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
-      | Some descriptor =>
-        let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
-        let st := (st
-            <| gsm_memory :=
-              (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> st.(gsm_memory))
-            |> )
-        in
-        Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
-        match descriptor.(ged_pte_kind) with
-          | PTER_PTE_KIND_TABLE map =>
-            let
-              st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
-            in
-            let st := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) st in
-            (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
-            Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_not_writable_cb tid)) st
-          | _ => Mreturn st
+Definition step_write_valid_on_valid
+  (tid : thread_identifier)
+  (wmo : write_memory_order)
+  (loc : sm_location)
+  (val : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
+  match require_bbm tid loc val with (* If no change in memory: no problem*)
+    | None => Merror (GSME_internal_error IET_unexpected_none)
+    | Some false =>
+        (* if the location des not require BBM, then we can update the value and the descriptor *)
+        match loc.(sl_pte) with
+          | None => (* This does not make sense because function is called on a pgt *)
+            {| gsmsr_log := [];
+               gsmsr_data := Error _ _ (GSME_internal_error IET_unexpected_none) |}
+          | Some pte =>
+            let new_pte := deconstruct_pte tid pte.(ged_ia_region).(range_start) val pte.(ged_level) pte.(ged_owner) pte.(ged_stage) in
+            let loc := loc <| sl_val := val |> <| sl_pte := Some new_pte |> in
+            Mreturn (insert_location loc st)
         end
-    end
+    | Some true =>
+      (* Changing the descriptor is illegal *)
+      {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr)) |}
+  end
 .
 
-Definition is_valid (st: sm_pte_state) : bool :=
+Definition step_write_invalid_on_valid
+  (tid : thread_identifier)
+  (wmo : write_memory_order)
+  (loc : sm_location)
+  (val : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
+  (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
+  let old := loc.(sl_val) in
+  match loc.(sl_pte) with
+    | None => (* This does not make sense because function is called on a pgt *)
+        Merror (GSME_internal_error IET_unexpected_none)
+    | Some descriptor =>
+      let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
+      let st := (st
+          <| gsm_memory :=
+            (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> st.(gsm_memory))
+          |> )
+      in
+      Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
+      match descriptor.(ged_pte_kind) with
+        | PTER_PTE_KIND_TABLE map =>
+          let
+            st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
+          in
+          let st := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) st in
+          (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
+          Mupdate_state (traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) (mark_not_writable_cb tid)) st
+        | _ => Mreturn st
+      end
+  end
+.
+
+Definition step_write_on_valid
+  (tid : thread_identifier)
+  (wmo : write_memory_order)
+  (loc : sm_location)
+  (val : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
+  if is_desc_valid val
+    then step_write_valid_on_valid tid wmo loc val st
+  else
+    step_write_invalid_on_valid tid wmo loc val st
+.
+
+Definition is_valid_state (st: sm_pte_state) : bool :=
   match st with
     | SPS_STATE_PTE_VALID _ => true
     | _ => false
   end
 .
 
-Definition is_well_locked_write (cpu : thread_identifier) (addr : phys_addr_t) (type : write_memory_order) (descriptor : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition is_well_locked_write_by_lock
+  (cpu : thread_identifier)
+  (addr : phys_addr_t)
+  (type : write_memory_order)
+  (descriptor : u64)
+  (st : ghost_simplified_memory)
+  (addr_lock : u64)
+  (pte : ghost_exploded_descriptor) :
+  ghost_simplified_model_result :=
+  match lookup addr_lock st.(gsm_lock_state) with
+    | Some lock_owner =>
+    if bool_decide (lock_owner = cpu) then
+      match type with
+        | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
+          match lookup addr_lock st.(gsm_lock_authorization) with
+            | None => Merror (GSME_internal_error IET_no_write_authorization)
+            | Some write_authorized => Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
+            | Some write_unauthorized =>
+              if (is_desc_valid descriptor) || is_valid_state pte.(ged_state) then
+                Merror (GSME_write_without_authorization addr)
+              else
+                Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
+          end
+        | WMO_release => (* drop the authorization*)
+          Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
+      end
+    else
+      Merror (GSME_transition_without_lock addr)
+    | None => Merror (GSME_transition_without_lock addr)
+    end
+.
+
+Definition is_well_locked_write
+  (cpu : thread_identifier)
+  (addr : phys_addr_t)
+  (type : write_memory_order)
+  (descriptor : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
   match st !! addr with
     | None => Mreturn st
     | Some location =>
@@ -172,27 +242,7 @@ Definition is_well_locked_write (cpu : thread_identifier) (addr : phys_addr_t) (
           match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
             | None => Mreturn st
             | Some addr_lock =>
-              match lookup addr_lock st.(gsm_lock_state) with
-                | Some lock_owner =>
-                  if bool_decide (lock_owner = cpu) then
-                    match type with
-                      | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
-                        match lookup addr_lock st.(gsm_lock_authorization) with
-                          | None => Merror (GSME_internal_error IET_no_write_authorization)
-                          | Some write_authorized => Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
-                          | Some write_unauthorized =>
-                            if (is_desc_valid descriptor) || is_valid pte.(ged_state) then
-                              Merror (GSME_write_without_authorization addr)
-                            else
-                              Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
-                        end
-                      | WMO_release => (* drop the authorization*)
-                        Mreturn (st <| gsm_lock_authorization := insert addr_lock write_unauthorized st.(gsm_lock_authorization)|>)
-                    end
-                  else
-                    Merror (GSME_transition_without_lock addr)
-                | None => Merror (GSME_transition_without_lock addr)
-              end
+                is_well_locked_write_by_lock cpu addr type descriptor st addr_lock pte
           end
       end
   end
@@ -310,15 +360,16 @@ Definition step_zalloc (zd : trans_zalloc_data) (st : ghost_simplified_memory) :
 Definition step_read (tid : thread_identifier) (rd : trans_read_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match st !! rd.(trd_phys_addr) with
-    | Some loc => if loc.(sl_val) b=? rd.(trd_val) then
-      {| gsmsr_log := nil;
-        gsmsr_data := (Ok _ _ st) |}  else
-        let new_loc := loc <| sl_val := rd.(trd_val) |> in
-      {| gsmsr_log :=
-        [
-          Inconsistent_read loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)
-        ];
-        gsmsr_data := (Ok _ _ (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
+    | Some loc => 
+        if loc.(sl_val) b=? rd.(trd_val) then
+          Mreturn st
+        else
+          let new_loc := loc <| sl_val := rd.(trd_val) |> in
+        {| gsmsr_log :=
+          [
+            Inconsistent_read loc.(sl_val) rd.(trd_val) rd.(trd_phys_addr)
+          ];
+          gsmsr_data := (Ok _ _ (st <| gsm_memory := <[rd.(trd_phys_addr) := new_loc ]> st.(gsm_memory) |>)) |}
     | None =>
         let loc := {| sl_phys_addr := rd.(trd_phys_addr); sl_val := rd.(trd_val); sl_pte := None |} in
         let st := st <| gsm_memory := <[ rd.(trd_phys_addr) := loc ]> st.(gsm_memory) |> in
@@ -700,25 +751,14 @@ Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
 
 Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_result :=
     match ctx.(ptc_loc) with
-    | None =>
-      {|
-        gsmsr_log := [];
-        gsmsr_data := Error _ _ (GSME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
-      |}
+    | None => Merror (GSME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
     | Some location =>
       match location.(sl_pte) with
-        | None =>
-          {|
-            gsmsr_log := [];
-            gsmsr_data := Error _ _ (GSME_not_a_pte "release_cb" ctx.(ptc_addr))
-          |}
+        | None => Merror (GSME_not_a_pte "release_cb" ctx.(ptc_addr))
         | Some desc =>
           match desc.(ged_state) with
             | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
-              {|
-                gsmsr_log := [];
-                gsmsr_data := Error _ _ (GSME_bbm_violation VT_release_unclean ctx.(ptc_addr))
-              |}
+                Merror (GSME_bbm_violation VT_release_unclean ctx.(ptc_addr))
             | _ => Mreturn ctx.(ptc_state)
           end
       end
@@ -733,7 +773,11 @@ Fixpoint remove (x : owner_t) (l : list owner_t) : list owner_t :=
   end
 .
 
-Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition try_unregister_root
+  (addr : owner_t)
+  (cpu : thread_identifier)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
   match st !! root_val addr with
     | None => Merror (GSME_internal_error IET_unexpected_none)
     | Some loc =>
@@ -754,21 +798,20 @@ Definition try_unregister_root (addr : owner_t) (cpu : thread_identifier) (st : 
 
 Definition step_release_table (cpu : thread_identifier) (addr : owner_t) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
   match st !! root_val addr with
-    | None =>
-      {|
-        gsmsr_log := [];
-        gsmsr_data := Error _ _ (GSME_uninitialised "release"%string (root_val addr))
-      |}
+    | None => Merror (GSME_uninitialised "release"%string (root_val addr))
     | Some location =>
       match location.(sl_pte) with
-        | None =>
-          {|
-            gsmsr_log := [];
-            gsmsr_data := Error _ _ (GSME_not_a_pte "release"%string (root_val addr))
-          |}
+        | None => Merror (GSME_not_a_pte "release"%string (root_val addr))
         | Some desc =>
-          let st := traverse_pgt_from addr (root_val desc.(ged_owner)) desc.(ged_ia_region).(range_start) desc.(ged_level) desc.(ged_stage) step_release_cb st in
-          Mupdate_state (try_unregister_root (addr) cpu) st
+          let new_st := traverse_pgt_from
+            addr
+            (root_val desc.(ged_owner))
+            desc.(ged_ia_region).(range_start)
+            desc.(ged_level)
+            desc.(ged_stage)
+            step_release_cb
+            st in
+          Mupdate_state (try_unregister_root (addr) cpu) new_st
       end
   end
 .
