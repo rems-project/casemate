@@ -1596,7 +1596,8 @@ static void reset_write_authorizations(void) {
 	int len = the_ghost_state->locks_status.len;
 	struct lock_state *states = the_ghost_state->locks_status.locker;
 	for (int i = 0; i < len; i++) {
-		states[i].write_authorization = AUTHORIZED;
+		if (states[i].id == cpu_id())
+			states[i].write_authorization = AUTHORIZED;
 	}
 }
 
