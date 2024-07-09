@@ -228,12 +228,12 @@ Record trans_lock_data := {
 }.
 
 Inductive ghost_simplified_model_transition_data :=
-  |	GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
+  | GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
   | GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
-  |	GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
-  |	GSMDT_TRANS_BARRIER (dsb_data : Barrier)
-  |	GSMDT_TRANS_TLBI (tlbi_data : TLBI)
-  |	GSMDT_TRANS_MSR (msr_data : trans_msr_data)
+  | GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
+  | GSMDT_TRANS_BARRIER (dsb_data : Barrier)
+  | GSMDT_TRANS_TLBI (tlbi_data : TLBI)
+  | GSMDT_TRANS_MSR (msr_data : trans_msr_data)
   | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
   | GSMDT_TRANS_LOCK (lock_data : trans_lock_data)
 .
