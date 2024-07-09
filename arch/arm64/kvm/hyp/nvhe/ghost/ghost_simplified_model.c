@@ -8,6 +8,7 @@
 #include <nvhe/memory.h>
 #include <nvhe/mem_protect.h>
 #include <nvhe/pkvm.h>
+#include <nvhe/mm.h>
 
 #include <nvhe/ghost/ghost_control.h>
 #include <nvhe/ghost/ghost_asserts.h>
@@ -1109,6 +1110,8 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 		// if this was the first time we saw it
 		// initialise it and copy in the value
 		loc->initialised = true;
+		// by default, the location is not owned by any thread
+		loc->thread_owner = -1;
 
 		// we didn't see a previous write transition for this location
 		// (otherwise it'd have been marked as initialised)
@@ -1140,6 +1143,8 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 		// if this was the first time we saw it
 		// initialise it and copy in the value
 		loc->initialised = true;
+		// by default, the location is not owned by any thread
+		loc->thread_owner = -1;
 	} else if (! loc->is_pte) {
 		// TODO: BS: is this catch-fire or simply unreachable?
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("unmark non-PTE");
@@ -1157,6 +1162,11 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
+
+	if (loc->thread_owner >= 0)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE(
+				"The parent of an entry that is owned by a thread has been invalidated"
+			);
 
 	if (! loc->initialised) {
 		// unreachable
@@ -1318,7 +1328,7 @@ static void __update_descriptor_on_write(struct sm_location *loc, u64 val)
  * and not owned by another pgtable
  * then mark them as owned
  */
-static void step_write_table_mark_children(struct sm_location *loc)
+static void step_write_table_mark_children(pgtable_traverse_cb visitor_cb, struct sm_location *loc)
 {
 	if (loc->descriptor.kind == PTE_KIND_TABLE) {
 		if (! pre_all_reachable_clean(loc)) {
@@ -1331,7 +1341,7 @@ static void step_write_table_mark_children(struct sm_location *loc)
 			loc->descriptor.ia_region.range_start,
 			loc->descriptor.level + 1,
 			loc->descriptor.stage,
-			mark_cb,
+			visitor_cb,
 			NULL
 		);
 	}
@@ -1347,7 +1357,7 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 
 	// check that if we're writing a TABLE entry
 	// that the new tables are all 'good'
-	step_write_table_mark_children(loc);
+	step_write_table_mark_children(mark_cb, loc);
 
 	// invalid -> valid
 	loc->state.kind = STATE_PTE_VALID;
@@ -1389,22 +1399,23 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 		.old_valid_desc = old,
 		.lis = LIS_unguarded
 	};
+
+	step_write_table_mark_children(mark_not_writable_cb, loc);
 }
 
-static void __step_write(struct ghost_simplified_model_transition trans)
+void write_is_authorized(struct sm_location *loc, struct ghost_simplified_model_transition trans, u64 val)
 {
-	enum memory_order_t mo = trans.write_data.mo;
-	u64 val = trans.write_data.val;
+	struct lock_state *state_of_lock;
 
-	// look inside memory at `addr`
-	struct sm_location *loc = location(trans.write_data.phys_addr);
-
-	if (!loc->is_pte) {
-		goto done;
+	// if the location is owned by a given thread, just test if it is this one
+	if (loc->thread_owner >= 0) {
+		if (loc->thread_owner == cpu_id())
+			// Write unauthorized to change?
+			return;
+		else
+			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Location owned by a thread but accessed by another");
 	}
 
-	// must own the lock on the pgtable this pte is in.
-	struct lock_state *state_of_lock;
 	assert_owner_locked(loc, &state_of_lock);
 	switch (state_of_lock->write_authorization) {
 		case AUTHORIZED:
@@ -1421,6 +1432,22 @@ static void __step_write(struct ghost_simplified_model_transition trans)
 		default:
 			BUG();
 	}
+}
+
+static void __step_write(struct ghost_simplified_model_transition trans)
+{
+	enum memory_order_t mo = trans.write_data.mo;
+	u64 val = trans.write_data.val;
+
+	// look inside memory at `addr`
+	struct sm_location *loc = location(trans.write_data.phys_addr);
+
+	if (!loc->is_pte) {
+		goto done;
+	}
+
+	// must own the lock on the pgtable this pte is in.
+	write_is_authorized(loc, trans, val);
 
 	// since it's a pte, we can deconstruct the descriptor
 	__update_descriptor_on_write(loc, val);
@@ -1867,6 +1894,18 @@ static void step_hint_release_table(u64 root)
 	try_unregister_root(loc->descriptor.stage, root);
 }
 
+static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
+{
+	// TODO: mark all the parents as immutable
+	struct sm_location *loc = location(phys);
+
+	ghost_assert(loc->initialised);
+	ghost_assert(loc->is_pte);
+	ghost_assert(loc->descriptor.level == 3);
+
+	loc->thread_owner = val;
+}
+
 static void step_hint(struct ghost_simplified_model_transition trans)
 {
 	switch (trans.hint_data.hint_kind) {
@@ -1878,6 +1917,9 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 		break;
 	case GHOST_HINT_RELEASE_TABLE:
 		step_hint_release_table(trans.hint_data.location);
+		break;
+	case GHOST_HINT_SET_PTE_THREAD_OWNER:
+		step_hint_set_PTE_thread_owner(trans.hint_data.location, trans.hint_data.value);
 		break;
 	default:
 		BUG(); // unreachable;
@@ -2107,6 +2149,11 @@ static void initialise_ghost_hint_transitions(void)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
+static void initialise_fixmap(void)
+{
+	get_fixmap();
+}
+
 
 void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
@@ -2130,6 +2177,9 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
+
+	// This needs to be outside the locked region as it is going to take the SM lock
+	initialise_fixmap();
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
@@ -2242,6 +2292,7 @@ int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
 	switch (hint_data->hint_kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
 	case GHOST_HINT_SET_OWNER_ROOT:
+	case GHOST_HINT_SET_PTE_THREAD_OWNER:
 		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_data->location, hint_data->value);
 		break;
 	case GHOST_HINT_RELEASE_TABLE:

@@ -171,6 +171,7 @@ struct ghost_exploded_descriptor {
  * @descriptor: if initialised and is_pte, the value as an exploded descriptor.
  * @state: if initialised and is_pte, the automata state for this location.
  * @owner: if initialised, the root of the tree that owns this location.
+ * @thread_owner: if positive, the ID of the thread that can freely access this location
  *
  * The owner and descriptor are here as helpful cached values,
  * and could be computed by doing translation table walks.
@@ -183,6 +184,7 @@ struct sm_location {
 	struct ghost_exploded_descriptor descriptor;
 	struct sm_pte_state state;
 	sm_owner_t owner;
+	int thread_owner;
 };
 
 /*
@@ -509,11 +511,17 @@ enum ghost_hint_kind {
 	 * @GHOST_HINT_RELEASE_TABLE - Stop tracking a whole table (and subtables recursively)
 	 */
 	GHOST_HINT_RELEASE_TABLE,
+
+	/**
+	 * @GHOST_HINT_SET_PTE_THREAD_OWNER - Set the a thread to be the owner of a PTE (only for leaves)
+	 */
+	 GHOST_HINT_SET_PTE_THREAD_OWNER
 };
 static const char *hint_names[] = {
 	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
 	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
 	ID_STRING(GHOST_HINT_RELEASE_TABLE),
+	ID_STRING(GHOST_HINT_SET_PTE_THREAD_OWNER),
 };
 
 enum ghost_lock_kind {
