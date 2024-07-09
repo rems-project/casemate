@@ -34,7 +34,13 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_r
   end
 .
 
-Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_write_on_invalid
+  (tid : thread_identifier)
+  (wmo : write_memory_order)
+  (loc : sm_location)
+  (val : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
   (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
@@ -63,7 +69,13 @@ Definition step_write_on_invalid (tid : thread_identifier) (wmo : write_memory_o
   (* Question: In the C model, the LVS status is updated for each CPU but never used, what should the Coq model do? *)
 .
 
-Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_memory_order) (loc : sm_location) (val : u64) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_write_on_invalid_unclean
+  (tid : thread_identifier)
+  (wmo : write_memory_order)
+  (loc : sm_location)
+  (val : u64)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
     (Merror (GSME_bbm_violation VT_valid_on_invalid_unclean loc.(sl_phys_addr)))
@@ -72,12 +84,14 @@ Definition step_write_on_invalid_unclean (tid : thread_identifier) (wmo : write_
 .
 
 Definition is_only_update_to_sw_bit (old new : u64) : bool :=
-  (bv_and_64 old NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
-b=?
-  (bv_and_64 new NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
+  (bv_and_64 old NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK) b=? (bv_and_64 new NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK)
 .
 
-Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64) : option bool :=
+Definition require_bbm
+  (tid : thread_identifier)
+  (loc : sm_location)
+  (val : u64) : 
+  option bool :=
   match loc.(sl_pte) with
     | None => None (* PTE cannot be valid if it is not a PTE *)
     | Some old_descriptor =>
@@ -85,7 +99,7 @@ Definition require_bbm (tid : thread_identifier) (loc : sm_location) (val : u64)
       match old_descriptor.(ged_pte_kind), new_descriptor.(ged_pte_kind) with
         | PTER_PTE_KIND_INVALID, _ | _, PTER_PTE_KIND_INVALID => Some false
         | PTER_PTE_KIND_TABLE _, _ | _, PTER_PTE_KIND_TABLE _ => Some true
-        | PTER_PTE_KIND_MAP r1, PTER_PTE_KIND_MAP r2 => 
+        | PTER_PTE_KIND_MAP r1, PTER_PTE_KIND_MAP r2 =>
           if negb (phys_addr_val r1.(oa_region).(range_size) b=? phys_addr_val r2.(oa_region).(range_size)) then
             Some true
           else
@@ -371,7 +385,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
     | Some location =>
       match location.(sl_pte) with
         | None => Merror (GSME_not_a_pte "dsb_visitor" ctx.(ptc_addr))
-        | Some pte => 
+        | Some pte =>
           let new_pte := new_pte_after_dsb cpu_id pte kind in
           (* then update state and return *)
           let new_loc := (location <| sl_pte := Some new_pte |>) in
@@ -406,7 +420,7 @@ Definition dsb_visitor (kind : DxB) (cpu_id : thread_identifier) (ctx : page_tab
 Fixpoint reset_write_authorizations_aux (tid : thread_identifier) (roots: list owner_t) (st : ghost_simplified_memory) : ghost_simplified_memory :=
   match roots with
     | [] => st
-    | h :: q => 
+    | h :: q =>
       match lookup (phys_addr_val (root_val h)) st.(gsm_lock_addr) with
         | Some lock_addr =>
           let new_st :=
@@ -540,7 +554,7 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                       match new_substate with
                         | None => Merror GSME_unimplemented
                         | Some new_substate =>
-                          let log := 
+                          let log :=
                             match new_substate, ai.(ai_lis) with
                               | LIS_dsb_tlbied, LIS_dsbed => Mlog (Log "dsb'd->tlbied" (phys_addr_val ptc.(ptc_addr)))
                               | LIS_dsb_tlbi_ipa, LIS_dsbed => Mlog (Log "dsb'd->tlbied_ipa" (phys_addr_val ptc.(ptc_addr)))
@@ -759,7 +773,11 @@ Definition step_release_table (cpu : thread_identifier) (addr : owner_t) (st : g
   end
 .
 
-Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_hint
+  (cpu : thread_identifier)
+  (hd : trans_hint_data)
+  (st : ghost_simplified_memory)
+: ghost_simplified_model_result :=
   match hd.(thd_hint_kind) with
     | GHOST_HINT_SET_ROOT_LOCK =>
       (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
@@ -780,20 +798,22 @@ Definition step_hint (cpu : thread_identifier) (hd : trans_hint_data) (st : ghos
 (*                                  Step lock                                             *)
 (******************************************************************************************)
 
-Definition step_lock (cpu : thread_identifier) (hd : trans_lock_data) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition step_lock
+  (cpu : thread_identifier)
+  (hd : trans_lock_data)
+  (st : ghost_simplified_memory)
+: ghost_simplified_model_result :=
   match hd.(tld_kind), lookup (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) with
     | LOCK, None =>(* lock and authorize to write to that page-table *)
         Mreturn (st <| gsm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu st.(gsm_lock_state) |>
                     <| gsm_lock_authorization := insert (phys_addr_val hd.(tld_addr)) write_authorized st.(gsm_lock_authorization)|>)
     | UNLOCK, Some thread =>
-        if bool_decide (thread = cpu) then 
-          Mreturn (st <| gsm_lock_state := delete (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) |>)
-        else
-          Merror (GSME_double_lock_acquire cpu thread)
+      if bool_decide (thread = cpu) then
+        Mreturn (st <| gsm_lock_state := delete (phys_addr_val hd.(tld_addr)) st.(gsm_lock_state) |>)
+      else
+        Merror (GSME_double_lock_acquire cpu thread)
     | LOCK, Some thread => Merror (GSME_double_lock_acquire cpu thread)
     | UNLOCK, None => Merror (GSME_double_lock_acquire cpu cpu)
   end
 .
-
-
 

@@ -130,8 +130,10 @@ Inductive stage_t :=
   | S2
 .
 
-Inductive result (A B: Type): Type
-  := Ok (a: A) | Error (b: B).
+Inductive result (A B: Type): Type :=
+  | Ok (a: A)
+  | Error (b: B)
+.
 
 Inductive log_element :=
   | Inconsistent_read : u64 -> u64 -> phys_addr_t -> log_element

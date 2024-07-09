@@ -2,7 +2,6 @@ Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
 Require Import Zmap.zmap.
-(* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 Require Import stdpp.gmap.
@@ -12,19 +11,16 @@ Require Import state.
 Require Export utils.
 
 
-
 Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
-
 Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
-Definition GENMASK (l r : u64) : u64 :=
-(bv_and_64
-  ((bv_not_64 b0) ≪ r)
-  ((bv_not_64 b0) ≫ (bv_sub_64 (BV64 63) l))
-).
 (**  0......0  1....1  0....0
   *  i zeros          j zeros
   *)
+Definition GENMASK (l r : u64) : u64 :=
+  (bv_and_64
+    ((bv_not_64 b0) ≪ r)
+    ((bv_not_64 b0) ≫ (bv_sub_64 (BV64 63) l))).
 
 (* Definition PTE_BITS_ADDRESS : u64 := GENMASK b47 b12. *)
 Definition PTE_BITS_ADDRESS : u64 := BV64 0xfffffffff000%Z.
@@ -37,12 +33,12 @@ Definition is_desc_valid (descriptor : u64) : bool :=
 .
 
 Definition OA_shift (level : level_t) : u64 :=
-match level with
-  | l1 => BV64 (12 + 9 + 9)
-  | l2 => BV64 (12 + 9 )
-  | l3 => b12
-  | _ => b0  (* Should not happen*)
-end
+  match level with
+    | l1 => BV64 (12 + 9 + 9)
+    | l2 => BV64 (12 + 9)
+    | l3 => b12
+    | _ => b0  (* Should not happen*)
+  end
 .
 
 Definition _mask_OA_shift_l1 := BV64 0xffffc0000000%Z.
@@ -65,13 +61,13 @@ Definition _map_size_l2 := BV64 0x0000200000%Z. (* bv_shiftl (b2)     (BV64 20) 
 Definition _map_size_l3 := BV64 0x0000001000%Z. (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)   
 
 Definition map_size (level : level_t) : phys_addr_t :=
-match level with
-  | l0 => Phys_addr _map_size_l0 (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
-  | l1 => Phys_addr _map_size_l1 (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
-  | l2 => Phys_addr _map_size_l2 (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
-  | l3 => Phys_addr _map_size_l3 (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
-  | _ => pa0  (* Should not happen*)
-end
+  match level with
+    | l0 => Phys_addr _map_size_l0 (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
+    | l1 => Phys_addr _map_size_l1 (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
+    | l2 => Phys_addr _map_size_l2 (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
+    | l3 => Phys_addr _map_size_l3 (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
+    | _ => pa0  (* Should not happen*)
+  end
 .
 
 Definition _align_4k_big_bv := BV64 0xfffffffffffffc00%Z. (* bv_not b1023 *)
@@ -87,39 +83,46 @@ Definition is_desc_table (descriptor : u64) (level : level_t) :=
 .
 
 Definition extract_table_address (pte_val : u64) : phys_addr_t :=
-Phys_addr (bv_and_64 pte_val PTE_BITS_ADDRESS).
+  Phys_addr (bv_and_64 pte_val PTE_BITS_ADDRESS).
 
 Definition extract_output_address (pte_val : u64) (level : level_t) :=
-bv_and_64 pte_val (mask_OA_shift level)
-.
+  bv_and_64 pte_val (mask_OA_shift level).
 
-Definition initial_state (cpu_id : thread_identifier) (pte_kind : pte_rec) : sm_pte_state :=
+Definition initial_state
+  (cpu_id : thread_identifier)
+  (pte_kind : pte_rec) : 
+  sm_pte_state :=
   match pte_kind with
     | PTER_PTE_KIND_INVALID =>
-      SPS_STATE_PTE_INVALID_CLEAN ({|aic_invalidator_tid := cpu_id |})
-    | PTER_PTE_KIND_MAP _ | PTER_PTE_KIND_TABLE _ =>
-      SPS_STATE_PTE_VALID {|lvs := [] |}
+      SPS_STATE_PTE_INVALID_CLEAN ({| aic_invalidator_tid := cpu_id |})
+    | PTER_PTE_KIND_MAP _
+    | PTER_PTE_KIND_TABLE _ =>
+      SPS_STATE_PTE_VALID {| lvs := [] |}
   end
 .
 
-Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_t) (desc : u64) (level : level_t) (root : owner_t) (stage : stage_t) : ghost_exploded_descriptor :=
-  let pte_kind :=
-    if is_desc_valid desc then
-      if is_desc_table desc level then
-        PTER_PTE_KIND_TABLE (
-          {|
-            next_level_table_addr := extract_table_address desc;
-          |}
-        )
-      else
-        PTER_PTE_KIND_MAP (
-          {|
-            oa_region := {| range_start := extract_table_address desc; range_size := map_size level |}
-          |}
-        )
+Definition deconstruct_pte_kind (desc : u64) (level : level_t) :=
+  if is_desc_valid desc then
+    if is_desc_table desc level then
+      PTER_PTE_KIND_TABLE ({| next_level_table_addr := extract_table_address desc; |})
     else
-      PTER_PTE_KIND_INVALID
-  in
+      PTER_PTE_KIND_MAP (
+        {| oa_region := {| 
+                range_start := extract_table_address desc; 
+                range_size := map_size level |} |})
+  else
+    PTER_PTE_KIND_INVALID
+.
+
+Definition deconstruct_pte
+  (cpu_id : thread_identifier)
+  (partial_ia : phys_addr_t)
+  (desc : u64)
+  (level : level_t)
+  (root : owner_t)
+  (stage : stage_t) : 
+  ghost_exploded_descriptor :=
+  let pte_kind := deconstruct_pte_kind desc level in
   {|
     ged_ia_region :=
       {|
@@ -131,25 +134,41 @@ Definition deconstruct_pte (cpu_id : thread_identifier) (partial_ia : phys_addr_
     ged_pte_kind := pte_kind;
     ged_state := initial_state cpu_id pte_kind;
     ged_owner := root;
-  |}.
+  |}
+.
 
-Fixpoint traverse_pgt_from_aux (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result)  (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Fixpoint traverse_pgt_from_aux 
+  (root : owner_t)
+  (table_start partial_ia : phys_addr_t)
+  (level : level_t)
+  (stage : stage_t)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (max_call_number : nat)
+  (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
   match max_call_number with
-   | S max_call_number => traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb b0 max_call_number mon
+   | S max_call_number => 
+       traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
             the number of recursive calls is bounded. *)
-   {| gsmsr_log := [] ; gsmsr_data := Error _ _ (GSME_internal_error IET_infinite_loop) |}
+    {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_infinite_loop) |}
   end
   (* This is the for loop that iterates over all the entries of a page table *)
-with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (i : u64) (max_call_number : nat) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
+with traverse_pgt_from_offs
+      (root : owner_t) 
+      (table_start partial_ia : phys_addr_t)
+      (level : level_t)
+      (stage : stage_t)
+      (visitor_cb : page_table_context -> ghost_simplified_model_result)
+      (i : u64)
+      (max_call_number : nat)
+      (mon : ghost_simplified_model_result): 
+      ghost_simplified_model_result :=
   match max_call_number with
     | S max_call_number =>
-      if i b=? b512 then
-        (* We are done with this page table *)
-        mon
+      if i b=? b512 then mon (* We are done with this page table *)
       else
         match mon with
-          | {| gsmsr_log := _; gsmsr_data := Error _ _ _ |}  => mon (* If it fails, it fails *)
+          | {| gsmsr_log := _; gsmsr_data := Error _ _ _ |} => mon (* If it fails, it fails *)
           | {| gsmsr_log := _; gsmsr_data := Ok _ _ st |} as mon =>
             let addr := table_start pa+ (Phys_addr (b8 b* i)) in
             let location := st !! addr in
@@ -200,16 +219,41 @@ with traverse_pgt_from_offs (root : owner_t) (table_start partial_ia : phys_addr
   end
 .
 
-Definition traverse_pgt_from (root : owner_t) (table_start partial_ia : phys_addr_t) (level : level_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  traverse_pgt_from_aux root table_start partial_ia level stage visitor_cb (4*n512) (Mreturn st)
+Definition traverse_pgt_from
+  (root : owner_t)
+  (table_start partial_ia : phys_addr_t)
+  (level : level_t)
+  (stage : stage_t)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
+  traverse_pgt_from_aux 
+    root
+    table_start 
+    partial_ia
+    level stage
+    visitor_cb 
+    (4*n512)
+    (Mreturn st)
 .
 
-Definition traverse_pgt_from_root (root : owner_t) (stage : stage_t) (visitor_cb : page_table_context -> ghost_simplified_model_result) (st : ghost_simplified_memory) : ghost_simplified_model_result :=
+Definition traverse_pgt_from_root
+  (root : owner_t)
+  (stage : stage_t)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (st : ghost_simplified_memory) :
+  ghost_simplified_model_result :=
   traverse_pgt_from root (root_val root) pa0 l0 stage visitor_cb st
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux (th : option thread_identifier) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) (roots : list owner_t) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Fixpoint traverse_si_pgt_aux
+  (th : option thread_identifier)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (stage : stage_t)
+  (roots : list owner_t)
+  (st : ghost_simplified_model_result) :
+  ghost_simplified_model_result :=
   match roots with
     | r :: q =>
       (* If the state is failed, there is no point in going on *)
@@ -217,12 +261,10 @@ Fixpoint traverse_si_pgt_aux (th : option thread_identifier) (visitor_cb : page_
         | Error _ _ _ => st
         | _ =>
           let updater s := 
-            let should_update :=
-            match th with
-              | None => true
-              | Some tid => is_well_locked tid (root_val r) s
-            end
-            in
+            let should_update := match th with
+                                  | None => true
+                                  | Some tid => is_well_locked tid (root_val r) s
+                                end in
             if should_update then traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb s else Mreturn s
           in
           let st :=  Mupdate_state updater st in
@@ -233,7 +275,12 @@ Fixpoint traverse_si_pgt_aux (th : option thread_identifier) (visitor_cb : page_
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt (th : option thread_identifier) (st : ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) (stage : stage_t) : ghost_simplified_model_result :=
+Definition traverse_si_pgt
+  (th : option thread_identifier)
+  (st : ghost_simplified_memory)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (stage : stage_t) :
+  ghost_simplified_model_result :=
   let roots :=
     match stage with
       | S2 => st.(gsm_roots).(pr_s2)
@@ -243,7 +290,10 @@ Definition traverse_si_pgt (th : option thread_identifier) (st : ghost_simplifie
   traverse_si_pgt_aux th visitor_cb stage roots {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}
 .
 
-Definition traverse_all_pgt (th : option thread_identifier) (st: ghost_simplified_memory) (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
+Definition traverse_all_pgt
+  (th : option thread_identifier)
+  (st: ghost_simplified_memory)
+  (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
   match traverse_si_pgt th st visitor_cb S1 with
     | {|gsmsr_log := logs; gsmsr_data := Ok _ _ st|} =>
       let res := traverse_si_pgt th st visitor_cb S2 in
@@ -255,7 +305,10 @@ Definition traverse_all_pgt (th : option thread_identifier) (st: ghost_simplifie
 (*******************************************************************)
 (* Some generic walker functions to mark and unmark entries as PTE *)
 
-Definition mark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition mark_cb
+  (cpu_id : thread_identifier)
+  (ctx : page_table_context) : 
+  ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
@@ -275,40 +328,43 @@ Definition mark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : gho
   end
 .
 
-Definition unmark_cb (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition unmark_cb
+  (cpu_id : thread_identifier)
+  (ctx : page_table_context) : 
+  ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
         | Some desc =>
           let new_loc := location <|sl_pte := None |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))]; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+          {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))]; 
+             gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
         | None =>
           {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr)) |}
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {|
-          gsmsr_log := [];
-          gsmsr_data := Error _ _ (GSME_uninitialised "unmark_cb" ctx.(ptc_addr))
-        |}
+        {| gsmsr_log := [];
+           gsmsr_data := Error _ _ (GSME_uninitialised "unmark_cb" ctx.(ptc_addr)) |}
   end
 .
 
-Definition mark_not_writable_cb (cpu_id : thread_identifier) (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition mark_not_writable_cb
+  (cpu_id : thread_identifier)
+  (ctx : page_table_context) : 
+  ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | Some location =>
       match location.(sl_pte) with
         | Some desc =>
-          let new_loc := location <|sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
+          let new_loc := location <| sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := nil; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+          {| gsmsr_log := []; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
         | None =>
           {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr)) |}
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-        {|
-          gsmsr_log := [];
-          gsmsr_data := Error _ _ (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr))
-        |}
+        {| gsmsr_log := [];
+           gsmsr_data := Error _ _ (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr)) |}
   end
 .

@@ -2,7 +2,6 @@ Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
 Require Import Zmap.zmap.
-(* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 Require Import stdpp.gmap.
@@ -58,11 +57,11 @@ Record map_data_t := {
 }.
 
 Inductive level_t :=
-| l0
-| l1
-| l2
-| l3
-| lerror
+  | l0
+  | l1
+  | l2
+  | l3
+  | lerror
 .
 Definition next_level (l : level_t) : level_t :=
   match l with
@@ -87,8 +86,8 @@ Record table_data_t := {
 }.
 
 Inductive pte_rec :=
-  | PTER_PTE_KIND_TABLE (table_data:table_data_t)
-  | PTER_PTE_KIND_MAP (map_data:map_data_t)
+  | PTER_PTE_KIND_TABLE (table_data : table_data_t)
+  | PTER_PTE_KIND_MAP (map_data : map_data_t)
   | PTER_PTE_KIND_INVALID
 .
 
@@ -101,7 +100,8 @@ Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
   (* address of the root of the PTE *)
   ged_owner : owner_t;
 }.
-#[export] Instance eta_ghost_exploded_descriptor : Settable _ := settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_stage; ged_pte_kind; ged_state; ged_owner>.
+#[export] Instance eta_ghost_exploded_descriptor : Settable _ := 
+  settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_stage; ged_pte_kind; ged_state; ged_owner>.
 
 
 Record sm_location := mk_sm_location {
@@ -153,7 +153,8 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_lock_state : ghost_simplified_model_lock_state;
   gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ := settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
+#[export] Instance eta_ghost_simplified_memory : Settable _ := 
+  settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
 Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
   match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
@@ -176,7 +177,10 @@ Definition get_location (st : ghost_simplified_memory) (addr : phys_addr_t) : op
 Infix "!!" := get_location (at level 20) .
 
 
-Definition is_well_locked (cpu : thread_identifier) (location : phys_addr_t) (st : ghost_simplified_memory) : bool :=
+Definition is_well_locked
+  (cpu : thread_identifier)
+  (location : phys_addr_t)
+  (st : ghost_simplified_memory) : bool :=
   match st !! location with
     | None => true
     | Some location =>
@@ -228,7 +232,10 @@ Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_resul
   {| gsmsr_log := nil;
     gsmsr_data := Ok _ _ st |}.
 
-Definition Mbind (r : ghost_simplified_model_result) (f : ghost_simplified_memory -> ghost_simplified_model_result) : ghost_simplified_model_result :=
+Definition Mbind
+  (r : ghost_simplified_model_result)
+  (f : ghost_simplified_memory -> ghost_simplified_model_result) : 
+  ghost_simplified_model_result :=
   match r.(gsmsr_data) with
   | Error _ _ s => r
   | Ok _ _ st =>
@@ -242,11 +249,16 @@ Definition Merror (s : ghost_simplified_model_error) : ghost_simplified_model_re
   {| gsmsr_log := nil;
     gsmsr_data := Error _ _ s |}.
 
-Definition Mlog (s : log_element) (r : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Definition Mlog
+  (s : log_element)
+  (r : ghost_simplified_model_result) : ghost_simplified_model_result :=
   r <|gsmsr_log := s :: r.(gsmsr_log) |>.
 
 
-Definition Mupdate_state (updater : ghost_simplified_memory -> ghost_simplified_model_result) (st : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Definition Mupdate_state
+  (updater : ghost_simplified_memory -> ghost_simplified_model_result)
+  (st : ghost_simplified_model_result) : 
+  ghost_simplified_model_result :=
   match st with
     | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
       let new_st := updater st in
@@ -255,11 +267,17 @@ Definition Mupdate_state (updater : ghost_simplified_memory -> ghost_simplified_
   end
 .
 
-Definition insert_location (loc : sm_location) (st : ghost_simplified_memory) : ghost_simplified_memory :=
+Definition insert_location
+  (loc : sm_location)
+  (st : ghost_simplified_memory) : 
+  ghost_simplified_memory :=
   (st <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> st.(gsm_memory) |>)
 .
 
-Definition Minsert_location (loc : sm_location) (mon : ghost_simplified_model_result) : ghost_simplified_model_result :=
+Definition Minsert_location
+  (loc : sm_location)
+  (mon : ghost_simplified_model_result) : 
+  ghost_simplified_model_result :=
   match mon with
     | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
       {|
@@ -283,4 +301,5 @@ Record page_table_context := mk_page_table_context {
   ptc_level: level_t;
   ptc_stage: stage_t;
 }.
-#[export] Instance eta_page_table_context : Settable _ := settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.
+#[export] Instance eta_page_table_context : Settable _ := 
+  settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.

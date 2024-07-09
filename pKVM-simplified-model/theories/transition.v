@@ -41,18 +41,18 @@ Inductive TLBIOp :=
 Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last.
 
 Record TLBIRecord  := {
-    TLBIRecord_op : TLBIOp;
-    (* TLBIRecord_from_aarch64 : bool; *)
-    (* TLBIRecord_security : SecurityState; *)
-    TLBIRecord_regime : Regime;
-    (* TLBIRecord_vmid : bits 16; *)
-    (* TLBIRecord_asid : bits 16; *)
-    TLBIRecord_level : TLBILevel;
-    (* TLBIRecord_attr : TLBIMemAttr; *)
-    (* TLBIRecord_ipaspace : PASpace; *)
-    TLBIRecord_address : phys_addr_t;
-    (* TLBIRecord_end_address_name : u64; *)
-    (* TLBIRecord_tg : bits 2; *)
+  TLBIRecord_op : TLBIOp;
+  (* TLBIRecord_from_aarch64 : bool; *)
+  (* TLBIRecord_security : SecurityState; *)
+  TLBIRecord_regime : Regime;
+  (* TLBIRecord_vmid : bits 16; *)
+  (* TLBIRecord_asid : bits 16; *)
+  TLBIRecord_level : TLBILevel;
+  (* TLBIRecord_attr : TLBIMemAttr; *)
+  (* TLBIRecord_ipaspace : PASpace; *)
+  TLBIRecord_address : phys_addr_t;
+  (* TLBIRecord_end_address_name : u64; *)
+  (* TLBIRecord_tg : bits 2; *)
 }.
 
 
@@ -85,39 +85,40 @@ Record TLBI_intermediate := {
   TI_method : TLBI_method;
 }.
 
+Definition decode_tlbi_stage (td : TLBI) : option TLBI_stage_kind :=
+  match td.(TLBI_rec).(TLBIRecord_op) with
+    | TLBIOp_VA | TLBIOp_VMALL => Some TLBI_OP_stage1
+    | TLBIOp_IPAS2 => Some TLBI_OP_stage2
+    | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
+    | _ => None
+  end
+.
+
+Definition decode_tlbi_shootdown (td : TLBI) : option bool :=
+  match td.(TLBI_shareability) with
+    | Shareability_ISH => Some true
+    | _ => Some true (* TODO: false *)
+  end
+.
+
+Definition decode_tlbi_method (td : TLBI) : option TLBI_method :=
+  match td.(TLBI_rec).(TLBIRecord_op) with
+    | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
+      (* TODO: Some (TLBI_by_addr_space (Phys_addr Sth)) *)
+      Some TLBI_by_addr_all
+    | TLBIOp_VA | TLBIOp_IPAS2 =>
+      Some (TLBI_by_input_addr
+            {| TOBAD_page := td.(TLBI_rec).(TLBIRecord_address);
+              TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level); |})
+    | TLBIOp_ALL => Some TLBI_by_addr_all
+    | _ => None
+  end
+.
+
 Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
-  let stage :=
-    match td.(TLBI_rec).(TLBIRecord_op) with
-      | TLBIOp_VA | TLBIOp_VMALL =>
-          Some TLBI_OP_stage1
-      | TLBIOp_IPAS2  => Some TLBI_OP_stage2
-      | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
-      | _ => None
-    end
-  in
-  let shootdown :=
-    match td.(TLBI_shareability) with
-      | Shareability_ISH => Some true
-      | _ => Some true (* TODO: false *)
-    end
-  in
-  let method :=
-    match td.(TLBI_rec).(TLBIRecord_op) with
-      | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-        (* TODO: Some (TLBI_by_addr_space (Phys_addr Sth)) *)
-        Some TLBI_by_addr_all
-      | TLBIOp_VA | TLBIOp_IPAS2 =>
-        Some (
-          TLBI_by_input_addr
-            {|
-                TOBAD_page := (td.(TLBI_rec).(TLBIRecord_address));
-                TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level);
-            |}
-        )
-      | TLBIOp_ALL => Some TLBI_by_addr_all
-      | _ => None
-    end
-  in
+  let stage := decode_tlbi_stage td in
+  let shootdown := decode_tlbi_shootdown td in
+  let method := decode_tlbi_method td in
   match stage, shootdown, method with
     | Some stage, Some shootdown, Some method =>
       Some
@@ -127,7 +128,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
         TI_shootdown := shootdown;
         TI_method := method;
       |}
-    | _,_,_ => None
+    | _, _, _ => None
   end
 .
 
