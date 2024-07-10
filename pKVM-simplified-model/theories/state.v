@@ -66,17 +66,17 @@ Inductive level_t :=
 .
 Definition next_level (l : level_t) : level_t :=
   match l with
-    | l0 => l1
-    | l1 => l2
-    | l2 => l3
-    | l3 => lerror
-    | lerror => lerror
+  | l0 => l1
+  | l1 => l2
+  | l2 => l3
+  | l3 => lerror
+  | lerror => lerror
   end
 .
 Definition is_l3 (l : level_t) : bool :=
   match l with
-    | l3 => true
-    | _ => false
+  | l3 => true
+  | _ => false
   end
 .
 Global Instance level_t_eq_decision : EqDecision level_t.
@@ -170,35 +170,52 @@ Definition get_location
   (addr : phys_addr_t) :
   option sm_location :=
   match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
-    | Some loc => Some loc
-    | None =>
-      match is_zallocd st addr with
-        | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; sl_thread_owner := None |}
-        | false => None
-      end
+  | Some loc => Some loc
+  | None =>
+    match is_zallocd st addr with
+    | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; sl_thread_owner := None |}
+    | false => None
+    end
   end
 .
 
 Infix "!!" := get_location (at level 20) .
-
 
 Definition is_well_locked
   (cpu : thread_identifier)
   (location : phys_addr_t)
   (st : ghost_simplified_memory) : bool :=
   match st !! location with
+  | None => true
+  | Some location =>
+    match location.(sl_pte) with
     | None => true
-    | Some location =>
+    | Some pte =>
+        match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
+        | None => false
+        | Some addr =>
+          match lookup addr st.(gsm_lock_state) with
+          | Some lock_owner => bool_decide (lock_owner = cpu)
+          | None => false
+          end
+        end
+      end
+    end
+.
+
+Definition is_pte_owned
+  (cpu : thread_identifier)
+  (location : phys_addr_t)
+  (st : ghost_simplified_memory) : bool :=
+  match st !! location with
+  | None => true
+  | Some location =>
       match location.(sl_pte) with
-        | None => true
-        | Some pte =>
-          match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
-            | None => false
-            | Some addr =>
-              match lookup addr st.(gsm_lock_state) with
-                | Some lock_owner => bool_decide (lock_owner = cpu)
-                | None => false
-              end
+      | None => false
+      | Some _ =>
+          match location.(sl_thread_owner) with
+          | None => false
+          | Some thread_owner => bool_decide (thread_owner = cpu)
           end
       end
   end
@@ -225,7 +242,7 @@ Inductive ghost_simplified_model_error :=
   | GSME_write_without_authorization : phys_addr_t -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
-  | GSME_parent_invalidated : string -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_parent_invalidated : phys_addr_t -> ghost_simplified_model_error
   | GSME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> ghost_simplified_model_error
 .
 
@@ -238,8 +255,7 @@ Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
   settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
 
 Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  {| gsmsr_log := nil;
-     gsmsr_data := Ok _ _ st |}.
+  {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}.
 
 Definition Mbind
   (r : ghost_simplified_model_result)
@@ -250,29 +266,26 @@ Definition Mbind
   | Ok _ _ st =>
     let st' := f st in
     {| gsmsr_log := app st'.(gsmsr_log) r.(gsmsr_log);
-      gsmsr_data := st'.(gsmsr_data);
-    |}
+       gsmsr_data := st'.(gsmsr_data); |}
   end.
 
 Definition Merror (s : ghost_simplified_model_error) : ghost_simplified_model_result :=
-  {| gsmsr_log := nil;
-    gsmsr_data := Error _ _ s |}.
+  {| gsmsr_log := nil; gsmsr_data := Error _ _ s |}.
 
 Definition Mlog
   (s : log_element)
   (r : ghost_simplified_model_result) : ghost_simplified_model_result :=
   r <|gsmsr_log := s :: r.(gsmsr_log) |>.
 
-
 Definition Mupdate_state
   (updater : ghost_simplified_memory -> ghost_simplified_model_result)
   (st : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match st with
-    | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
-      let new_st := updater st in
-      new_st <| gsmsr_log := new_st.(gsmsr_log) ++ logs |>
-    | e => e
+  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
+    let new_st := updater st in
+    new_st <| gsmsr_log := new_st.(gsmsr_log) ++ logs |>
+  | e => e
   end
 .
 
@@ -288,12 +301,12 @@ Definition Minsert_location
   (mon : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match mon with
-    | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
-      {|
-        gsmsr_log := logs;
-        gsmsr_data := Ok _ _ (insert_location loc st)
-      |}
-    | e => e
+  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
+    {|
+      gsmsr_log := logs;
+      gsmsr_data := Ok _ _ (insert_location loc st)
+    |}
+  | e => e
   end
 .
 

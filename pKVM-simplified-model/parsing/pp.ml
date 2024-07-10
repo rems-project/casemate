@@ -65,7 +65,8 @@ let pp_error ppf = function
   | GSME_unclean_child loc ->
       Fmt.pf ppf "An unclean child has been encountered at address: %a" p0xZ loc
   | GSME_write_on_not_writable loc ->
-      Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ loc
+      Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ
+        loc
   | GSME_double_use_of_pte loc ->
       Fmt.pf ppf "PTE at address %a is used in two page-tables" p0xZ loc
   | GSME_root_already_exists -> Fmt.pf ppf "GSME_root_already_exists"
@@ -86,6 +87,11 @@ let pp_error ppf = function
   | GSME_write_without_authorization addr ->
       Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ
         addr
+  | GSME_parent_invalidated addr ->
+      Fmt.pf ppf "Address %a's parent was invalidated" p0xZ addr
+  | GSME_owned_pte_accessed_by_other_thread (str, addr) ->
+      Fmt.pf ppf "Private PTE %a was accessed by other thread in function %s"
+        p0xZ addr str
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->

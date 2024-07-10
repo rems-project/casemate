@@ -34,6 +34,21 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_r
   end
 .
 
+Definition is_all_reachable_clean
+  (map : table_data_t)
+  (descriptor : ghost_exploded_descriptor)
+  (st : ghost_simplified_memory):
+  ghost_simplified_model_result :=
+  traverse_pgt_from
+    descriptor.(ged_owner)
+    map.(next_level_table_addr)
+    descriptor.(ged_ia_region).(range_start)
+    (next_level descriptor.(ged_level))
+    descriptor.(ged_stage)
+    clean_reachable
+    st
+.
+
 Definition step_write_table_mark_children
   (tid : thread_identifier)
   (wmo : write_memory_order)
@@ -43,27 +58,11 @@ Definition step_write_table_mark_children
   (visitor_cb : page_table_context -> ghost_simplified_model_result)
   (st : ghost_simplified_memory) :
   ghost_simplified_model_result :=
-  (* TODO: save old descriptor *)
-  let descriptor := deconstruct_pte 
-      tid 
-      descriptor.(ged_ia_region).(range_start) 
-      val descriptor.(ged_level) 
-      descriptor.(ged_owner) 
-      descriptor.(ged_stage) in
-  let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
-  let st := st <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
   if is_desc_valid val then
     (* Tests if the page table is well formed *)
     match descriptor.(ged_pte_kind) with
       | PTER_PTE_KIND_TABLE map =>
-        let st := traverse_pgt_from
-          descriptor.(ged_owner)
-          map.(next_level_table_addr)
-          descriptor.(ged_ia_region).(range_start)
-          (next_level descriptor.(ged_level))
-          descriptor.(ged_stage)
-          clean_reachable
-          st in
+        let st := is_all_reachable_clean map descriptor st in
         let st := Mlog
           (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
         Mupdate_state (traverse_pgt_from 
@@ -73,7 +72,8 @@ Definition step_write_table_mark_children
                           (next_level descriptor.(ged_level))
                           descriptor.(ged_stage)
                           visitor_cb) st
-      | _ => Mreturn st
+      | _ => Mlog
+            (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) (Mreturn st)
     end
   else
     (* if the descriptor is invalid, do nothing *)
@@ -92,6 +92,15 @@ Definition step_write_on_invalid
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror (GSME_internal_error IET_unexpected_none)
     | Some descriptor =>
+      (* TODO: save old descriptor *)
+      let descriptor := deconstruct_pte 
+          tid 
+          descriptor.(ged_ia_region).(range_start) 
+          val descriptor.(ged_level) 
+          descriptor.(ged_owner) 
+          descriptor.(ged_stage) in
+      let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
+      let st := st <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> st.(gsm_memory) |> in
       step_write_table_mark_children tid wmo loc val descriptor (mark_cb tid) st
     end
   (* Question: In the C model, the LVS status is updated for each CPU but never used, what should the Coq model do? *)
@@ -180,12 +189,10 @@ Definition step_write_invalid_on_valid
             (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> st.(gsm_memory))
           |> )
       in
-      Mlog (Log "valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
+      Mlog (Log "BBM: valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
       match descriptor.(ged_pte_kind) with
         | PTER_PTE_KIND_TABLE map =>
-          let
-            st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st
-          in
+          let st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st in
           let st := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) st in
           (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
           Mupdate_state (step_write_table_mark_children tid wmo loc val descriptor (mark_not_writable_cb tid)) st
@@ -336,20 +343,17 @@ Definition step_write_aux
         end
       | None =>
         (* If the location has not been written to, it is not a pgt, just save its value *)
-        {| gsmsr_log := [];
-          gsmsr_data := Ok _ _ (
-            s <| gsm_memory :=
+          let new_st := s <| gsm_memory :=
               <[ addr :=
                 {|
                   sl_phys_addr := addr;
                   sl_val := val;
                   sl_pte := None;
-                  (* TODO: right? *)
-                  sl_thread_owner := Some tid;
+                  sl_thread_owner := None;
                 |}
-              ]> s.(gsm_memory) |>
-          ) |}
-    end
+              ]> s.(gsm_memory) |> in
+                  Mreturn new_st
+            end
   in
   Mupdate_state write_update new_st
 .
@@ -381,10 +385,6 @@ Definition step_write
   (wd : trans_write_data)
   (st : ghost_simplified_memory) :
   ghost_simplified_model_result :=
-  match st !! wd.(twd_phys_addr) with
-    | Some _ => id
-    | None  => Mlog ( Warning_read_write_non_allocd wd.(twd_phys_addr))
-  end
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd st
     | WMO_page => step_write_page tid wd (Mreturn st) z512
@@ -492,19 +492,19 @@ Definition new_pte_after_dsb
         (* Otherwise, update the state invalid unclean sub-automaton *)
         match sst.(ai_lis) with
           | LIS_unguarded =>
-            pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsbed |>) |>
+            pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <| ai_lis := LIS_dsbed |>) |>
           | LIS_dsbed => pte
           | LIS_dsb_tlbied =>
             match kind.(DxB_domain) with
               | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
-                pte <|ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
-                    <|ged_pte_kind := PTER_PTE_KIND_INVALID |>
+                pte <| ged_state := SPS_STATE_PTE_INVALID_CLEAN {| aic_invalidator_tid := sst.(ai_invalidator_tid) |} |>
+                    <| ged_pte_kind := PTER_PTE_KIND_INVALID |>
               | _ => pte
             end
           | LIS_dsb_tlbi_ipa =>
               match kind.(DxB_domain) with
                 | MBReqDomain_InnerShareable | MBReqDomain_FullSystem =>
-            pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
+                  pte <|ged_state := SPS_STATE_PTE_INVALID_UNCLEAN (sst <|ai_lis := LIS_dsb_tlbi_ipa_dsb |>) |>
                 | _ => pte
               end
           | _ => pte
@@ -533,11 +533,11 @@ Definition dsb_visitor
           let log :=
             match pte.(ged_state), new_pte.(ged_state) with
               | SPS_STATE_PTE_INVALID_UNCLEAN _ , SPS_STATE_PTE_INVALID_CLEAN _ =>
-                Some (Log "invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr)))
+                Some (Log "BBM: invalid_unclean->invalid_clean"%string (phys_addr_val location.(sl_phys_addr)))
               | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_unguarded|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-                Some (Log "unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+                Some (Log "BBM: unguareded->dsbed"%string (phys_addr_val location.(sl_phys_addr)))
               | SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := LIS_dsb_tlbi_ipa|} , SPS_STATE_PTE_INVALID_UNCLEAN {| ai_lis := _|} =>
-                Some (Log "tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr)))
+                Some (Log "BBM: tlbied_ipa->tlbied_ipa_dsbed"%string (phys_addr_val location.(sl_phys_addr)))
               | _, _ => None
             end
           in
@@ -572,7 +572,8 @@ Fixpoint reset_write_authorizations_aux
               | None => st
               | Some thread =>
                 if bool_decide (thread = tid) then
-                  (st <| gsm_lock_authorization := insert lock_addr write_authorized st.(gsm_lock_authorization) |>)
+                  (st <| gsm_lock_authorization := 
+                      insert lock_addr write_authorized st.(gsm_lock_authorization) |>)
                 else
                   st
             end
@@ -700,9 +701,9 @@ Definition tlbi_visitor (cpu_id : thread_identifier) (td : TLBI_intermediate) (p
                         | Some new_substate =>
                           let log :=
                             match new_substate, ai.(ai_lis) with
-                              | LIS_dsb_tlbied, LIS_dsbed => Mlog (Log "dsb'd->tlbied" (phys_addr_val ptc.(ptc_addr)))
-                              | LIS_dsb_tlbi_ipa, LIS_dsbed => Mlog (Log "dsb'd->tlbied_ipa" (phys_addr_val ptc.(ptc_addr)))
-                              | LIS_dsb_tlbied, LIS_dsb_tlbi_ipa_dsb => Mlog (Log "dsb_tlbi_ipa_dsbed->tlbied" (phys_addr_val ptc.(ptc_addr)))
+                              | LIS_dsb_tlbied, LIS_dsbed => Mlog (Log "BBM: dsb'd->tlbied" (phys_addr_val ptc.(ptc_addr)))
+                              | LIS_dsb_tlbi_ipa, LIS_dsbed => Mlog (Log "BBM: dsb'd->tlbied_ipa" (phys_addr_val ptc.(ptc_addr)))
+                              | LIS_dsb_tlbied, LIS_dsb_tlbi_ipa_dsb => Mlog (Log "BBM: dsb_tlbi_ipa_dsbed->tlbied" (phys_addr_val ptc.(ptc_addr)))
                               | _, _ => id
                             end
                           in

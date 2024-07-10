@@ -149,7 +149,7 @@ Fixpoint traverse_pgt_from_aux
        traverse_pgt_from_offs root table_start partial_ia level stage visitor_cb b0 max_call_number mon
    | O => (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
             the number of recursive calls is bounded. *)
-    {| gsmsr_log := []; gsmsr_data := Error _ _ (GSME_internal_error IET_infinite_loop) |}
+    Merror (GSME_internal_error IET_infinite_loop)
   end
   (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs
@@ -338,8 +338,7 @@ Definition unmark_cb
         | Some desc =>
           let new_loc := location <| sl_pte := None |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-          {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))];
-             gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+          Mreturn (ctx.(ptc_state) <| gsm_memory := new_st |>)
         | None =>
           Merror (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
       end
@@ -364,7 +363,7 @@ Definition mark_not_writable_cb
             | None =>
               Merror (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
           end
-        | Some tho => Merror (GSME_parent_invalidated "mark_not_writable"%string location.(sl_phys_addr))
+        | Some tho => Merror (GSME_parent_invalidated location.(sl_phys_addr))
       end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
         Merror (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr))
