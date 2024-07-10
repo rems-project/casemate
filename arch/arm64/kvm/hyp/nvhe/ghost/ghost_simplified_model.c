@@ -822,6 +822,24 @@ static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
 	return false;
 }
 
+static bool is_location_locked(struct sm_location *loc)
+{
+	// If the location is owned by a thread, check that it is this thread.
+	if (loc->thread_owner >= 0)
+		return loc->thread_owner == cpu_id();
+
+	// Otherwise, get the owner of the location
+	struct lock_state *state;
+	sm_owner_t owner_id = loc->owner;
+	// assume 0 cannot be a valid owner id
+	if (!owner_id)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
+	// get the address of the lock
+	hyp_spinlock_t *lock = owner_lock(owner_id);
+	// check the state of the lock
+	return is_correctly_locked(lock, &state);
+}
+
 /**
  * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
  */
@@ -1570,6 +1588,11 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 	struct sm_location *loc = ctxt->loc;
 	enum dsb_kind dsb_kind = *(enum dsb_kind *)ctxt->data;
 
+
+	// If the location is not locked then do not do anything
+	if (!is_location_locked(ctxt->loc))
+		return;
+
 	if (dsb_kind == DSB_nsh) {
 		if (ghost_sm_options.promote_DSB_nsh) {
 			// silence noisy warning...
@@ -1740,6 +1763,10 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	u64 tlbi_addr;
 	u64 ia_start;
 	u64 ia_end;
+
+	// If the location is not locked then do not apply the TLBI
+	if (!is_location_locked(ctxt->loc))
+		return false;
 
 	struct sm_tlbi_op *tlbi = (struct sm_tlbi_op*)ctxt->data;
 
