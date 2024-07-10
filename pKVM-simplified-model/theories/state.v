@@ -147,7 +147,7 @@ Record pte_roots := mk_pte_roots {
 }.
 #[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
 
-Record ghost_simplified_memory := mk_ghost_simplified_model {
+Record ghost_simplified_model := mk_ghost_simplified_model {
   gsm_roots : pte_roots;
   gsm_memory : ghost_simplified_model_state;
   gsm_zalloc : ghost_simplified_model_zallocd;
@@ -155,10 +155,10 @@ Record ghost_simplified_memory := mk_ghost_simplified_model {
   gsm_lock_state : ghost_simplified_model_lock_state;
   gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_memory : Settable _ :=
+#[export] Instance eta_ghost_simplified_model : Settable _ :=
   settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
-Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool :=
+Definition is_zallocd (st : ghost_simplified_model) (addr : phys_addr_t) : bool :=
   match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
     | Some _ => true
     | None => false
@@ -166,7 +166,7 @@ Definition is_zallocd (st : ghost_simplified_memory) (addr : phys_addr_t) : bool
 .
 
 Definition get_location
-  (st : ghost_simplified_memory)
+  (st : ghost_simplified_model)
   (addr : phys_addr_t) :
   option sm_location :=
   match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
@@ -184,17 +184,17 @@ Infix "!!" := get_location (at level 20) .
 Definition is_well_locked
   (cpu : thread_identifier)
   (location : phys_addr_t)
-  (st : ghost_simplified_memory) : bool :=
-  match st !! location with
+  (gsm : ghost_simplified_model) : bool :=
+  match gsm !! location with
   | None => true
   | Some location =>
     match location.(sl_pte) with
     | None => true
     | Some pte =>
-        match lookup (phys_addr_val (root_val pte.(ged_owner))) st.(gsm_lock_addr) with
+        match lookup (phys_addr_val (root_val pte.(ged_owner))) gsm.(gsm_lock_addr) with
         | None => false
         | Some addr =>
-          match lookup addr st.(gsm_lock_state) with
+          match lookup addr gsm.(gsm_lock_state) with
           | Some lock_owner => bool_decide (lock_owner = cpu)
           | None => false
           end
@@ -206,17 +206,14 @@ Definition is_well_locked
 Definition is_pte_owned
   (cpu : thread_identifier)
   (location : phys_addr_t)
-  (st : ghost_simplified_memory) : bool :=
-  match st !! location with
+  (gsm : ghost_simplified_model) : bool :=
+  match gsm !! location with
   | None => true
   | Some location =>
-      match location.(sl_pte) with
-      | None => false
-      | Some _ =>
-          match location.(sl_thread_owner) with
-          | None => false
-          | Some thread_owner => bool_decide (thread_owner = cpu)
-          end
+      match location.(sl_pte), location.(sl_thread_owner) with
+      | Some _, Some thread_owner =>
+        bool_decide (thread_owner = cpu)
+      | _, _ => false
       end
   end
 .
@@ -248,29 +245,29 @@ Inductive ghost_simplified_model_error :=
 
 Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
   gsmsr_log : list log_element;
-  gsmsr_data : result ghost_simplified_memory ghost_simplified_model_error
+  gsmsr_data : result ghost_simplified_model ghost_simplified_model_error
 }.
 
 #[export] Instance eta_ghost_simplified_model_result : Settable _ :=
   settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
 
-Definition Mreturn (st : ghost_simplified_memory) : ghost_simplified_model_result :=
-  {| gsmsr_log := nil; gsmsr_data := Ok _ _ st |}.
+Definition Mreturn (gsm : ghost_simplified_model) : ghost_simplified_model_result :=
+  {| gsmsr_log := nil; gsmsr_data := Ok _ _ gsm |}.
 
 Definition Mbind
   (r : ghost_simplified_model_result)
-  (f : ghost_simplified_memory -> ghost_simplified_model_result) :
+  (f : ghost_simplified_model -> ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match r.(gsmsr_data) with
-  | Error _ _ s => r
-  | Ok _ _ st =>
-    let st' := f st in
-    {| gsmsr_log := app st'.(gsmsr_log) r.(gsmsr_log);
-       gsmsr_data := st'.(gsmsr_data); |}
+  | Error _ _ e => r
+  | Ok _ _ gsm =>
+    let s' := f gsm in
+    {| gsmsr_log := app s'.(gsmsr_log) r.(gsmsr_log);
+       gsmsr_data := s'.(gsmsr_data); |}
   end.
 
-Definition Merror (s : ghost_simplified_model_error) : ghost_simplified_model_result :=
-  {| gsmsr_log := nil; gsmsr_data := Error _ _ s |}.
+Definition Merror (gse : ghost_simplified_model_error) : ghost_simplified_model_result :=
+  {| gsmsr_log := nil; gsmsr_data := Error _ _ gse |}.
 
 Definition Mlog
   (s : log_element)
@@ -278,12 +275,12 @@ Definition Mlog
   r <|gsmsr_log := s :: r.(gsmsr_log) |>.
 
 Definition Mupdate_state
-  (updater : ghost_simplified_memory -> ghost_simplified_model_result)
+  (updater : ghost_simplified_model -> ghost_simplified_model_result)
   (st : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match st with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
-    let new_st := updater st in
+  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
+    let new_st := updater gsm in
     new_st <| gsmsr_log := new_st.(gsmsr_log) ++ logs |>
   | e => e
   end
@@ -291,9 +288,9 @@ Definition Mupdate_state
 
 Definition insert_location
   (loc : sm_location)
-  (st : ghost_simplified_memory) :
-  ghost_simplified_memory :=
-  (st <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> st.(gsm_memory) |>)
+  (gsm : ghost_simplified_model) :
+  ghost_simplified_model :=
+  (gsm <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> gsm.(gsm_memory) |>)
 .
 
 Definition Minsert_location
@@ -301,10 +298,10 @@ Definition Minsert_location
   (mon : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
   match mon with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ st |} =>
+  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
     {|
       gsmsr_log := logs;
-      gsmsr_data := Ok _ _ (insert_location loc st)
+      gsmsr_data := Ok _ _ (insert_location loc gsm)
     |}
   | e => e
   end
@@ -315,7 +312,7 @@ Definition Minsert_location
 
 (* Type used as input of the page table visitor function  *)
 Record page_table_context := mk_page_table_context {
-  ptc_state: ghost_simplified_memory;
+  ptc_state: ghost_simplified_model;
   ptc_loc: option sm_location;
   ptc_partial_ia: phys_addr_t;
   ptc_addr: phys_addr_t;

@@ -121,7 +121,7 @@ Global Instance owner_t_eq_decision : EqDecision owner_t.
 
 Definition root_val (root : owner_t) : phys_addr_t :=
   match root with
-    | Root r => r
+  | Root r => r
   end
 .
 
