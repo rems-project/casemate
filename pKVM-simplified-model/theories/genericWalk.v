@@ -281,15 +281,15 @@ Fixpoint traverse_si_pgt_aux
   (visitor_cb : page_table_context -> ghost_simplified_model_result)
   (stage : stage_t)
   (roots : list owner_t)
-  (st : ghost_simplified_model_result) :
+  (res : ghost_simplified_model_result) :
   ghost_simplified_model_result :=
-  match roots, st.(gsmsr_data) with
-  | [], _ => st
+  match roots, res.(gsmsr_data) with
+  | [], _ => res
   (* If the state is failed, there is no point in going on *)
-  | _, Error _ _ _ => st
+  | _, Error _ _ _ => res
   | r :: q, _ =>
-    let st := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) st in
-    traverse_si_pgt_aux th visitor_cb stage q st
+    let res := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) res in
+    traverse_si_pgt_aux th visitor_cb stage q res
   end
 .
 

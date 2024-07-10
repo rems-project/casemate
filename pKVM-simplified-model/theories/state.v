@@ -42,10 +42,10 @@ Record aut_invalid_clean := {
 }.
 
 Inductive sm_pte_state :=
-  | SPS_STATE_PTE_VALID (valid_state:aut_valid)
-  | SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state:aut_invalid_unclean)
-  | SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state:aut_invalid_clean)
-  | SPS_STATE_PTE_NOT_WRITABLE : sm_pte_state
+  | SPS_STATE_PTE_VALID (valid_state : aut_valid)
+  | SPS_STATE_PTE_INVALID_UNCLEAN (invalid_unclean_state : aut_invalid_unclean)
+  | SPS_STATE_PTE_INVALID_CLEAN (invalid_clean_state : aut_invalid_clean)
+  | SPS_STATE_PTE_NOT_WRITABLE
 .
 
 Record ghost_addr_range := {
@@ -64,6 +64,7 @@ Inductive level_t :=
   | l3
   | lerror
 .
+
 Definition next_level (l : level_t) : level_t :=
   match l with
   | l0 => l1
@@ -73,12 +74,14 @@ Definition next_level (l : level_t) : level_t :=
   | lerror => lerror
   end
 .
+
 Definition is_l3 (l : level_t) : bool :=
   match l with
   | l3 => true
   | _ => false
   end
 .
+
 Global Instance level_t_eq_decision : EqDecision level_t.
   Proof. solve_decision. Qed.
 
@@ -112,7 +115,8 @@ Record sm_location := mk_sm_location {
   sl_pte : option ghost_exploded_descriptor;
   sl_thread_owner : option thread_identifier;
 }.
-#[export] Instance eta_sm_location : Settable _ := settable! mk_sm_location < sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
+#[export] Instance eta_sm_location : Settable _ := 
+  settable! mk_sm_location <sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
 
 (* Do we need locks? *)
 Record owner_locks := {
@@ -155,8 +159,9 @@ Record ghost_simplified_model := mk_ghost_simplified_model {
   gsm_lock_state : ghost_simplified_model_lock_state;
   gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_model : Settable _ :=
-  settable! mk_ghost_simplified_model <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
+#[export] Instance eta_ghost_simplified_model : Settable _ := 
+  settable! mk_ghost_simplified_model 
+    <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
 Definition is_zallocd (st : ghost_simplified_model) (addr : phys_addr_t) : bool :=
   match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
@@ -167,8 +172,7 @@ Definition is_zallocd (st : ghost_simplified_model) (addr : phys_addr_t) : bool 
 
 Definition get_location
   (st : ghost_simplified_model)
-  (addr : phys_addr_t) :
-  option sm_location :=
+  (addr : phys_addr_t) : option sm_location :=
   match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
   | Some loc => Some loc
   | None =>
@@ -179,41 +183,50 @@ Definition get_location
   end
 .
 
-Infix "!!" := get_location (at level 20) .
+Definition get_lock_of_owner
+  (owner : owner_t)
+  (gsm : ghost_simplified_model) : option u64 :=
+  lookup (phys_addr_val (root_val owner)) gsm.(gsm_lock_addr).
+ 
 
-Definition is_well_locked
+Infix "!!" := get_location (at level 20).
+
+Definition is_loc_thread_owned
   (cpu : thread_identifier)
-  (location : phys_addr_t)
+  (location : sm_location)
   (gsm : ghost_simplified_model) : bool :=
-  match gsm !! location with
-  | None => true
-  | Some location =>
-    match location.(sl_pte) with
-    | None => true
-    | Some pte =>
-        match lookup (phys_addr_val (root_val pte.(ged_owner))) gsm.(gsm_lock_addr) with
-        | None => false
-        | Some addr =>
-          match lookup addr gsm.(gsm_lock_state) with
-          | Some lock_owner => bool_decide (lock_owner = cpu)
-          | None => false
-          end
-        end
-      end
-    end
+  match location.(sl_pte), location.(sl_thread_owner) with
+  | Some _, Some thread_owner =>
+    bool_decide (thread_owner = cpu)
+  | _, _ => false
+  end
 .
 
-Definition is_pte_owned
+Definition is_pte_well_locked
   (cpu : thread_identifier)
-  (location : phys_addr_t)
+  (pte : ghost_exploded_descriptor)
   (gsm : ghost_simplified_model) : bool :=
-  match gsm !! location with
+  match get_lock_of_owner pte.(ged_owner) gsm with
+  | None => false
+  | Some addr =>
+    match lookup addr gsm.(gsm_lock_state) with
+    | Some lock_owner => bool_decide (lock_owner = cpu)
+    | None => false
+    end
+  end
+.
+
+Definition should_visit
+  (cpu : thread_identifier)
+  (addr : phys_addr_t)
+  (gsm : ghost_simplified_model) : bool :=
+  match gsm !! addr with
   | None => true
-  | Some location =>
-      match location.(sl_pte), location.(sl_thread_owner) with
-      | Some _, Some thread_owner =>
-        bool_decide (thread_owner = cpu)
-      | _, _ => false
+  | Some location => 
+      match location.(sl_pte) with
+      | None => true
+      | Some pte => 
+        orb (is_loc_thread_owned cpu location gsm) (is_pte_well_locked cpu pte gsm)
       end
   end
 .
@@ -306,7 +319,6 @@ Definition Minsert_location
   | e => e
   end
 .
-
 
 (** States about page tables *)
 

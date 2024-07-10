@@ -18,7 +18,7 @@ Require Export transition.
 (*                             Code for write                                             *)
 (******************************************************************************************)
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
-Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition clean_reachable_cb (ctx : page_table_context) : ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | None => Merror (GSME_uninitialised "clean_reachable" ctx.(ptc_addr))
     | Some location =>
@@ -34,7 +34,7 @@ Definition clean_reachable (ctx : page_table_context) : ghost_simplified_model_r
   end
 .
 
-Definition is_all_reachable_clean
+Definition clean_reachable
   (map : table_data_t)
   (descriptor : ghost_exploded_descriptor)
   (gsm : ghost_simplified_model):
@@ -45,7 +45,7 @@ Definition is_all_reachable_clean
     descriptor.(ged_ia_region).(range_start)
     (next_level descriptor.(ged_level))
     descriptor.(ged_stage)
-    clean_reachable
+    clean_reachable_cb
     gsm
 .
 
@@ -62,7 +62,7 @@ Definition step_write_table_mark_children
     (* Tests if the page table is well formed *)
     match descriptor.(ged_pte_kind) with
       | PTER_PTE_KIND_TABLE map =>
-        let st := is_all_reachable_clean map descriptor gsm in
+        let st := clean_reachable map descriptor gsm in
         let st := Mlog
           (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
         Mupdate_state (traverse_pgt_from 
@@ -180,24 +180,20 @@ Definition step_write_invalid_on_valid
   (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
   let old := loc.(sl_val) in
   match loc.(sl_pte) with
-    | None => (* This does not make sense because function is called on a pgt *)
-        Merror (GSME_internal_error IET_unexpected_none)
-    | Some descriptor =>
-      let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
-      let st := (gsm
-          <| gsm_memory :=
-            (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> gsm.(gsm_memory))
-          |> )
-      in
-      Mlog (Log "BBM: valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
-      match descriptor.(ged_pte_kind) with
-        | PTER_PTE_KIND_TABLE map =>
-          let st := traverse_pgt_from descriptor.(ged_owner) map.(next_level_table_addr) descriptor.(ged_ia_region).(range_start) (next_level descriptor.(ged_level)) descriptor.(ged_stage) clean_reachable st in
-          let st := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) st in
-          (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
-          Mupdate_state (step_write_table_mark_children tid wmo loc val descriptor (mark_not_writable_cb tid)) st
-        | _ => Mreturn st
-      end
+  | None => (* This does not make sense because function is called on a pgt *)
+      Merror (GSME_internal_error IET_unexpected_none)
+  | Some descriptor =>
+    let new_desc := descriptor <| ged_state := (SPS_STATE_PTE_INVALID_UNCLEAN {| ai_invalidator_tid := tid; ai_old_valid_desc :=  old; ai_lis := LIS_unguarded; |}) |> in
+    let gsm := (gsm <| gsm_memory := (<[ loc.(sl_phys_addr) := loc <|sl_pte := Some (new_desc)|> <| sl_val := val |> ]> gsm.(gsm_memory))|> ) in
+    Mlog (Log "BBM: valid->invalid_unclean"%string (phys_addr_val loc.(sl_phys_addr)))
+    match descriptor.(ged_pte_kind) with
+    | PTER_PTE_KIND_TABLE map =>
+      let res := clean_reachable map descriptor gsm in
+      let res := Mlog (Log "invalidating a table descriptor"%string (phys_addr_val loc.(sl_phys_addr))) res in
+      (* If it is well formed, mark its children as page tables, otherwise, return the same error *)
+      Mupdate_state (step_write_table_mark_children tid wmo loc val descriptor (mark_not_writable_cb tid)) res
+    | _ => Mreturn gsm
+    end
   end
 .
 
@@ -221,83 +217,63 @@ Definition is_valid_state (st: sm_pte_state) : bool :=
   end
 .
 
-Definition is_well_locked_write_by_lock
+Definition drop_write_authorisation_of_lock
   (cpu : thread_identifier)
   (addr : phys_addr_t)
-  (type : write_memory_order)
+  (wmo : write_memory_order)
   (descriptor : u64)
-  (gsm : ghost_simplified_model)
-  (addr_lock : u64)
-  (pte : ghost_exploded_descriptor) :
+  (pte : ghost_exploded_descriptor)
+  (gsm : ghost_simplified_model) :
   ghost_simplified_model_result :=
-  match lookup addr_lock gsm.(gsm_lock_state) with
+  match get_lock_of_owner pte.(ged_owner) gsm with
+  | None => Mreturn gsm
+  | Some addr_lock =>
+    match lookup addr_lock gsm.(gsm_lock_state) with
     | Some lock_owner =>
-    if bool_decide (lock_owner = cpu) then
-      match type with
+      if bool_decide (lock_owner = cpu) then
+        match wmo with
         | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
           match lookup addr_lock gsm.(gsm_lock_authorization) with
-            | None => Merror (GSME_internal_error IET_no_write_authorization)
-            | Some write_authorized => Mreturn (gsm <| gsm_lock_authorization := insert addr_lock write_unauthorized gsm.(gsm_lock_authorization)|>)
-            | Some write_unauthorized =>
-              if (is_desc_valid descriptor) || is_valid_state pte.(ged_state) then
-                Merror (GSME_write_without_authorization addr)
-              else
-                Mreturn (gsm <| gsm_lock_authorization := insert addr_lock write_unauthorized gsm.(gsm_lock_authorization)|>)
+          | None => Merror (GSME_internal_error IET_no_write_authorization)
+          | Some write_authorized => Mreturn (gsm <| gsm_lock_authorization := insert addr_lock write_unauthorized gsm.(gsm_lock_authorization)|>)
+          | Some write_unauthorized =>
+            if (is_desc_valid descriptor) || is_valid_state pte.(ged_state) then
+              Merror (GSME_write_without_authorization addr)
+            else
+              Mreturn (gsm <| gsm_lock_authorization := insert addr_lock write_unauthorized gsm.(gsm_lock_authorization)|>)
           end
         | WMO_release => (* drop the authorization*)
           Mreturn (gsm <| gsm_lock_authorization := insert addr_lock write_unauthorized gsm.(gsm_lock_authorization)|>)
-      end
-    else
-      Merror (GSME_transition_without_lock addr)
+        end
+      else
+        Merror (GSME_transition_without_lock addr)
     | None => Merror (GSME_transition_without_lock addr)
     end
-.
-
-Definition is_well_locked_write
-  (cpu : thread_identifier)
-  (addr : phys_addr_t)
-  (type : write_memory_order)
-  (descriptor : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
-  match gsm !! addr with
-    | None => Mreturn gsm
-    | Some location =>
-      match location.(sl_pte) with
-        | None => Mreturn gsm
-        | Some pte =>
-          match lookup (phys_addr_val (root_val pte.(ged_owner))) gsm.(gsm_lock_addr) with
-            | None => Mreturn gsm
-            | Some addr_lock =>
-                is_well_locked_write_by_lock cpu addr type descriptor gsm addr_lock pte
-          end
-      end
   end
 .
 
-Definition write_is_authorised
+Definition drop_write_authorisation
   (tid : thread_identifier)
   (wd : trans_write_data)
   (gsm : ghost_simplified_model) :
   ghost_simplified_model_result :=
+  let wmo := wd.(twd_mo) in
+  let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
     then Merror GSME_unaligned_write 
   else
     match gsm !! addr with
-      | None => Mreturn gsm
-      | Some location =>
-          match location.(sl_pte) with
-          | Some pte =>
-              if is_pte_owned tid addr gsm
-                then Mreturn gsm
-              else
-                let wmo := wd.(twd_mo) in
-                let val := wd.(twd_val) in
-                is_well_locked_write tid addr wd.(twd_mo) wd.(twd_val) gsm
-          | None => 
+    | None => Mreturn gsm
+    | Some location =>
+        match location.(sl_pte) with
+        | None => Mreturn gsm
+        | Some pte =>
+          if is_loc_thread_owned tid location gsm then
             Mreturn gsm
-          end
+          else
+            drop_write_authorisation_of_lock tid addr wmo val pte gsm
+        end
     end
 .
 
@@ -311,46 +287,45 @@ Definition step_write_aux
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
     then Merror GSME_unaligned_write else
-  let new_st := write_is_authorised tid wd gsm in
+  let new_st := drop_write_authorisation tid wd gsm in
   let write_update s :=
     match s !! addr with
-      | Some (loc) =>
-        match loc.(sl_pte) with
-          | Some desc =>
-            (* If we write to a page table, depending on its state, we update them  *)
-            match desc.(ged_state) with
-              | SPS_STATE_PTE_VALID av =>
-                  (step_write_on_valid tid wmo loc val s)
-              | SPS_STATE_PTE_INVALID_CLEAN av =>
-                  (step_write_on_invalid tid wmo loc val s)
-              | SPS_STATE_PTE_INVALID_UNCLEAN av =>
-                  (step_write_on_invalid_unclean tid wmo loc val s)
-              | SPS_STATE_PTE_NOT_WRITABLE =>
-                  (Merror (GSME_write_on_not_writable addr))
-            end
-          | None => (* If it is not a pte, we just update the value *)
-            let new_loc := loc <| sl_val := val |> in
-            {|
-              gsmsr_log := nil;
-              gsmsr_data :=
-                Ok _ _ (
-                  s <| gsm_memory := <[ addr := new_loc ]> s.(gsm_memory) |>
-                );
-            |}
+    | Some (loc) =>
+      match loc.(sl_pte) with
+      | Some desc =>
+        (* If we write to a page table, depending on its state, we update them  *)
+        match desc.(ged_state) with
+        | SPS_STATE_PTE_VALID av =>
+            (step_write_on_valid tid wmo loc val s)
+        | SPS_STATE_PTE_INVALID_CLEAN av =>
+            (step_write_on_invalid tid wmo loc val s)
+        | SPS_STATE_PTE_INVALID_UNCLEAN av =>
+            (step_write_on_invalid_unclean tid wmo loc val s)
+        | SPS_STATE_PTE_NOT_WRITABLE =>
+            (Merror (GSME_write_on_not_writable addr))
         end
-      | None =>
-        (* If the location has not been written to, it is not a pgt, just save its value *)
-          let new_st := s <| gsm_memory :=
-              <[ addr :=
-                {|
-                  sl_phys_addr := addr;
-                  sl_val := val;
-                  sl_pte := None;
-                  sl_thread_owner := None;
-                |}
-              ]> s.(gsm_memory) |> in
-                  Mreturn new_st
-            end
+      | None => (* If it is not a pte, we just update the value *)
+        let new_loc := loc <| sl_val := val |> in
+        {|
+          gsmsr_log := nil;
+          gsmsr_data :=
+            Ok _ _ (
+              s <| gsm_memory := <[ addr := new_loc ]> s.(gsm_memory) |>
+            );
+        |}
+      end
+    | None =>
+      (* If the location has not been written to, it is not a pgt, just save its value *)
+        let new_st := s <| gsm_memory :=
+            <[ addr := {|
+                sl_phys_addr := addr;
+                sl_val := val;
+                sl_pte := None;
+                sl_thread_owner := None;
+              |}
+            ]> s.(gsm_memory) |> in
+                Mreturn new_st
+          end
   in
   Mupdate_state write_update new_st
 .
@@ -358,11 +333,11 @@ Definition step_write_aux
 Function step_write_page
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (mon : ghost_simplified_model_result)
+  (res : ghost_simplified_model_result)
   (offs : Z) {measure Z.abs_nat offs} :
   ghost_simplified_model_result :=
   if Zle_bool offs 0 then
-    mon
+    res
   else
     let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z_64 b8 (offs - 1))) in
     let sub_wd :=
@@ -372,8 +347,8 @@ Function step_write_page
         twd_val := wd.(twd_val);
       |}
     in
-    let mon := Mupdate_state (step_write_aux tid sub_wd) mon in
-    step_write_page tid wd mon (offs - 1)
+    let res := Mupdate_state (step_write_aux tid sub_wd) res in
+    step_write_page tid wd res (offs - 1)
 .
 Proof. lia. Qed.
 
