@@ -107,7 +107,7 @@ let pp_log ppf = function
 let pp_logs ppf log = (Fmt.list ~sep:Fmt.comma pp_log) ppf log
 
 let pp_step_result :
-    ( Coq_executable_sm.ghost_simplified_memory,
+    ( Coq_executable_sm.ghost_simplified_model,
       Coq_executable_sm.ghost_simplified_model_error )
     result
     Fmt.t =
@@ -220,7 +220,7 @@ let pp_ghost_simplified_model_locks ppf m =
          :: xs)
        m.gsm_lock_addr [])
 
-let pp_ghost_simplified_memory ppf m =
+let pp_ghost_simplified_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
@@ -229,7 +229,7 @@ let pp_ghost_simplified_memory ppf m =
     pp_ghost_simplified_model_locks m
 
 let pp_state state =
-  Fmt.(result ~ok:pp_ghost_simplified_memory ~error:pp_error) state
+  Fmt.(result ~ok:pp_ghost_simplified_model ~error:pp_error) state
 
 let pp_tr ppf tr =
   Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS" pp_transition tr

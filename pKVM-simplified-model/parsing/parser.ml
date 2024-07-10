@@ -67,7 +67,7 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
       if dump_roots then
         Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_pte_roots state.gsm_roots;
       if dump_state then
-        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_ghost_simplified_memory state);
+        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_ghost_simplified_model state);
     (* If we reach an error, we dump the transition *)
     if Result.is_error res.gsmsr_data then Fmt.pr "@[%a@]@." pp_tr trans;
     res.gsmsr_data
