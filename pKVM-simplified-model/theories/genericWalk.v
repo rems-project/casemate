@@ -204,10 +204,10 @@ with traverse_pgt_from_offs
                         | PTER_PTE_KIND_TABLE table_data =>
                           (* If it is a page table descriptor, we we traverse the sub-page table *)
                           let rec_table_start := table_data.(next_level_table_addr) in
-                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) pa+ 
+                          let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) pa+
                               (((Phys_addr i) pa* exploded_desc.(ged_ia_region).(range_size))) in
                           (* recursive call: explore sub-pgt *)
-                          traverse_pgt_from_aux 
+                          traverse_pgt_from_aux
                             root rec_table_start next_partial_ia (next_level level) stage visitor_cb max_call_number mon
                         | _ => mon
                       end
@@ -262,13 +262,13 @@ Fixpoint traverse_si_pgt_aux
         | Error _ _ _ => st
         | _ =>
           let updater s :=
-            let should_update := 
+            let should_update :=
               match th with
                 | None => true
                 | Some tid => is_well_locked tid (root_val r) s
               end in
-            if should_update then 
-              traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb s 
+            if should_update then
+              traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb s
             else Mreturn s
           in
           let st := Mupdate_state updater st in
@@ -319,7 +319,7 @@ Definition mark_cb
         | Some _ => Merror (GSME_double_use_of_pte ctx.(ptc_addr))
         | None =>
           let new_descriptor := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
-          let new_location := location <| sl_pte := (Some new_descriptor) |> in
+          let new_location := location <| sl_pte := (Some new_descriptor) |> <| sl_thread_owner := None |> in
           let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
           Mreturn new_state
       end
@@ -336,7 +336,7 @@ Definition unmark_cb
     | Some location =>
       match location.(sl_pte) with
         | Some desc =>
-          let new_loc := location <|sl_pte := None |> in
+          let new_loc := location <| sl_pte := None |> in
           let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
           {| gsmsr_log := [Log "unmarking" (phys_addr_val ctx.(ptc_addr))];
              gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
@@ -354,18 +354,18 @@ Definition mark_not_writable_cb
   ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | Some location =>
-        match location.(sl_thread_owner) with
-          | None => Merror (GSME_unimplemented)
-          | Some _ =>
+      match location.(sl_thread_owner) with
+        | None =>
             match location.(sl_pte) with
-              | Some desc =>
-                let new_loc := location <| sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
-                let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-                {| gsmsr_log := []; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
-              | None =>
-                Merror (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
-            end
-        end
+            | Some desc =>
+              let new_loc := location <| sl_pte := Some (desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |>) |> in
+              let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
+              {| gsmsr_log := []; gsmsr_data := Ok _ _ (ctx.(ptc_state) <| gsm_memory := new_st |>) |}
+            | None =>
+              Merror (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
+          end
+        | Some tho => Merror (GSME_parent_invalidated "mark_not_writable"%string location.(sl_phys_addr))
+      end
     | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
         Merror (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr))
   end

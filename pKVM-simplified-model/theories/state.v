@@ -225,6 +225,8 @@ Inductive ghost_simplified_model_error :=
   | GSME_write_without_authorization : phys_addr_t -> ghost_simplified_model_error
   | GSME_unimplemented
   | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
+  | GSME_parent_invalidated : string -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> ghost_simplified_model_error
 .
 
 Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
@@ -310,3 +312,5 @@ Record page_table_context := mk_page_table_context {
 }.
 #[export] Instance eta_page_table_context : Settable _ :=
   settable! mk_page_table_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.
+
+

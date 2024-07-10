@@ -188,6 +188,7 @@ Inductive ghost_hint_kind :=
   | GHOST_HINT_SET_ROOT_LOCK
   | GHOST_HINT_SET_OWNER_ROOT
   | GHOST_HINT_RELEASE
+  | GHOST_HINT_SET_PTE_THREAD_OWNER
 .
 
 Record src_loc := {
