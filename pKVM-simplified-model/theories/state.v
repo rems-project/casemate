@@ -118,11 +118,10 @@ Record sm_location := mk_sm_location {
 #[export] Instance eta_sm_location : Settable _ := 
   settable! mk_sm_location <sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
 
-(* Do we need locks? *)
 Record owner_locks := {
   ol_len : u64;
   ol_owner_ids : list owner_t;
-  ol_locks : unit (* TODO??? *);
+  ol_locks : unit;
 }.
 
 (* The memory state is a map from address to simplified model location *)

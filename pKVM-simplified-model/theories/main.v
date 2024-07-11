@@ -1,5 +1,4 @@
 (** Simplified model *)
-(* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/include/nvhe/ghost_simplified_model.h *)
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
@@ -74,4 +73,3 @@ Definition all_steps
   res <| gsmsr_log := rev res.(gsmsr_log) |>
 .
 
-(* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost_simplified_model.c *)

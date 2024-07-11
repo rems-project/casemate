@@ -1,7 +1,6 @@
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
-(* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 Require Import stdpp.gmap.
@@ -97,14 +96,13 @@ Definition decode_tlbi_stage (td : TLBI) : option TLBI_stage_kind :=
 Definition decode_tlbi_shootdown (td : TLBI) : option bool :=
   match td.(TLBI_shareability) with
     | Shareability_ISH => Some true
-    | _ => Some true (* TODO: false *)
+    | _ => Some true
   end
 .
 
 Definition decode_tlbi_method (td : TLBI) : option TLBI_method :=
   match td.(TLBI_rec).(TLBIRecord_op) with
     | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-      (* TODO: Some (TLBI_by_addr_space (Phys_addr Sth)) *)
       Some TLBI_by_addr_all
     | TLBIOp_VA | TLBIOp_IPAS2 =>
       Some (TLBI_by_input_addr

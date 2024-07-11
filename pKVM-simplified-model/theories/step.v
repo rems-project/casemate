@@ -1,5 +1,4 @@
 (** Simplified model *)
-(* https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/include/nvhe/ghost_simplified_model.h *)
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
@@ -92,7 +91,6 @@ Definition step_write_on_invalid
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror (GSME_internal_error IET_unexpected_none)
     | Some descriptor =>
-      (* TODO: save old descriptor *)
       let descriptor := deconstruct_pte 
           tid 
           descriptor.(ged_ia_region).(range_start) 
@@ -103,7 +101,6 @@ Definition step_write_on_invalid
       let new_gsm := gsm <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> gsm.(gsm_memory) |> in
       step_write_table_mark_children tid wmo loc val descriptor (mark_cb tid) new_gsm
     end
-  (* Question: In the C model, the LVS status is updated for each CPU but never used, what should the Coq model do? *)
 .
 
 Definition step_write_on_invalid_unclean
@@ -492,7 +489,6 @@ Definition dsb_visitor
   ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
-      (* Question: should we ignore it and return the state? *)
       Merror (GSME_uninitialised "dsb_visitor"%string ctx.(ptc_addr))
     | Some location =>
       match location.(sl_pte) with
@@ -600,7 +596,6 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
               let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) b12 in
               let ia_start := pte_desc.(ged_ia_region).(range_start) in
               let ia_end := ia_start pa+ pte_desc.(ged_ia_region).(range_size) in
-              (* TODO: check that this is correct *)
               if (is_leaf pte_desc.(ged_pte_kind)
                        && (phys_addr_val ia_start b<=? tlbi_addr)
                        && (tlbi_addr b<? phys_addr_val ia_end)) then
@@ -939,7 +934,6 @@ Definition step_hint
       (* Not sure about the size of the iteration *)
       set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) gsm [] z512
     | GHOST_HINT_RELEASE =>
-      (* Can we use the free to detect when page tables are released? *)
       step_release_table cpu (Root hd.(thd_location)) gsm
     | GHOST_HINT_SET_PTE_THREAD_OWNER =>
       (* Set an owner thread of the PTE to track private ownership *)
