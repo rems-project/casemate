@@ -2089,19 +2089,19 @@ static void step(struct ghost_simplified_model_transition trans)
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
-	ensure_atomic_lock();
-	lock_sm();
-
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	step(trans);
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+	ensure_atomic_lock();
+	lock_sm();
+	
 	if (is_initialised) {
 	    step(trans);
 	}
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 	unlock_sm();
 	ensure_atomic_unlock();
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 }
 
 
