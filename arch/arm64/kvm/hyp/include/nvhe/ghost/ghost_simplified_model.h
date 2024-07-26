@@ -202,6 +202,7 @@ struct sm_location {
 #define BLOB_SHIFT 12
 #define MAX_BLOBS (0x2000)
 #define MAX_ROOTS 10
+#define MAX_UNCLEAN_LOCATIONS 10
 
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
@@ -258,6 +259,15 @@ bool blob_unclean(struct ghost_memory_blob *blob);
  */
 struct sm_location *location(u64 phys);
 
+/**
+ * struct unclean_locations - set of locations
+ */
+
+struct location_set {
+	struct sm_location *locations[MAX_UNCLEAN_LOCATIONS];
+	u64 len;
+};
+
 #define GHOST_SIMPLIFIED_MODEL_MAX_LOCKS 16
 
 /**
@@ -298,6 +308,7 @@ hyp_spinlock_t *owner_lock(sm_owner_t owner_id);
  * @base_addr: the physical address of the start of the (simplified) memory.
  * @size: the number of bytes in the simplified memory to track.
  * @memory: the actual simplified model memory.
+ * @unclean_locations: set of all the unclean locations
  * @nr_s1_roots: number of EL2 stage1 pagetable roots being tracked.
  * @s1_roots: set of known EL2 stage1 pagetable roots.
  * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
@@ -310,11 +321,14 @@ struct ghost_simplified_model_state {
 	u64 size;
 	struct ghost_simplified_memory memory;
 
-	u64 nr_s2_roots;
-	u64 s2_roots[MAX_ROOTS];
+	struct location_set unclean_locations;
 
 	u64 nr_s1_roots;
 	u64 s1_roots[MAX_ROOTS];
+
+	u64 nr_s2_roots;
+	u64 s2_roots[MAX_ROOTS];
+
 
 	struct owner_locks locks;
 	struct lock_status locks_status;

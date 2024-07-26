@@ -692,6 +692,72 @@ static void traverse_all_pgtables(pgtable_traverse_cb visitor_cb, void *data)
 	traverse_all_s2_pgtables(visitor_cb, data);
 }
 
+static void add_location_to_unclean_PTE(struct sm_location* loc)
+{
+	// Check that the location is not already in the set
+	for (int i = 0; i < the_ghost_state->unclean_locations.len; i++) {
+		if (loc == the_ghost_state->unclean_locations.locations[i]) {
+			GHOST_WARN("A location was added twice to the unclean PTEs");
+			ghost_assert(false);
+		}
+	}
+
+	// Add it to the set
+	ghost_assert(the_ghost_state->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
+	the_ghost_state->unclean_locations.locations[the_ghost_state->unclean_locations.len] =
+		loc;
+	the_ghost_state->unclean_locations.len ++;
+
+
+}
+
+
+static void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, enum mapping_stage stage)
+{
+	struct sm_location *loc;
+	u64 *len = &the_ghost_state->unclean_locations.len;
+
+	for (int i = 0; i < *len; i++) {
+		loc = the_ghost_state->unclean_locations.locations[i];
+
+		ghost_assert(loc->initialised);
+		ghost_assert(loc->is_pte);
+		ghost_assert(loc->state.kind == STATE_PTE_INVALID_UNCLEAN);
+
+		if (stage != GHOST_STAGE_NONE)
+			if (stage != loc->descriptor.stage)
+				break;
+
+		// Check that the location is consistent and well-locked
+		u64 desc = read_phys(loc->phys_addr);
+
+
+		// We rebuild the context from the descriptor of the location
+		struct pgtable_traverse_context ctx;
+		ctx.loc = loc;
+		ctx.descriptor = desc;
+		ctx.exploded_descriptor = loc->descriptor;
+		ctx.level = loc->descriptor.level;
+		ctx.leaf = loc->descriptor.kind != PTE_KIND_TABLE;
+		ctx.root = loc->owner;
+		ctx.stage = loc->descriptor.stage;
+		ctx.data = data;
+		
+		visitor_cb(&ctx);
+		
+		// If the update resulted in cleaning the location, remove it from the list of
+		// unclean locations
+		if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
+			// Take the last location of the list and put it in the current cell
+			(*len)--;
+			the_ghost_state->unclean_locations.locations[i] =
+					the_ghost_state->unclean_locations.locations[*len];
+			// decrement i to run on the current cell
+			i--;
+		}
+	}
+}
+
 
 struct pgtable_walk_result {
 	u64 requested_pte;
@@ -1418,6 +1484,9 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 		.lis = LIS_unguarded
 	};
 
+	// Add location to the list of unclean locations
+	add_location_to_unclean_PTE(loc);
+
 	step_write_table_mark_children(mark_not_writable_cb, loc);
 }
 
@@ -1656,7 +1725,7 @@ static void step_dsb(struct ghost_simplified_model_transition trans)
 	// annoyingly, DSBs aren't annotated with their addresses.
 	// so we do the really dumb thing: we go through every pagetable that we know about
 	// and step any we find in the right state.
-	traverse_all_pgtables(dsb_visitor, &trans.dsb_data);
+	traverse_all_unclean_PTE(dsb_visitor, &trans.dsb_data, GHOST_STAGE_NONE);
 
 	// The DSBs also enforce a sufficient barrier to allow plain writes again
 	reset_write_authorizations();
@@ -1849,12 +1918,12 @@ static void step_tlbi(struct ghost_simplified_model_transition trans)
 	switch (decoded.regime) {
 	/* TLBIs that hit host/guest tables */
 	case TLBI_REGIME_EL10:
-		traverse_all_s2_pgtables(tlbi_visitor, &decoded);
+		traverse_all_unclean_PTE(tlbi_visitor, &decoded, GHOST_STAGE2);
 		break;
 
 	/* TLBIs that hit pKVM's own pagetable */
 	case TLBI_REGIME_EL2:
-		traverse_all_s1_pgtables(tlbi_visitor, &decoded);
+		traverse_all_unclean_PTE(tlbi_visitor, &decoded, GHOST_STAGE1);
 		break;
 
 	default:
