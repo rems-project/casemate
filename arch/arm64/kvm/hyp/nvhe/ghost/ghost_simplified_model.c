@@ -90,58 +90,117 @@ bool host_locked;
 bool vm_table_locked;
 bool vms_locked[KVM_MAX_PVMS];
 
-static bool try_lock(hyp_spinlock_t *lock)
+
+////////////////////
+// Locks
+
+hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
 {
-	if (! hyp_spin_is_locked(lock)) {
-		hyp_spin_lock(lock);
-		return true;
-	} else {
-		return false;
-	}
-}
-
-static void ensure_atomic_lock(void)
-{
-	vm_table_locked = try_lock(&vm_table_lock);
-	host_locked = try_lock(&host_mmu.lock);
-	pkvm_locked = try_lock(&pkvm_pgd_lock);
-
-	if (! vm_table)
-		return;
-
-	// Note: no lock order between VMs (?)
-	// so we impose one going in order of vm_table index
-	for (u64 i=0; i < KVM_MAX_PVMS; i++) {
-		struct pkvm_hyp_vm *vm = vm_table[i];
-		if (vm)
-			vms_locked[i] = try_lock(&vm->lock);
-	}
-}
-
-static void ensure_atomic_unlock(void)
-{
-	/* undo all the locks we took earlier */
-
-	if (! vm_table)
-		goto unlock_pkvm;
-
-	for (u64 i = KVM_MAX_PVMS; i > 0; i--) {
-		struct pkvm_hyp_vm *vm = vm_table[i - 1];
-		if (vm && vms_locked[i - 1]) {
-			hyp_spin_unlock(&vm->lock);
+	for (int i = 0; i < the_ghost_state->locks.len; i++) {
+		if (the_ghost_state->locks.owner_ids[i] == owner_id) {
+			return the_ghost_state->locks.locks[i];
 		}
 	}
 
-unlock_pkvm:
-	if (pkvm_locked)
-		hyp_spin_unlock(&pkvm_pgd_lock);
-
-	if (host_locked)
-		hyp_spin_unlock(&host_mmu.lock);
-
-	if (vm_table_locked)
-		hyp_spin_unlock(&vm_table_lock);
+	return NULL;
 }
+
+static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	struct owner_locks *locks = &the_ghost_state->locks;
+
+	if (! owner_lock(root)) {
+		ghost_assert(false);
+	}
+
+	for (int i = 0; i < the_ghost_state->locks.len; i++) {
+		if (locks->owner_ids[i] == root) {
+			locks->locks[i] = lock;
+			return;
+		}
+	}
+
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't change lock on unlocked location");
+}
+
+static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	u64 i;
+
+	if (owner_lock(root)) {
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't append lock on already locked location");
+		BUG(); // unreachable;
+	}
+
+	i = the_ghost_state->locks.len++;
+	the_ghost_state->locks.owner_ids[i] = root;
+	the_ghost_state->locks.locks[i] = lock;
+}
+
+static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
+{
+	if (owner_lock(root)) {
+		swap_lock(root, lock);
+	} else {
+		append_lock(root, lock);
+	}
+}
+
+static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
+{
+	for (int i = 0; i < the_ghost_state->locks_status.len; i++) {
+		if (the_ghost_state->locks_status.address[i] == lock) {
+			if (state != NULL) {
+				*state = &the_ghost_state->locks_status.locker[i];
+			}
+			return the_ghost_state->locks_status.locker[i].id == cpu_id();
+		}
+	}
+	return false;
+}
+
+static bool is_location_locked(struct sm_location *loc)
+{
+	if (!loc->initialised || !loc->is_pte)
+		return true;
+
+	// If the location is owned by a thread, check that it is this thread.
+	if (loc->thread_owner >= 0)
+		return loc->thread_owner == cpu_id();
+
+	// Otherwise, get the owner of the location
+	struct lock_state *state;
+	sm_owner_t owner_id = loc->owner;
+	// assume 0 cannot be a valid owner id
+	if (!owner_id)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
+	// get the address of the lock
+	hyp_spinlock_t *lock = owner_lock(owner_id);
+	// check the state of the lock
+	return is_correctly_locked(lock, &state);
+}
+
+/**
+ * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
+ */
+void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
+{
+	ghost_assert(loc->initialised && loc->is_pte);
+	sm_owner_t owner_id = loc->owner;
+	// assume 0 cannot be a valid owner id
+	if (!owner_id)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
+	hyp_spinlock_t *lock = owner_lock(owner_id);
+	if (!lock)
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
+	if (!is_correctly_locked(lock, state)) {
+		ghost_printf("%g(sm_loc)", loc);
+		ghost_printf("%g(sm_locks)", the_ghost_state->locks);
+		
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
+	}
+}
+
 
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ///////////
@@ -325,11 +384,19 @@ static u64 __read_phys(u64 addr, bool pre)
 {
 	struct sm_location *loc;
 	u64 value;
-	u64 *hyp_va = (u64*)hyp_phys_to_virt((phys_addr_t)addr);
-	u64 hyp_val = *hyp_va;
+	u64 *hyp_va;
+	u64 hyp_val;
 
 	// otherwise, convert to index in memory and get the val
 	loc = location(addr);
+
+	// Check that the location is well-locked
+	if (! is_location_locked(loc))
+		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
+
+
+	hyp_va = (u64*)hyp_phys_to_virt((phys_addr_t)addr);
+	hyp_val = *hyp_va;
 
 	if (! loc->initialised) {
 		// if not yet initialised
@@ -579,9 +646,14 @@ struct pgtable_traverse_context {
 	void* data;
 };
 
+enum pgtable_traversal_flag {
+	READ_UNLOCKED_LOCATIONS,
+	NO_READ_UNLOCKED_LOCATIONS,
+};
+
 typedef void (*pgtable_traverse_cb)(struct pgtable_traverse_context *ctxt);
 
-static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
+static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
 {
 	struct pgtable_traverse_context ctxt;
 
@@ -606,10 +678,17 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 		pte_phys = table_start + i*sizeof(u64);
 		GHOST_LOG_INNER("loop", pte_phys, u64);
 
+		loc = location(pte_phys);
+
+		// If the location is owned by another thread, then don't keep going
+		if (flag == NO_READ_UNLOCKED_LOCATIONS && loc->thread_owner >= 0 && loc->thread_owner != cpu_id()) {
+			GHOST_LOG_CONTEXT_EXIT_INNER("loop");
+			break;
+		}
+
 		desc = read_phys(pte_phys);
 		GHOST_LOG_INNER("loop", desc, u64);
 
-		loc = location(pte_phys);
 
 		/* this pte maps a region of MAP_SIZES[level] starting from here */
 		pte_ia = partial_ia + i*MAP_SIZES[level];
@@ -632,6 +711,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 				level+1,
 				stage,
 				visitor_cb,
+				flag,
 				data
 			);
 			break;
@@ -645,7 +725,7 @@ static void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
+static void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
 {
 	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
@@ -659,37 +739,8 @@ static void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb 
 	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
 	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
 
-	traverse_pgtable_from(root, root, 0, start_level, stage, visitor_cb, data);
+	traverse_pgtable_from(root, root, 0, start_level, stage, visitor_cb, flag, data);
 	GHOST_LOG_CONTEXT_EXIT();
-}
-
-static void traverse_all_pgtables_for_stage(ghost_stage_t stage, pgtable_traverse_cb visitor_cb, void *data)
-{
-	u64 *root_table =
-		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
-
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		u64 root = root_table[i];
-
-		if (root)
-			traverse_pgtable(root, stage, visitor_cb, data);
-	}
-}
-
-static void traverse_all_s1_pgtables(pgtable_traverse_cb visitor_cb, void *data)
-{
-	traverse_all_pgtables_for_stage(GHOST_STAGE1, visitor_cb, data);
-}
-
-static void traverse_all_s2_pgtables(pgtable_traverse_cb visitor_cb, void *data)
-{
-	traverse_all_pgtables_for_stage(GHOST_STAGE2, visitor_cb, data);
-}
-
-static void traverse_all_pgtables(pgtable_traverse_cb visitor_cb, void *data)
-{
-	traverse_all_s1_pgtables(visitor_cb, data);
-	traverse_all_s2_pgtables(visitor_cb, data);
 }
 
 static void add_location_to_unclean_PTE(struct sm_location* loc)
@@ -783,13 +834,15 @@ void finder_cb(struct pgtable_traverse_context *ctxt)
 	}
 }
 
-struct pgtable_walk_result find_pte(u64 pte)
+struct pgtable_walk_result find_pte(struct sm_location *loc)
 {
 	struct pgtable_walk_result result;
 	result.found = false;
-	result.requested_pte = pte;
+	result.requested_pte = loc->phys_addr;
 
-	traverse_all_pgtables(finder_cb, &result);
+	ghost_assert(loc->initialised && loc->is_pte);
+
+	traverse_pgtable(loc->owner, loc->descriptor.stage, finder_cb, NO_READ_UNLOCKED_LOCATIONS, &result);
 
 	return result;
 }
@@ -820,111 +873,6 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_sta
 	return state;
 }
 
-////////////////////
-// Locks
-
-hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
-{
-	for (int i = 0; i < the_ghost_state->locks.len; i++) {
-		if (the_ghost_state->locks.owner_ids[i] == owner_id) {
-			return the_ghost_state->locks.locks[i];
-		}
-	}
-
-	return NULL;
-}
-
-static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
-{
-	struct owner_locks *locks = &the_ghost_state->locks;
-
-	if (! owner_lock(root)) {
-		ghost_assert(false);
-	}
-
-	for (int i = 0; i < the_ghost_state->locks.len; i++) {
-		if (locks->owner_ids[i] == root) {
-			locks->locks[i] = lock;
-			return;
-		}
-	}
-
-	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't change lock on unlocked location");
-}
-
-static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
-{
-	u64 i;
-
-	if (owner_lock(root)) {
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't append lock on already locked location");
-		BUG(); // unreachable;
-	}
-
-	i = the_ghost_state->locks.len++;
-	the_ghost_state->locks.owner_ids[i] = root;
-	the_ghost_state->locks.locks[i] = lock;
-}
-
-static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
-{
-	if (owner_lock(root)) {
-		swap_lock(root, lock);
-	} else {
-		append_lock(root, lock);
-	}
-}
-
-static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
-{
-	for (int i = 0; i < the_ghost_state->locks_status.len; i++) {
-		if (the_ghost_state->locks_status.address[i] == lock) {
-			if (state != NULL) {
-				*state = &the_ghost_state->locks_status.locker[i];
-			}
-			return the_ghost_state->locks_status.locker[i].id == cpu_id();
-		}
-	}
-	return false;
-}
-
-static bool is_location_locked(struct sm_location *loc)
-{
-	// If the location is owned by a thread, check that it is this thread.
-	if (loc->thread_owner >= 0)
-		return loc->thread_owner == cpu_id();
-
-	// Otherwise, get the owner of the location
-	struct lock_state *state;
-	sm_owner_t owner_id = loc->owner;
-	// assume 0 cannot be a valid owner id
-	if (!owner_id)
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
-	// get the address of the lock
-	hyp_spinlock_t *lock = owner_lock(owner_id);
-	// check the state of the lock
-	return is_correctly_locked(lock, &state);
-}
-
-/**
- * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
- */
-void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
-{
-	sm_owner_t owner_id = loc->owner;
-	// assume 0 cannot be a valid owner id
-	if (!owner_id)
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
-	hyp_spinlock_t *lock = owner_lock(owner_id);
-	if (!lock)
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
-	if (!is_correctly_locked(lock, state)) {
-		ghost_printf("%g(sm_loc)", loc);
-		ghost_printf("%g(sm_locks)", the_ghost_state->locks);
-		
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
-	}
-}
 
 ///////////////////
 // TLB maintenance
@@ -1154,8 +1102,10 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 		return true;
 
 	// sanity check: it's actually in a tree somewhere...
-	{
-		struct pgtable_walk_result pte = find_pte(loc->phys_addr);
+	// If the location is not owned by a thread, check that we can reach it by walking
+	// from the registered root. 
+	if (loc->thread_owner == -1) {
+		struct pgtable_walk_result pte = find_pte(loc);
 		if (! pte.found) {
 			GHOST_WARN("loc.is_pte should imply existence in pgtable");
 			ghost_assert(false);
@@ -1175,6 +1125,7 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 		loc->descriptor.level + 1,
 		loc->descriptor.stage,
 		clean_reachability_checker_cb,
+		READ_UNLOCKED_LOCATIONS,
 		&all_clean
 	);
 
@@ -1325,7 +1276,7 @@ static void try_register_root(ghost_stage_t stage, phys_addr_t root)
 		the_ghost_state->nr_s2_roots++;
 	}
 
-	traverse_pgtable(root, stage, mark_cb, NULL);
+	traverse_pgtable(root, stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -1340,7 +1291,7 @@ static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("root doesn't exist");
 
 	// TODO: also associate ASID/VMID ?
-	traverse_pgtable(root, stage, unmark_cb, NULL);
+	traverse_pgtable(root, stage, unmark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	try_remove_root(root_table, root);
 	if (stage == GHOST_STAGE1) {
 		the_ghost_state->nr_s1_roots--;
@@ -1426,6 +1377,7 @@ static void step_write_table_mark_children(pgtable_traverse_cb visitor_cb, struc
 			loc->descriptor.level + 1,
 			loc->descriptor.stage,
 			visitor_cb,
+			READ_UNLOCKED_LOCATIONS,
 			NULL
 		);
 	}
@@ -1644,7 +1596,15 @@ static void step_dsb_invalid_unclean_unmark_children(struct sm_location *loc)
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("BBM write table descriptor with unclean children");
 		}
 
-		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr, loc->descriptor.ia_region.range_start, loc->descriptor.level, loc->descriptor.stage, unmark_cb, NULL);
+		traverse_pgtable_from(
+			loc->owner,
+			old_desc.table_data.next_level_table_addr,
+			loc->descriptor.ia_region.range_start,
+			loc->descriptor.level,
+			loc->descriptor.stage,
+			unmark_cb,
+			READ_UNLOCKED_LOCATIONS,
+			NULL);
 	}
 
 	GHOST_LOG_CONTEXT_EXIT();
@@ -1986,7 +1946,15 @@ static void step_hint_release_table(u64 root)
 	// TODO: BS: also check that it's not currently in-use by someone
 
 	// need to check the table is clean.
-	traverse_pgtable_from(root, loc->owner, loc->descriptor.ia_region.range_size, loc->descriptor.level, loc->descriptor.stage, check_release_cb, NULL);
+	traverse_pgtable_from(
+		root,
+		loc->owner,
+		loc->descriptor.ia_region.range_size,
+		loc->descriptor.level,
+		loc->descriptor.stage,
+		check_release_cb,
+		READ_UNLOCKED_LOCATIONS,
+		NULL);
 	try_unregister_root(loc->descriptor.stage, root);
 }
 
@@ -2158,19 +2126,16 @@ static void step(struct ghost_simplified_model_transition trans)
 
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
-#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	lock_sm();
+	#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	step(trans);
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
-	ensure_atomic_lock();
-	lock_sm();
-	
+
 	if (is_initialised) {
 	    step(trans);
 	}
-
-	unlock_sm();
-	ensure_atomic_unlock();
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+	unlock_sm();
 }
 
 
