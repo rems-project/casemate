@@ -2509,7 +2509,9 @@ int gp_print_sm_loc(gp_stream_t *out, struct sm_location *loc)
 	char *init = loc->initialised ? "*" : "!";
 
 	if (loc->is_pte) {
-		return ghost_sprintf(out, "%s[%p]=%lx (pte_st:%g(sm_pte_state) root:%p)", init, loc->phys_addr, loc->val, &loc->state, loc->owner);
+		u64 start = loc->descriptor.ia_region.range_start;
+		u64 end = loc->descriptor.ia_region.range_size + start;
+		return ghost_sprintf(out, "%s[%p]=%lx (pte_st:%g(sm_pte_state) root:%p, range:%lx-%lx)", init, loc->phys_addr, loc->val, &loc->state, loc->owner, start, end);
 	} else {
 		return ghost_sprintf(out, "%s[%p]=%lx", init, loc->phys_addr, loc->val);
 	}
@@ -2630,28 +2632,35 @@ int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
 	return ghost_sprintf(out, "]");
 }
 
-int gp_print_sm_locks(gp_stream_t *out, struct owner_locks *locks)
+int gp_print_sm_lock(gp_stream_t *out, struct owner_locks *locks, int i)
 {
 	int ret;
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	struct lock_state *state;
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
+#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+	if (is_correctly_locked(locks->locks[i], &state)) 
+		ret = ghost_sprintf(out, "(%p,%p, locked by thread %ld, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
+	else
+#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
+		ret = ghost_sprintf(out, "(%p,%p)", locks->owner_ids[i], locks->locks[i]);
+
+	return ret;
+}
+
+int gp_print_sm_locks(gp_stream_t *out, struct owner_locks *locks)
+{
+	int ret;
 	ret = ghost_sprintf(out, "%s", "locks: [");
 	if (ret)
 		return ret;
 
 	if (locks->len > 0) {
-
-		for (u64 i = 0; i < locks->len; i++) {
-#ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-			if (is_correctly_locked(locks->locks[i], &state)) 
-				ret = ghost_sprintf(out, ", (%p,%p, locked by thread %ld, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorizd" : "write not authorized");
-			else
-#endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
-				ret = ghost_sprintf(out, ", (%p,%p)", locks->owner_ids[i], locks->locks[i]);
-			if (ret)
-				return ret;
+	ret = gp_print_sm_lock(out, locks, 0);
+		for (u64 i = 1; i < locks->len; i++) {
+			ret = ghost_sprintf(out,", ");
+			ret = gp_print_sm_lock(out, locks, i);
 		}
 	}
 
@@ -2707,7 +2716,6 @@ int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 		return ret;
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
-	/* TODO: owner locks */
 	return 0;
 }
 
