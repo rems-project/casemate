@@ -1337,7 +1337,7 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 
 static void __update_descriptor_on_write(struct sm_location *loc, u64 val)
 {
-	loc->descriptor = deconstruct_pte(loc->descriptor.ia_region.range_size, val, loc->descriptor.level, loc->descriptor.stage);
+	loc->descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, val, loc->descriptor.level, loc->descriptor.stage);
 }
 
 /*
