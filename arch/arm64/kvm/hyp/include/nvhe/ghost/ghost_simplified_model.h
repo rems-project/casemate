@@ -168,7 +168,8 @@ struct ghost_exploded_descriptor {
  * @phys_addr: the physical address of this location.
  * @val: if initialised, value stored by model for this location.
  * @is_pte: if initialised, whether this location is tracked as a PTE.
- * @descriptor: if initialised and is_pte, the value as an exploded descriptor.
+ * @descriptor: if initialised and is_pte, the value as an exploded descriptor. If the
+ *     state is invalid unclean, then it is the last valid descriptor. 
  * @state: if initialised and is_pte, the automata state for this location.
  * @owner: if initialised, the root of the tree that owns this location.
  * @thread_owner: if positive, the ID of the thread that can freely access this location

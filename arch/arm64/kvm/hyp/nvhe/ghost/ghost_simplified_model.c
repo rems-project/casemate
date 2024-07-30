@@ -762,6 +762,24 @@ static void add_location_to_unclean_PTE(struct sm_location* loc)
 
 }
 
+static struct pgtable_traverse_context construct_context_from_pte(struct sm_location *loc, void *data) {
+
+	// Check that the location is consistent and well-locked
+	u64 desc = read_phys(loc->phys_addr);
+
+	struct pgtable_traverse_context ctx;
+	ctx.loc = loc;
+	ctx.descriptor = desc;
+	ctx.exploded_descriptor = loc->descriptor;
+	ctx.level = loc->descriptor.level;
+	ctx.leaf = loc->descriptor.kind != PTE_KIND_TABLE;
+	ctx.root = loc->owner;
+	ctx.stage = loc->descriptor.stage;
+	ctx.data = data;
+
+	return ctx;
+}
+
 
 static void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, enum mapping_stage stage)
 {
@@ -779,20 +797,10 @@ static void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data,
 			if (stage != loc->descriptor.stage)
 				break;
 
-		// Check that the location is consistent and well-locked
-		u64 desc = read_phys(loc->phys_addr);
 
 
 		// We rebuild the context from the descriptor of the location
-		struct pgtable_traverse_context ctx;
-		ctx.loc = loc;
-		ctx.descriptor = desc;
-		ctx.exploded_descriptor = loc->descriptor;
-		ctx.level = loc->descriptor.level;
-		ctx.leaf = loc->descriptor.kind != PTE_KIND_TABLE;
-		ctx.root = loc->owner;
-		ctx.stage = loc->descriptor.stage;
-		ctx.data = data;
+		struct pgtable_traverse_context ctx = construct_context_from_pte(loc, data);
 		
 		visitor_cb(&ctx);
 		
@@ -1391,6 +1399,9 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 		return;
 	}
 
+	// update the descriptor
+	__update_descriptor_on_write(loc, val);
+
 	// check that if we're writing a TABLE entry
 	// that the new tables are all 'good'
 	step_write_table_mark_children(mark_cb, loc);
@@ -1442,7 +1453,21 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	step_write_table_mark_children(mark_not_writable_cb, loc);
 }
 
-void write_is_authorized(struct sm_location *loc, struct ghost_simplified_model_transition trans, u64 val)
+
+static void step_write_on_unwritable(struct sm_location *loc, u64 val) {
+	// If the write does not change anything, continue
+	if (loc->val == val)
+		return;
+
+	// Writing invalid on invalid is also benign
+	if ((! is_desc_valid(loc->val)) && (! is_desc_valid(val)))
+		return;
+
+	// You can't change an unwritable descriptor. 
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote on a page with an unclean parent");
+}
+
+static void write_is_authorized(struct sm_location *loc, struct ghost_simplified_model_transition trans, u64 val)
 {
 	struct lock_state *state_of_lock;
 
@@ -1488,9 +1513,6 @@ static void __step_write(struct ghost_simplified_model_transition trans)
 	// must own the lock on the pgtable this pte is in.
 	write_is_authorized(loc, trans, val);
 
-	// since it's a pte, we can deconstruct the descriptor
-	__update_descriptor_on_write(loc, val);
-
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
 	case STATE_PTE_VALID:
@@ -1503,7 +1525,8 @@ static void __step_write(struct ghost_simplified_model_transition trans)
 		step_write_on_invalid(mo, loc, val);
 		break;
 	case STATE_PTE_NOT_WRITABLE:
-		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote on a page with an unclean parent");
+		step_write_on_unwritable(loc, val);
+		break;
 	default:
 		BUG(); // unreachable;
 	}
@@ -1650,9 +1673,13 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 			// but only if it's the right kind of DSB
 			// also release the children
 			if (dsb_kind == DSB_ish) {
+				// All the children can be released
 				step_dsb_invalid_unclean_unmark_children(loc);
+				// The PTE is now clean
 				loc->state.kind = STATE_PTE_INVALID;
 				loc->state.invalid_clean_state.invalidator_tid = this_cpu;
+				// So the new descriptor is the only one visible
+				__update_descriptor_on_write(loc, loc->val);
 			}
 			break;
 		case LIS_dsb_tlbi_ipa:
@@ -1787,6 +1814,32 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 	}
 }
 
+
+static bool all_children_invalid(struct sm_location *loc)
+{
+	// Assert that we are on a table descriptor
+	ghost_assert(loc->initialised && loc->is_pte);
+	
+	if (loc->descriptor.kind != PTE_KIND_TABLE)
+		return true;
+
+	phys_addr_t table_addr = loc->descriptor.table_data.next_level_table_addr;
+	struct sm_location *child;
+
+
+	for (int i = 0; i< 512; i++) {
+		// For each child, check that it is an invalid child
+		child = location(table_addr + 8 * i);
+		ghost_assert(child->initialised && child->is_pte);
+		ghost_assert(child->state.kind = STATE_PTE_NOT_WRITABLE)
+		if (child->descriptor.kind != PTE_KIND_INVALID) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 {
 	u64 tlbi_addr;
@@ -1825,13 +1878,17 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
 		tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
 
-		/*
-		 * if this pte is not a leaf which maps the page the TLBI asked for,
-		 * then don't try to step the pte.
-		 *
-		 * TODO: BS: this means we don't support invalidating table entries by looping to invalidate each IPA.
-		 */
-		if (! (ctxt->leaf && (ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
+
+
+		// If the PTE has valid childre, the TLBI by VA is not enough
+		if (! ctxt->leaf) {
+			if (! all_children_invalid(ctxt->loc)) {
+				return false;
+			}
+		}
+
+		// Test if the VA address of the PTE is the same as the VA of the TLBI
+		if (! ((ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
 			return false;
 		}
 
@@ -2434,6 +2491,7 @@ static const char* KIND_PREFIX_NAMES[] = {
 	[STATE_PTE_INVALID] = "I ",
 	[STATE_PTE_INVALID_UNCLEAN] = "IU",
 	[STATE_PTE_VALID] = "V ",
+	[STATE_PTE_NOT_WRITABLE] = "NW",
 };
 
 static const int LIS_NAME_LEN = 2;
