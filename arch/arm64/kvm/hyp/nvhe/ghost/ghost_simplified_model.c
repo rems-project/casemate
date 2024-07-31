@@ -133,6 +133,7 @@ static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	}
 
 	i = the_ghost_state->locks.len++;
+	ghost_assert(i < GHOST_SIMPLIFIED_MODEL_MAX_LOCKS)
 	the_ghost_state->locks.owner_ids[i] = root;
 	the_ghost_state->locks.locks[i] = lock;
 }
@@ -144,6 +145,22 @@ static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	} else {
 		append_lock(root, lock);
 	}
+}
+
+static void unregister_lock(u64 root)
+{
+	int len = the_ghost_state->locks.len;
+
+	for (int i = 0; i < len; i++) {
+		if (the_ghost_state->locks.owner_ids[i] == root) {
+			len --;
+			the_ghost_state->locks.owner_ids[i] = the_ghost_state->locks.owner_ids[len];
+			the_ghost_state->locks.locks[i] = the_ghost_state->locks.locks[len];
+			the_ghost_state->locks.len --;
+			return;
+		}
+	}
+	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to release a table which did not have a lock");
 }
 
 static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
@@ -1880,7 +1897,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 
 
 
-		// If the PTE has valid childre, the TLBI by VA is not enough
+		// If the PTE has valid children, the TLBI by VA is not enough
 		if (! ctxt->leaf) {
 			if (! all_children_invalid(ctxt->loc)) {
 				return false;
@@ -2013,6 +2030,9 @@ static void step_hint_release_table(u64 root)
 		READ_UNLOCKED_LOCATIONS,
 		NULL);
 	try_unregister_root(loc->descriptor.stage, root);
+
+	// remove the mapping from the root to the lock of the page-table
+	unregister_lock(root);
 }
 
 static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)

@@ -269,7 +269,7 @@ struct location_set {
 	u64 len;
 };
 
-#define GHOST_SIMPLIFIED_MODEL_MAX_LOCKS 16
+#define GHOST_SIMPLIFIED_MODEL_MAX_LOCKS 8
 
 /**
  * struct owner_locks - Map of owner root to lock.
