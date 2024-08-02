@@ -1848,7 +1848,7 @@ static bool all_children_invalid(struct sm_location *loc)
 		// For each child, check that it is an invalid child
 		child = location(table_addr + 8 * i);
 		ghost_assert(child->initialised && child->is_pte);
-		ghost_assert(child->state.kind = STATE_PTE_NOT_WRITABLE)
+		ghost_assert(child->state.kind == STATE_PTE_NOT_WRITABLE)
 		if (child->descriptor.kind != PTE_KIND_INVALID) {
 			return false;
 		}
