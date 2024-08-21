@@ -2397,7 +2397,7 @@ int gp_print_sm_decoded_tlbi(gp_stream_t *out, struct sm_tlbi_op *tlbi)
 		return ghost_sprintf(out, ")");
 
 	case TLBI_OP_BY_ADDR_SPACE:
-		return ghost_sprintf(out, " asid_or_vmid:%ld)", tlbi->method.by_id_data.asid_or_vmid);
+		return ghost_sprintf(out, " asid_or_vmid:%lu)", tlbi->method.by_id_data.asid_or_vmid);
 
 	case TLBI_OP_BY_ALL:
 		return ghost_sprintf(out, " ALL)");
@@ -2412,7 +2412,7 @@ int gp_print_tlbi_trans(gp_stream_t *out, struct trans_tlbi_data *tlbi_data)
 		case TLBI_vale2is:
 		case TLBI_vae2is:
 		case TLBI_ipas2e1is:
-			return ghost_sprintf(out, "%s pfn=%lx level=%ld", tlbi_kind, tlbi_data->page, tlbi_data->level);
+			return ghost_sprintf(out, "%s pfn=%lx level=%lu", tlbi_kind, tlbi_data->page, tlbi_data->level);
 		default:
 			return ghost_sprintf(out, "%s", tlbi_kind);
 	}
@@ -2537,13 +2537,13 @@ int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
-		return ghost_sprintf(out, "%s%I%ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN, st->invalid_clean_state.invalidator_tid);
+		return ghost_sprintf(out, "%s%I%d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN, st->invalid_clean_state.invalidator_tid);
 	case STATE_PTE_INVALID_UNCLEAN:
-		return ghost_sprintf(out, "%s%I%s %ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_sprintf(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	case STATE_PTE_VALID:
 		return ghost_sprintf(out, "%s%I", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN);
 	case STATE_PTE_NOT_WRITABLE:
-		return ghost_sprintf(out, "%s%I%s %ld", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_sprintf(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	}
 }
 
@@ -2684,7 +2684,7 @@ int gp_print_sm_lock(gp_stream_t *out, struct owner_locks *locks, int i)
 
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	if (is_correctly_locked(locks->locks[i], &state)) 
-		ret = ghost_sprintf(out, "(%p,%p, locked by thread %ld, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
+		ret = ghost_sprintf(out, "(%p,%p, locked by thread %d, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
 	else
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 		ret = ghost_sprintf(out, "(%p,%p)", locks->owner_ids[i], locks->locks[i]);
