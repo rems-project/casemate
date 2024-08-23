@@ -2642,7 +2642,7 @@ int gp_print_sm_mem(gp_stream_t *out, struct ghost_simplified_memory *mem)
 	}
 
 	if (empty) {
-		ret = ghost_sprintf(out, "<clean>\n", 0);
+		ret = ghost_sprintf(out, "<clean>\n");
 		if (ret)
 			return ret;
 	}
