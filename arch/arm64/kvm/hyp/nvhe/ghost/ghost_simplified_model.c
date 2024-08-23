@@ -211,8 +211,8 @@ void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 	if (!lock)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
 	if (!is_correctly_locked(lock, state)) {
-		ghost_printf("%g(sm_loc)", loc);
-		ghost_printf("%g(sm_locks)", the_ghost_state->locks);
+		ghost_printf_ext("%g(sm_loc)", loc);
+		ghost_printf_ext("%g(sm_locks)", the_ghost_state->locks);
 		
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 	}
@@ -2140,7 +2140,7 @@ static void step(struct ghost_simplified_model_transition trans)
 
 	current_transition = trans;
 	if (__this_cpu_read(ghost_print_this_hypercall) && ghost_print_on("ghost_simplified_model_step"))
-		ghost_printf(GHOST_WHITE_ON_CYAN "%g(sm_trans)" GHOST_NORMAL "\n", &trans);
+		ghost_printf_ext(GHOST_WHITE_ON_CYAN "%g(sm_trans)" GHOST_NORMAL "\n", &trans);
 
 #ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS
 	if (__this_cpu_read(ghost_print_this_hypercall) && ghost_print_on("sm_diff_trans"))
@@ -2193,7 +2193,7 @@ static void step(struct ghost_simplified_model_transition trans)
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 static void step(struct ghost_simplified_model_transition trans)
 {
-	ghost_printf(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
+	ghost_printf_ext(GHOST_WHITE_ON_CYAN "ID: %d; CPU: %d; %g(sm_trans)" GHOST_NORMAL "\n", transition_id, cpu_id(), &trans);
 	transition_id++;
 }
 
@@ -2503,7 +2503,7 @@ int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition
 void GHOST_transprinter(void *data)
 {
 	struct ghost_simplified_model_transition *trans = (struct ghost_simplified_model_transition *)data;
-	ghost_printf("%g(sm_trans)", trans);
+	ghost_printf_ext("%g(sm_trans)", trans);
 }
 
 static const int KIND_PREFIX_LEN = 2;
@@ -2537,13 +2537,13 @@ int gp_print_sm_pte_state(gp_stream_t *out, struct sm_pte_state *st)
 
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
-		return ghost_sprintf(out, "%s%I%d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN, st->invalid_clean_state.invalidator_tid);
+		return ghost_sprintf_ext(out, "%s%I%d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN, st->invalid_clean_state.invalidator_tid);
 	case STATE_PTE_INVALID_UNCLEAN:
-		return ghost_sprintf(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_sprintf_ext(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	case STATE_PTE_VALID:
-		return ghost_sprintf(out, "%s%I", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN);
+		return ghost_sprintf_ext(out, "%s%I", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN);
 	case STATE_PTE_NOT_WRITABLE:
-		return ghost_sprintf(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_sprintf_ext(out, "%s%I%s %d", prefix, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN, LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	}
 }
 
@@ -2554,7 +2554,7 @@ int gp_print_sm_loc(gp_stream_t *out, struct sm_location *loc)
 	if (loc->is_pte) {
 		u64 start = loc->descriptor.ia_region.range_start;
 		u64 end = loc->descriptor.ia_region.range_size + start;
-		return ghost_sprintf(out, "%s[%p]=%lx (pte_st:%g(sm_pte_state) root:%p, range:%lx-%lx)", init, loc->phys_addr, loc->val, &loc->state, loc->owner, start, end);
+		return ghost_sprintf_ext(out, "%s[%p]=%lx (pte_st:%g(sm_pte_state) root:%p, range:%lx-%lx)", init, loc->phys_addr, loc->val, &loc->state, loc->owner, start, end);
 	} else {
 		return ghost_sprintf(out, "%s[%p]=%lx", init, loc->phys_addr, loc->val);
 	}
@@ -2573,7 +2573,7 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 	if (!b->valid)
 		return ghost_sprintf(out, "<invalid blob>");
 
-	ret = ghost_sprintf(out, "%I%g(sm_blob)\n", indent, b);
+	ret = ghost_sprintf_ext(out, "%I%g(sm_blob)\n", indent, b);
 	if (ret)
 		return ret;
 
@@ -2585,7 +2585,7 @@ int gp_print_sm_blob(gp_stream_t *out, struct ghost_memory_blob *b, u64 indent)
 
 		// don't waste energy printing 'clean' entries...
 		if (!sm_print_condensed() || loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
-			ret = ghost_sprintf(out, " %I%g(sm_loc)\n", indent+2, loc);
+			ret = ghost_sprintf_ext(out, " %I%g(sm_loc)\n", indent+2, loc);
 		if (ret)
 			return ret;
 		}
@@ -2764,7 +2764,7 @@ int gp_print_sm_state(gp_stream_t *out, struct ghost_simplified_model_state *s)
 
 void dump_sm_state(struct ghost_simplified_model_state *st)
 {
-	ghost_printf("%g(sm_state)\n", st);
+	ghost_printf_ext("%g(sm_state)\n", st);
 }
 
 /// Equality checks
