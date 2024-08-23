@@ -12,7 +12,7 @@
 
 #include <nvhe/ghost/ghost_control.h>
 #include <nvhe/ghost/ghost_asserts.h>
-#include <hyp/ghost/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost/ghost_extra_debug-pl011.h>
 #include <nvhe/ghost/ghost_printer.h>
 #include <nvhe/ghost/ghost_spec.h>
 #include <nvhe/ghost/ghost_abstraction_diff.h>

@@ -9,7 +9,7 @@
 #include <nvhe/ghost/ghost_maplets.h>
 #include <nvhe/ghost/ghost_asserts.h>
 #include <nvhe/ghost/ghost_control.h>
-#include <hyp/ghost/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost/ghost_extra_debug-pl011.h>
 
 
 #define MAX_CPU 4 // TODO: JP
