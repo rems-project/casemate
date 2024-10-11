@@ -11,14 +11,23 @@
 #include <nvhe/ghost/ghost_control.h>
 #include <nvhe/ghost/ghost_extra_debug-pl011.h>
 
+#define MAX_CPU 4
 
-#define MAX_CPU 4 // TODO: JP
+// Simplified-model typedefs
+//
+// We try to create opaque typedefs where possible, when we do not care
+// about the implementation details (e.g. various integer types and sync primitives)
 
-#define OFFSET_IN_PAGE(x) (((x) & GENMASK(PAGE_SHIFT - 1, 0)))
-#define IS_PAGE_ALIGNED(x) (OFFSET_IN_PAGE(x) == 0)
+/**
+ * typedef gsm_lock_t - simplified model lock
+ *
+ * We just re-use the pKVM spinlock implementation
+ */
+typedef hyp_spin_lock_t gsm_lock_t;
 
-#define ID_STRING(x) [x]=#x
-
+/**
+ * typedef thread_identifier - ID for hardware thread/CPU.
+ */
 typedef int thread_identifier;
 
 /**
@@ -28,6 +37,11 @@ typedef int thread_identifier;
  */
 typedef u64 sm_owner_t;
 
+/**
+ * cpu_id() - Returns current physical CPU thread identifier.
+ *
+ * NOTE: Not from a ghost state, but the actual physical state.
+ */
 thread_identifier cpu_id(void);
 
 /**
@@ -47,10 +61,10 @@ enum LVS {
 /**
  * struct aut_valid - Automata state for a valid PTE.
  * @lvs: per-CPU local-valid-state.
+ *
+ * TODO: JP: should we remember writer thread?
  */
 struct aut_valid {
-	// TODO:JP: this feel fishy, especially given the comments for LVS
-	// I think we should we remember the writer, and treat it specially
 	enum LVS lvs[MAX_CPU];
 };
 
@@ -90,17 +104,19 @@ struct aut_invalid_clean {
 	thread_identifier invalidator_tid;
 };
 
+/**
+ * enum automaton_state_kind - Global top-level per-PTE tracker state.
+ * @STATE_PTE_VALID: a valid and cleaned location, i.e. all threads agree the pgtable has been updated.
+ * @STATE_PTE_INVALID_UNCLEAN: a thread has written an invalid descriptor to this location,
+ *                             but any required break-before-make has not been completed yet.
+ * @STATE_PTE_INVALID: all break-before-make requirements are complete and all cores agree the location is clean.
+ * @STATE_PTE_NOT_WRITABLE: the location is frozen, and no thread is permitted to write to it.
+ */
 enum automaton_state_kind {
 	STATE_PTE_VALID,
 	STATE_PTE_INVALID_UNCLEAN,
 	STATE_PTE_INVALID,
 	STATE_PTE_NOT_WRITABLE,
-};
-static const char *automaton_state_names[] = {
-	ID_STRING(STATE_PTE_VALID),
-	ID_STRING(STATE_PTE_INVALID_UNCLEAN),
-	ID_STRING(STATE_PTE_INVALID),
-	ID_STRING(STATE_PTE_NOT_WRITABLE)
 };
 
 /**
@@ -123,15 +139,16 @@ struct ghost_addr_range {
 	u64 range_size;
 };
 
+/**
+ * enum pte_kind - Pagetable descriptor kind.
+ * @PTE_KIND_TABLE: A table entry with a pointer to another pagetable.
+ * @PTE_KIND_MAP: Either a block or page entry, with a pointer to an output page.
+ * @PTE_KIND_INVALID: An invalid descriptor.
+ */
 enum pte_kind {
 	PTE_KIND_TABLE,
 	PTE_KIND_MAP,  /* BLOCK,PAGE */
 	PTE_KIND_INVALID,
-};
-static const char *pte_kind_names[] = {
-	ID_STRING(PTE_KIND_TABLE),
-	ID_STRING(PTE_KIND_MAP),
-	ID_STRING(PTE_KIND_INVALID),
 };
 
 /**
@@ -194,6 +211,9 @@ struct sm_location {
  * To not duplicate the entire machines memory,
  * we instead only track "blobs" (arbitrary aligned chunks)
  * of memory that the simplified model checking machinery is actually aware of.
+ *
+ * These blobs are not really part of the public interface, but in C one cannot split
+ * the private and public parts of the state so easily.
  */
 
 #define SLOTS_PER_PAGE (512)
@@ -204,12 +224,6 @@ struct sm_location {
 #define MAX_BLOBS (0x2000)
 #define MAX_ROOTS 10
 #define MAX_UNCLEAN_LOCATIONS 10
-
-#define BLOB_SIZE ((1UL) << BLOB_SHIFT)
-#define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
-#define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
-#define OFFSET_IN_BLOB(x) ((x) & BLOB_OFFSET_MASK)
-#define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
 
 /**
  * struct ghost_memory_blob - A page of memory.
@@ -272,28 +286,42 @@ struct location_set {
 #define GHOST_SIMPLIFIED_MODEL_MAX_LOCKS 8
 
 /**
- * struct owner_locks - Map of owner root to lock.
+ * struct lock_owner_map - Map of pgtable root to lock that owns it.
  */
-struct owner_locks {
+struct lock_owner_map {
 	u64 len;
 	sm_owner_t owner_ids[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
-	hyp_spinlock_t *locks[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
-};
-
-struct lock_state {
-	thread_identifier id;
-	enum write_authorization {
-		AUTHORIZED,
-		UNAUTHORIZED,
-	} write_authorization;
+	gsm_lock_t *locks[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
 };
 
 /**
- * struct lock_status - Map of the locks to their status.
+ * enum write_authorization - Permission to write to the pagetable
+ * @AUTHORIZED: Can perform any write to the locked object without constraints.
+ * @UNAUTHORIZED_PLAIN: Cannot perform a plain (non-atomic) write to valid entries.
+ *
+ * Captures which kinds of writes to a locked object are permitted.
  */
-struct lock_status {
+enum write_authorization {
+	AUTHORIZED,
+	UNAUTHORIZED_PLAIN,
+};
+
+/**
+ * struct lock_state - The current ghost state of a lock.
+ * @id: The thread ID of the thread that currently owns the lock, or -1 if not held.
+ * @write_authorization: what permission the owner of the lock has to the protected object.
+ */
+struct lock_state {
+	thread_identifier id;
+	enum write_authorization write_authorization;
+};
+
+/**
+ * struct lock_state_map - Map of the locks to their current state.
+ */
+struct lock_state_map {
 	u64 len;
-	hyp_spinlock_t *address[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
+	gsm_lock_t *address[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
 	struct lock_state locker[GHOST_SIMPLIFIED_MODEL_MAX_LOCKS];
 };
 
@@ -302,7 +330,7 @@ struct lock_status {
  *
  * Returns NULL if no lock for that owner_id.
  */
-hyp_spinlock_t *owner_lock(sm_owner_t owner_id);
+gsm_lock_t *owner_lock(sm_owner_t owner_id);
 
 /**
  * struct ghost_simplified_model_state - Top-level simplified model state.
@@ -315,7 +343,7 @@ hyp_spinlock_t *owner_lock(sm_owner_t owner_id);
  * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
  * @s2_roots: set of known EL2 stage2 pagetable roots.
  * @locks: map from root physical address to lock physical address.
- * @locks_status: map from lock physical address to thread which owns the lock.
+ * @lock_state: map from lock physical address to thread which owns the lock.
  */
 struct ghost_simplified_model_state {
 	u64 base_addr;
@@ -330,13 +358,12 @@ struct ghost_simplified_model_state {
 	u64 nr_s2_roots;
 	u64 s2_roots[MAX_ROOTS];
 
-
-	struct owner_locks locks;
-	struct lock_status locks_status;
+	struct lock_owner_map locks;
+	struct lock_status_map lock_state;
 };
 
-
 /// Equality and printing
+
 bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2);
 bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2);
 bool sm_loc_eq(struct sm_location *loc1, struct sm_location *loc2);
@@ -364,7 +391,9 @@ struct ghost_simplified_model_options {
 	bool promote_TLBI_by_id;
 };
 
-
+/**
+ * enum memory_order_t - A custom subset of standard `memory_order`.
+ */
 enum memory_order_t {
 	WMO_plain,
 	WMO_release,
@@ -380,11 +409,6 @@ enum sm_tlbi_op_stage {
 	TLBI_OP_STAGE2 = 2,
 	TLBI_OP_BOTH_STAGES = TLBI_OP_STAGE1 | TLBI_OP_STAGE2,
 };
-static const char *sm_tlbi_op_stage_names[] = {
-	ID_STRING(TLBI_OP_STAGE1),
-	ID_STRING(TLBI_OP_STAGE2),
-	ID_STRING(TLBI_OP_BOTH_STAGES),
-};
 
 enum sm_tlbi_op_method_kind {
 	TLBI_OP_BY_ALL        = 0, /* TLBI ALL* only */
@@ -397,19 +421,10 @@ enum sm_tlbi_op_method_kind {
 	TLBI_OP_BY_VMID = TLBI_OP_BY_ADDR_SPACE,
 	TLBI_OP_BY_ASID = TLBI_OP_BY_ADDR_SPACE,
 };
-static const char *sm_tlbi_op_method_kind_names[] = {
-	ID_STRING(TLBI_OP_BY_ALL),
-	ID_STRING(TLBI_OP_BY_INPUT_ADDR),
-	ID_STRING(TLBI_OP_BY_ADDR_SPACE),
-};
 
 enum sm_tlbi_op_regime_kind {
 	TLBI_REGIME_EL10 = 1, /* EL1&0 regime */
 	TLBI_REGIME_EL2  = 2, /* EL2 regime */
-};
-static const char *sm_tlbi_op_regime_kind_names[] = {
-	ID_STRING(TLBI_REGIME_EL10),
-	ID_STRING(TLBI_REGIME_EL2),
 };
 
 /**
@@ -460,28 +475,12 @@ enum tlbi_kind {
 	TLBI_vae2is,
 	TLBI_ipas2e1is
 };
-static const char *tlbi_kind_names[] = {
-	ID_STRING(TLBI_vmalls12e1),
-	ID_STRING(TLBI_vmalls12e1is),
-	ID_STRING(TLBI_vmalle1is),
-	ID_STRING(TLBI_alle1is),
-	ID_STRING(TLBI_vmalle1),
-	ID_STRING(TLBI_vale2is),
-	ID_STRING(TLBI_vae2is),
-	ID_STRING(TLBI_ipas2e1is)
-};
 
 enum dsb_kind {
 	DSB_ish,
 	DSB_ishst,
 	DSB_nsh
 };
-static const char *dsb_kind_names[] = {
-	ID_STRING(DSB_ish),
-	ID_STRING(DSB_ishst),
-	ID_STRING(DSB_nsh)
-};
-
 
 enum ghost_simplified_model_transition_kind {
 	TRANS_MEM_WRITE,
@@ -491,6 +490,7 @@ enum ghost_simplified_model_transition_kind {
 	TRANS_ISB,
 	TRANS_TLBI,
 	TRANS_MSR,
+
 	TRANS_LOCK,
 
 	/**
@@ -506,14 +506,10 @@ enum ghost_sysreg_kind {
 	SYSREG_VTTBR,
 	SYSREG_TTBR_EL2,
 };
-static const char *sysreg_names[] = {
-	ID_STRING(SYSREG_VTTBR),
-	ID_STRING(SYSREG_TTBR_EL2),
-};
 
 enum ghost_hint_kind {
 	/**
-	 * @GHOST_HINT_SET_ROOT_LOCK - Set the hyp_spinlock_t* owning a pgtable root.
+	 * @GHOST_HINT_SET_ROOT_LOCK - Set the gsm_lock_t* owning a pgtable root.
 	 */
 	GHOST_HINT_SET_ROOT_LOCK,
 
@@ -532,20 +528,10 @@ enum ghost_hint_kind {
 	 */
 	 GHOST_HINT_SET_PTE_THREAD_OWNER
 };
-static const char *hint_names[] = {
-	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
-	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
-	ID_STRING(GHOST_HINT_RELEASE_TABLE),
-	ID_STRING(GHOST_HINT_SET_PTE_THREAD_OWNER),
-};
 
 enum ghost_lock_kind {
 	GHOST_SIMPLIFIED_LOCK,
 	GHOST_SIMPLIFIED_UNLOCK,
-};
-static const char *lock_type_names[] = {
-	[GHOST_SIMPLIFIED_LOCK] = "LOCK",
-	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
 };
 
 /**

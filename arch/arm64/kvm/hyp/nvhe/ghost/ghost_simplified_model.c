@@ -22,6 +22,9 @@
 
 #pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
+#define OFFSET_IN_PAGE(x) (((x) & GENMASK(PAGE_SHIFT - 1, 0)))
+#define IS_PAGE_ALIGNED(x) (OFFSET_IN_PAGE(x) == 0)
+
 /*
  * the actual state
  *
@@ -94,7 +97,7 @@ bool vms_locked[KVM_MAX_PVMS];
 ////////////////////
 // Locks
 
-hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
+gsm_lock_t *owner_lock(sm_owner_t owner_id)
 {
 	for (int i = 0; i < the_ghost_state->locks.len; i++) {
 		if (the_ghost_state->locks.owner_ids[i] == owner_id) {
@@ -105,7 +108,7 @@ hyp_spinlock_t *owner_lock(sm_owner_t owner_id)
 	return NULL;
 }
 
-static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
+static void swap_lock(sm_owner_t root, gsm_lock_t *lock)
 {
 	struct owner_locks *locks = &the_ghost_state->locks;
 
@@ -123,7 +126,7 @@ static void swap_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("can't change lock on unlocked location");
 }
 
-static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
+static void append_lock(sm_owner_t root, gsm_lock_t *lock)
 {
 	u64 i;
 
@@ -138,7 +141,7 @@ static void append_lock(sm_owner_t root, hyp_spinlock_t *lock)
 	the_ghost_state->locks.locks[i] = lock;
 }
 
-static void associate_lock(sm_owner_t root, hyp_spinlock_t *lock)
+static void associate_lock(sm_owner_t root, gsm_lock_t *lock)
 {
 	if (owner_lock(root)) {
 		swap_lock(root, lock);
@@ -163,14 +166,14 @@ static void unregister_lock(u64 root)
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to release a table which did not have a lock");
 }
 
-static bool is_correctly_locked(hyp_spinlock_t *lock, struct lock_state **state)
+static bool is_correctly_locked(gsm_lock_t *lock, struct lock_state **state)
 {
-	for (int i = 0; i < the_ghost_state->locks_status.len; i++) {
-		if (the_ghost_state->locks_status.address[i] == lock) {
+	for (int i = 0; i < the_ghost_state->lock_state.len; i++) {
+		if (the_ghost_state->lock_state.address[i] == lock) {
 			if (state != NULL) {
-				*state = &the_ghost_state->locks_status.locker[i];
+				*state = &the_ghost_state->lock_state.locker[i];
 			}
-			return the_ghost_state->locks_status.locker[i].id == cpu_id();
+			return the_ghost_state->lock_state.locker[i].id == cpu_id();
 		}
 	}
 	return false;
@@ -192,7 +195,7 @@ static bool is_location_locked(struct sm_location *loc)
 	if (!owner_id)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
 	// get the address of the lock
-	hyp_spinlock_t *lock = owner_lock(owner_id);
+	gsm_lock_t *lock = owner_lock(owner_id);
 	// check the state of the lock
 	return is_correctly_locked(lock, &state);
 }
@@ -207,7 +210,7 @@ void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 	// assume 0 cannot be a valid owner id
 	if (!owner_id)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated location with an owner");
-	hyp_spinlock_t *lock = owner_lock(owner_id);
+	gsm_lock_t *lock = owner_lock(owner_id);
 	if (!lock)
 		GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("must have associated owner with an root");
 	if (!is_correctly_locked(lock, state)) {
@@ -222,6 +225,12 @@ void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 ///////////
 // Memory
+
+#define BLOB_SIZE ((1UL) << BLOB_SHIFT)
+#define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
+#define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
+#define OFFSET_IN_BLOB(x) ((x) & BLOB_OFFSET_MASK)
+#define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
 
 void copy_sm_state_into(struct ghost_simplified_model_state *out);
 
@@ -1501,9 +1510,9 @@ static void write_is_authorized(struct sm_location *loc, struct ghost_simplified
 	switch (state_of_lock->write_authorization) {
 		case AUTHORIZED:
 			// We are not authorized to write plain on it anymore
-			state_of_lock->write_authorization = UNAUTHORIZED;
+			state_of_lock->write_authorization = UNAUTHORIZED_PLAIN_VALID;
 			break;
-		case UNAUTHORIZED:
+		case UNAUTHORIZED_PLAIN_VALID:
 			// We cannot write plain (exept invalid on invalid)
 			if (trans.write_data.mo == WMO_plain) {
 				if (loc->state.kind == STATE_PTE_VALID || is_desc_valid(val))
@@ -1716,8 +1725,8 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 }
 
 static void reset_write_authorizations(void) {
-	int len = the_ghost_state->locks_status.len;
-	struct lock_state *states = the_ghost_state->locks_status.locker;
+	int len = the_ghost_state->lock_state.len;
+	struct lock_state *states = the_ghost_state->lock_state.locker;
 	for (int i = 0; i < len; i++) {
 		if (states[i].id == cpu_id())
 			states[i].write_authorization = AUTHORIZED;
@@ -1977,7 +1986,7 @@ static void step_isb(struct ghost_simplified_model_transition trans)
 //////////////////////
 // HINT
 
-static void step_hint_set_root_lock(u64 root, hyp_spinlock_t *lock)
+static void step_hint_set_root_lock(u64 root, gsm_lock_t *lock)
 {
 	// TODO: BS: on teardown a VM's lock might get disassociated,
 	// then re-associated later with a different lock.
@@ -2051,7 +2060,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 {
 	switch (trans.hint_data.hint_kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
-		step_hint_set_root_lock(trans.hint_data.location, (hyp_spinlock_t *)trans.hint_data.value);
+		step_hint_set_root_lock(trans.hint_data.location, (gsm_lock_t *)trans.hint_data.value);
 		break;
 	case GHOST_HINT_SET_OWNER_ROOT:
 		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
@@ -2070,40 +2079,40 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 //////////////////////
 // LOCK
 
-static void __step_lock(hyp_spinlock_t *lock_addr)
+static void __step_lock(gsm_lock_t *lock_addr)
 {
-	int len = the_ghost_state->locks_status.len;
+	int len = the_ghost_state->lock_state.len;
 	// look for the address in the map
 	for (int i = 0; i < len; i++)
 	{
-		if (the_ghost_state->locks_status.address[i] == lock_addr) {
+		if (the_ghost_state->lock_state.address[i] == lock_addr) {
 			GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to lock a component that was alerady held");
 		}
 	}
 	// If the lock is not yet in the map, we append it
 	ghost_assert(len < GHOST_SIMPLIFIED_MODEL_MAX_LOCKS);
 
-	the_ghost_state->locks_status.address[len] = lock_addr;
-	the_ghost_state->locks_status.locker[len].id = cpu_id();
-	the_ghost_state->locks_status.locker[len].write_authorization = AUTHORIZED;
+	the_ghost_state->lock_state.address[len] = lock_addr;
+	the_ghost_state->lock_state.locker[len].id = cpu_id();
+	the_ghost_state->lock_state.locker[len].write_authorization = AUTHORIZED;
 
-	the_ghost_state->locks_status.len ++;
+	the_ghost_state->lock_state.len ++;
 
 }
 
-static void __step_unlock(hyp_spinlock_t *lock_addr)
+static void __step_unlock(gsm_lock_t *lock_addr)
 {
-	int len = the_ghost_state->locks_status.len;
+	int len = the_ghost_state->lock_state.len;
 	// look for the address in the map
 	for (int i = 0; i < len; i++)
 	{
-		if (the_ghost_state->locks_status.address[i] == lock_addr) {
-			if (the_ghost_state->locks_status.locker[i].id == cpu_id()){
+		if (the_ghost_state->lock_state.address[i] == lock_addr) {
+			if (the_ghost_state->lock_state.locker[i].id == cpu_id()){
 				// unlock the position
 				len--;
-				the_ghost_state->locks_status.locker[i] = the_ghost_state->locks_status.locker[len];
-				the_ghost_state->locks_status.address[i] = the_ghost_state->locks_status.address[len];
-				the_ghost_state->locks_status.len--;
+				the_ghost_state->lock_state.locker[i] = the_ghost_state->lock_state.locker[len];
+				the_ghost_state->lock_state.address[i] = the_ghost_state->lock_state.address[len];
+				the_ghost_state->lock_state.len--;
 						
 				return;
 			} else {
@@ -2118,10 +2127,10 @@ static void step_lock(struct ghost_simplified_model_transition trans)
 {
 	switch (trans.lock_data.kind) {
 	case GHOST_SIMPLIFIED_LOCK:
-		__step_lock((hyp_spinlock_t *) trans.lock_data.address);
+		__step_lock((gsm_lock_t *) trans.lock_data.address);
 		break;
 	case GHOST_SIMPLIFIED_UNLOCK:
-		__step_unlock((hyp_spinlock_t *) trans.lock_data.address);
+		__step_unlock((gsm_lock_t *) trans.lock_data.address);
 		break;
 	default:
 		BUG(); // unreachable;
@@ -2204,7 +2213,7 @@ static void step(struct ghost_simplified_model_transition trans)
 void ghost_simplified_model_step(struct ghost_simplified_model_transition trans)
 {
 	lock_sm();
-	#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
+#ifdef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
 	step(trans);
 #else /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
@@ -2323,6 +2332,71 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 
 //////////////////////////////
 //// Printers
+
+#define ID_STRING(x) [x]=#x
+static const char *automaton_state_names[] = {
+	ID_STRING(STATE_PTE_VALID),
+	ID_STRING(STATE_PTE_INVALID_UNCLEAN),
+	ID_STRING(STATE_PTE_INVALID),
+	ID_STRING(STATE_PTE_NOT_WRITABLE)
+};
+
+static const char *pte_kind_names[] = {
+	ID_STRING(PTE_KIND_TABLE),
+	ID_STRING(PTE_KIND_MAP),
+	ID_STRING(PTE_KIND_INVALID),
+};
+
+static const char *sm_tlbi_op_stage_names[] = {
+	ID_STRING(TLBI_OP_STAGE1),
+	ID_STRING(TLBI_OP_STAGE2),
+	ID_STRING(TLBI_OP_BOTH_STAGES),
+};
+
+static const char *sm_tlbi_op_method_kind_names[] = {
+	ID_STRING(TLBI_OP_BY_ALL),
+	ID_STRING(TLBI_OP_BY_INPUT_ADDR),
+	ID_STRING(TLBI_OP_BY_ADDR_SPACE),
+};
+
+static const char *sm_tlbi_op_regime_kind_names[] = {
+	ID_STRING(TLBI_REGIME_EL10),
+	ID_STRING(TLBI_REGIME_EL2),
+};
+
+static const char *tlbi_kind_names[] = {
+	ID_STRING(TLBI_vmalls12e1),
+	ID_STRING(TLBI_vmalls12e1is),
+	ID_STRING(TLBI_vmalle1is),
+	ID_STRING(TLBI_alle1is),
+	ID_STRING(TLBI_vmalle1),
+	ID_STRING(TLBI_vale2is),
+	ID_STRING(TLBI_vae2is),
+	ID_STRING(TLBI_ipas2e1is)
+};
+
+static const char *dsb_kind_names[] = {
+	ID_STRING(DSB_ish),
+	ID_STRING(DSB_ishst),
+	ID_STRING(DSB_nsh)
+};
+
+static const char *sysreg_names[] = {
+	ID_STRING(SYSREG_VTTBR),
+	ID_STRING(SYSREG_TTBR_EL2),
+};
+
+static const char *hint_names[] = {
+	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
+	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
+	ID_STRING(GHOST_HINT_RELEASE_TABLE),
+	ID_STRING(GHOST_HINT_SET_PTE_THREAD_OWNER),
+};
+
+static const char *lock_type_names[] = {
+	[GHOST_SIMPLIFIED_LOCK] = "LOCK",
+	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
+};
 
 int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 {
