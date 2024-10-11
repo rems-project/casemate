@@ -23,7 +23,7 @@
  *
  * We just re-use the pKVM spinlock implementation
  */
-typedef hyp_spin_lock_t gsm_lock_t;
+typedef hyp_spinlock_t gsm_lock_t;
 
 /**
  * typedef thread_identifier - ID for hardware thread/CPU.
@@ -359,7 +359,7 @@ struct ghost_simplified_model_state {
 	u64 s2_roots[MAX_ROOTS];
 
 	struct lock_owner_map locks;
-	struct lock_status_map lock_state;
+	struct lock_state_map lock_state;
 };
 
 /// Equality and printing
@@ -389,6 +389,11 @@ struct ghost_simplified_model_options {
 	 * @promote_TLBI_by_id - Silently promote all TLBI-by-ASID and by-VMID to ALL
 	 */
 	bool promote_TLBI_by_id;
+
+	/**
+	 * @legacy_log_format - Use the legacy logging format
+	 */
+	 bool legacy_log_format;
 };
 
 /**
@@ -397,9 +402,6 @@ struct ghost_simplified_model_options {
 enum memory_order_t {
 	WMO_plain,
 	WMO_release,
-
-	/** @GHOST_MEMSET_PAGE - A helpful wrapper around a full page-sized memset() */
-	GHOST_MEMSET_PAGE
 };
 
 /// Decoded TLBIs
@@ -482,24 +484,37 @@ enum dsb_kind {
 	DSB_nsh
 };
 
-enum ghost_simplified_model_transition_kind {
-	TRANS_MEM_WRITE,
-	TRANS_MEM_ZALLOC,
-	TRANS_MEM_READ,
-	TRANS_DSB,
-	TRANS_ISB,
-	TRANS_TLBI,
-	TRANS_MSR,
 
-	TRANS_LOCK,
+enum ghost_simplified_model_transition_kind {
+	/**
+	 * @TRANS_HW_STEP - Hardware instruction
+	 */
+	TRANS_HW_STEP,
+
+	/**
+	 * @TRANS_ABS_STEP - An abstract software state transition
+	 * These generally transition some abstract reified ghost state in the model
+	 * e.g. for locks and C initialisations that are not exposed to the model
+	 */
+	TRANS_ABS_STEP,
 
 	/**
 	 * @TRANS_HINT - A non-hardware-model transition
 	 * These generally provide additional information to the simplified model,
-	 * such as ownership,
-	 * to resolve otherwise unbounded non-determinism
+	 * such as ownership, to resolve otherwise unbounded non-determinism
+	 *
+	 * Removing HINTs should not change soundness
 	 */
 	TRANS_HINT,
+};
+
+enum ghost_hw_step_kind {
+	HW_MEM_WRITE,
+	HW_MEM_READ,
+	HW_DSB,
+	HW_ISB,
+	HW_TLBI,
+	HW_MSR,
 };
 
 enum ghost_sysreg_kind {
@@ -507,51 +522,8 @@ enum ghost_sysreg_kind {
 	SYSREG_TTBR_EL2,
 };
 
-enum ghost_hint_kind {
-	/**
-	 * @GHOST_HINT_SET_ROOT_LOCK - Set the gsm_lock_t* owning a pgtable root.
-	 */
-	GHOST_HINT_SET_ROOT_LOCK,
-
-	/**
-	 * @GHOST_HINT_SET_OWNER_ROOT - Set the pgtable root which owns a pte
-	 */
-	GHOST_HINT_SET_OWNER_ROOT,
-
-	/**
-	 * @GHOST_HINT_RELEASE_TABLE - Stop tracking a whole table (and subtables recursively)
-	 */
-	GHOST_HINT_RELEASE_TABLE,
-
-	/**
-	 * @GHOST_HINT_SET_PTE_THREAD_OWNER - Set the a thread to be the owner of a PTE (only for leaves)
-	 */
-	 GHOST_HINT_SET_PTE_THREAD_OWNER
-};
-
-enum ghost_lock_kind {
-	GHOST_SIMPLIFIED_LOCK,
-	GHOST_SIMPLIFIED_UNLOCK,
-};
-
-/**
- * Source location info
- */
-struct src_loc {
-	const char *file;
-	const char *func;
-	int lineno;
-};
-
-struct ghost_simplified_model_transition {
-	/**
-	 * @src_loc: string location (path, function name, lineno etc)
-	 *           of where the transition happens in the source code.
-	 *           For debugging/pretty printing.
-	 */
-	struct src_loc src_loc;
-
-	enum ghost_simplified_model_transition_kind kind;
+struct ghost_hw_step {
+	enum ghost_hw_step_kind kind;
 	union {
 		struct trans_write_data {
 			enum memory_order_t mo;
@@ -576,22 +548,101 @@ struct ghost_simplified_model_transition {
 			enum ghost_sysreg_kind sysreg;
 			u64 val;
 		} msr_data;
+	};
+};
 
-		struct trans_hint_data {
-			enum ghost_hint_kind hint_kind;
-			u64 location;
-			u64 value;
-		} hint_data;
+enum ghost_abs_kind {
+	/**
+	 * @GHOST_ABS_LOCK - Acquire a mutex
+	 */
+	GHOST_ABS_LOCK,
 
-		struct trans_zalloc_data {
+	/**
+	 * @GHOST_ABS_UNLOCK - Release a mutex
+	 */
+	GHOST_ABS_UNLOCK,
+
+	/**
+	 * @GHOST_ABS_INIT - Zeroed initialisation of some fresh memory
+	 */
+	GHOST_ABS_INIT,
+
+	/**
+	 * @GHOST_ABS_MEMSET - A C memset() call.
+	 */
+	GHOST_ABS_MEMSET,
+};
+
+struct ghost_abs_step {
+	enum ghost_abs_kind kind;
+	union {
+		struct trans_init_data {
 			u64 location;
 			u64 size;
-		} zalloc_data;
+		} init_data;
 
 		struct trans_lock_data {
 			u64 address;
-			enum ghost_lock_kind kind;
 		} lock_data;
+
+		struct trans_memset_data {
+			u64 address;
+			u64 size;
+			u64 value;
+		} memset_data;
+	};
+};
+
+enum ghost_hint_kind {
+	/**
+	 * @GHOST_HINT_SET_ROOT_LOCK - Set the gsm_lock_t* owning a pgtable root.
+	 */
+	GHOST_HINT_SET_ROOT_LOCK,
+
+	/**
+	 * @GHOST_HINT_SET_OWNER_ROOT - Set the pgtable root which owns a pte
+	 */
+	GHOST_HINT_SET_OWNER_ROOT,
+
+	/**
+	 * @GHOST_HINT_RELEASE_TABLE - Stop tracking a whole table (and subtables recursively)
+	 */
+	GHOST_HINT_RELEASE_TABLE,
+
+	/**
+	 * @GHOST_HINT_SET_PTE_THREAD_OWNER - Set the a thread to be the owner of a PTE (only for leaves)
+	 */
+	GHOST_HINT_SET_PTE_THREAD_OWNER,
+};
+
+struct ghost_hint_step {
+	enum ghost_hint_kind kind;
+	u64 location;
+	u64 value;
+};
+
+/**
+ * Source location info
+ */
+struct src_loc {
+	const char *file;
+	const char *func;
+	int lineno;
+};
+
+struct ghost_simplified_model_transition {
+	/**
+	 * @src_loc: string location (path, function name, lineno etc)
+	 *           of where the transition happens in the source code.
+	 *           For debugging/pretty printing.
+	 */
+	struct src_loc src_loc;
+
+	enum ghost_simplified_model_transition_kind kind;
+	union {
+		struct ghost_hw_step hw_step;
+		struct ghost_abs_step abs_step;
+		struct ghost_hint_step hint_step;
 	};
 };
 void GHOST_transprinter(void *p);
@@ -627,11 +678,14 @@ static inline void __ghost_simplified_model_step_write(struct src_loc src_loc, e
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_MEM_WRITE,
-		.write_data = (struct trans_write_data){
-			.mo = mo,
-			.phys_addr = phys,
-			.val = val,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_MEM_WRITE,
+			.write_data = (struct trans_write_data){
+				.mo = mo,
+				.phys_addr = phys,
+				.val = val,
+			},
 		},
 	});
 }
@@ -641,10 +695,13 @@ static inline void __ghost_simplified_model_step_read(struct src_loc src_loc, ph
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_MEM_READ,
-		.read_data = (struct trans_read_data){
-			.phys_addr = phys,
-			.val = val,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_MEM_READ,
+			.read_data = (struct trans_read_data){
+				.phys_addr = phys,
+				.val = val,
+			},
 		},
 	});
 }
@@ -654,8 +711,11 @@ static inline void __ghost_simplified_model_step_dsb(struct src_loc src_loc, enu
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_DSB,
-		.dsb_data = kind,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_DSB,
+			.dsb_data = kind,
+		},
 	});
 }
 
@@ -664,7 +724,10 @@ static inline void __ghost_simplified_model_step_isb(struct src_loc src_loc)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_ISB,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_ISB,
+		},
 	});
 }
 
@@ -673,11 +736,14 @@ static inline void __ghost_simplified_model_step_tlbi3(struct src_loc src_loc, e
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_TLBI,
-		.tlbi_data = (struct trans_tlbi_data){
-			.tlbi_kind = kind,
-			.page = page,
-			.level = level,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_TLBI,
+			.tlbi_data = (struct trans_tlbi_data){
+				.tlbi_kind = kind,
+				.page = page,
+				.level = level,
+			},
 		},
 	});
 }
@@ -687,9 +753,12 @@ static inline void __ghost_simplified_model_step_tlbi1(struct src_loc src_loc, e
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_TLBI,
-		.tlbi_data = (struct trans_tlbi_data){
-			.tlbi_kind = kind,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_TLBI,
+			.tlbi_data = (struct trans_tlbi_data){
+				.tlbi_kind = kind,
+			},
 		},
 	});
 }
@@ -699,10 +768,13 @@ static inline void __ghost_simplified_model_step_msr(struct src_loc src_loc, enu
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_MSR,
-		.msr_data = (struct trans_msr_data){
-			.sysreg = sysreg,
-			.val = val,
+		.kind = TRANS_HW_STEP,
+		.hw_step = (struct ghost_hw_step){
+			.kind = HW_MSR,
+			.msr_data = (struct trans_msr_data){
+				.sysreg = sysreg,
+				.val = val,
+			},
 		},
 	});
 }
@@ -713,49 +785,73 @@ static inline void __ghost_simplified_model_step_hint(struct src_loc src_loc, en
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
 		.kind = TRANS_HINT,
-		.hint_data = (struct trans_hint_data){
-			.hint_kind = kind,
+		.hint_step = (struct ghost_hint_step){
+			.kind = kind,
 			.location = location,
 			.value = value,
 		},
 	});
 }
 
-#define ghost_simplified_model_step_zalloc(...) __ghost_simplified_model_step_zalloc(SRC_LOC, __VA_ARGS__)
-static inline void __ghost_simplified_model_step_zalloc(struct src_loc src_loc, u64 location)
+#define ghost_simplified_model_step_init(...) __ghost_simplified_model_step_init(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_init(struct src_loc src_loc, u64 location, u64 size)
 {
 	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_MEM_ZALLOC,
-		.zalloc_data = (struct trans_zalloc_data){
-			.location = location,
-			.size = 1,
+		.kind = TRANS_ABS_STEP,
+		.abs_step = (struct ghost_abs_step){
+			.kind = GHOST_ABS_INIT,
+			.init_data = (struct trans_init_data){
+				.location = location,
+				.size = size,
+			},
 		},
 	});
 }
 
-#define ghost_simplified_model_step_zalloc_exact(...) __ghost_simplified_model_step_zalloc_exact(SRC_LOC, __VA_ARGS__)
-static inline void __ghost_simplified_model_step_zalloc_exact(struct src_loc src_loc, u64 location, u64 size)
+#define ghost_simplified_model_step_memset(...) __ghost_simplified_model_step_memset(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_memset(struct src_loc src_loc, u64 location, u64 value, u64 size)
 {
-		ghost_simplified_model_step((struct ghost_simplified_model_transition){
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_MEM_ZALLOC,
-		.zalloc_data = (struct trans_zalloc_data){
-			.location = location,
-			.size = size,
+		.kind = TRANS_ABS_STEP,
+		.abs_step = (struct ghost_abs_step){
+			.kind = GHOST_ABS_MEMSET,
+			.memset_data = (struct trans_memset_data){
+				.address = location,
+				.size = size,
+				.value = value,
+			},
 		},
 	});
 }
 
 #define ghost_simplified_model_step_lock(...) __ghost_simplified_model_step_lock(SRC_LOC, __VA_ARGS__)
-static inline void __ghost_simplified_model_step_lock(struct src_loc src_loc, enum ghost_lock_kind kind, u64 address)
+static inline void __ghost_simplified_model_step_lock(struct src_loc src_loc, u64 address)
 {
-		ghost_simplified_model_step((struct ghost_simplified_model_transition){
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
 		.src_loc = src_loc,
-		.kind = TRANS_LOCK,
-		.lock_data = (struct trans_lock_data){
-			.address = address,
-			.kind = kind,
+		.kind = TRANS_ABS_STEP,
+		.abs_step = (struct ghost_abs_step){
+			.kind = GHOST_ABS_LOCK,
+			.lock_data = (struct trans_lock_data){
+				.address = address,
+			},
+		},
+	});
+}
+
+#define ghost_simplified_model_step_unlock(...) __ghost_simplified_model_step_unlock(SRC_LOC, __VA_ARGS__)
+static inline void __ghost_simplified_model_step_unlock(struct src_loc src_loc, u64 address)
+{
+	ghost_simplified_model_step((struct ghost_simplified_model_transition){
+		.src_loc = src_loc,
+		.kind = TRANS_ABS_STEP,
+		.abs_step = (struct ghost_abs_step){
+			.kind = GHOST_ABS_UNLOCK,
+			.lock_data = (struct trans_lock_data){
+				.address = address,
+			},
 		},
 	});
 }

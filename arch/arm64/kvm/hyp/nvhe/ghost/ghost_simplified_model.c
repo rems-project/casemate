@@ -93,6 +93,18 @@ bool host_locked;
 bool vm_table_locked;
 bool vms_locked[KVM_MAX_PVMS];
 
+/**
+ * is_on_write_transition() - Returns true when the current step is a write transition to `p`.
+ */
+static bool is_on_write_transition(u64 p)
+{
+	return (
+		current_transition.kind = TRANS_HW_STEP
+		&& current_transition.hw_step.kind == HW_MEM_WRITE
+		&& current_transition.hw_step.write_data.phys_addr == p
+	);
+}
+
 
 ////////////////////
 // Locks
@@ -110,7 +122,7 @@ gsm_lock_t *owner_lock(sm_owner_t owner_id)
 
 static void swap_lock(sm_owner_t root, gsm_lock_t *lock)
 {
-	struct owner_locks *locks = &the_ghost_state->locks;
+	struct lock_owner_map *locks = &the_ghost_state->locks;
 
 	if (! owner_lock(root)) {
 		ghost_assert(false);
@@ -435,14 +447,14 @@ static u64 __read_phys(u64 addr, bool pre)
 
 	// EDGE CASE: if `addr` is the address this transition is writing to
 	// then the current value in the model memory will be old.
-	if (current_transition.kind == TRANS_MEM_WRITE && addr == current_transition.write_data.phys_addr) {
+	if (is_on_write_transition(addr)) {
 		if (pre) {
 			// if want the old value, return it.
 			return value;
 		} else {
 			// otherwise, secretly return the value we are about to write.
 			// then continue with checks.
-			value = current_transition.write_data.val;
+			value = current_transition.hw_step.write_data.val;
 		}
 	}
 
@@ -1137,7 +1149,7 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 
 	// sanity check: it's actually in a tree somewhere...
 	// If the location is not owned by a thread, check that we can reach it by walking
-	// from the registered root. 
+	// from the registered root.
 	if (loc->thread_owner == -1) {
 		struct pgtable_walk_result pte = find_pte(loc);
 		if (! pte.found) {
@@ -1187,7 +1199,7 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 		// so attach the value now.
 
 		// sanity check: we really aren't writing to it ...
-		if (current_transition.kind == TRANS_MEM_WRITE && current_transition.write_data.phys_addr == loc->phys_addr)
+		if (is_on_write_transition(loc->phys_addr))
 			ghost_assert(false);
 
 
@@ -1355,13 +1367,13 @@ static phys_addr_t extract_s1_root(u64 ttb)
 }
 
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-static void step_msr(struct ghost_simplified_model_transition trans)
+static void step_msr(struct ghost_hw_step *step)
 {
 	u64 root;
 	// TODO: BS: also remember which is current?
-	switch (trans.msr_data.sysreg) {
+	switch (step->msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
-		root = extract_s1_root(trans.msr_data.val);
+		root = extract_s1_root(step->msr_data.val);
 
 		if (! root_exists_in(the_ghost_state->s1_roots, root)) {
 			try_register_root(GHOST_STAGE1, root);
@@ -1370,7 +1382,7 @@ static void step_msr(struct ghost_simplified_model_transition trans)
 
 		break;
 	case SYSREG_VTTBR:
-		root = extract_s2_root(trans.msr_data.val);
+		root = extract_s2_root(step->msr_data.val);
 
 		if (! root_exists_in(the_ghost_state->s2_roots, root)) {
 			try_register_root(GHOST_STAGE2, root);
@@ -1489,11 +1501,11 @@ static void step_write_on_unwritable(struct sm_location *loc, u64 val) {
 	if ((! is_desc_valid(loc->val)) && (! is_desc_valid(val)))
 		return;
 
-	// You can't change an unwritable descriptor. 
+	// You can't change an unwritable descriptor.
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote on a page with an unclean parent");
 }
 
-static void write_is_authorized(struct sm_location *loc, struct ghost_simplified_model_transition trans, u64 val)
+static void write_is_authorized(struct sm_location *loc, struct ghost_hw_step *step, u64 val)
 {
 	struct lock_state *state_of_lock;
 
@@ -1510,11 +1522,11 @@ static void write_is_authorized(struct sm_location *loc, struct ghost_simplified
 	switch (state_of_lock->write_authorization) {
 		case AUTHORIZED:
 			// We are not authorized to write plain on it anymore
-			state_of_lock->write_authorization = UNAUTHORIZED_PLAIN_VALID;
+			state_of_lock->write_authorization = UNAUTHORIZED_PLAIN;
 			break;
-		case UNAUTHORIZED_PLAIN_VALID:
+		case UNAUTHORIZED_PLAIN:
 			// We cannot write plain (exept invalid on invalid)
-			if (trans.write_data.mo == WMO_plain) {
+			if (step->write_data.mo == WMO_plain) {
 				if (loc->state.kind == STATE_PTE_VALID || is_desc_valid(val))
 					GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Wrote plain without authorization");
 			}
@@ -1524,20 +1536,22 @@ static void write_is_authorized(struct sm_location *loc, struct ghost_simplified
 	}
 }
 
-static void __step_write(struct ghost_simplified_model_transition trans)
+static void step_write(struct ghost_hw_step *step)
 {
-	enum memory_order_t mo = trans.write_data.mo;
-	u64 val = trans.write_data.val;
+	ghost_assert(step->kind == HW_MEM_WRITE);
+
+	enum memory_order_t mo = step->write_data.mo;
+	u64 val = step->write_data.val;
 
 	// look inside memory at `addr`
-	struct sm_location *loc = location(trans.write_data.phys_addr);
+	struct sm_location *loc = location(step->write_data.phys_addr);
 
 	if (!loc->is_pte) {
 		goto done;
 	}
 
 	// must own the lock on the pgtable this pte is in.
-	write_is_authorized(loc, trans, val);
+	write_is_authorized(loc, step, val);
 
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
@@ -1562,45 +1576,13 @@ done:
 	return;
 }
 
-static void __step_write_memset(u64 phys_addr, u64 val)
-{
-	ghost_assert(IS_PAGE_ALIGNED(phys_addr));
-	for (int i = 0; i < 512; i++) {
-		__step_write((struct ghost_simplified_model_transition){
-			.kind = TRANS_MEM_WRITE,
-			.write_data = (struct trans_write_data){
-				.mo=WMO_plain,
-				.phys_addr=phys_addr+i*sizeof(u64),
-				.val=val
-			}
-		});
-	}
-
-}
-
-static void step_write(struct ghost_simplified_model_transition trans)
-{
-	switch (trans.write_data.mo) {
-	case GHOST_MEMSET_PAGE:
-		__step_write_memset(trans.write_data.phys_addr, trans.write_data.val);
-		break;
-
-	case WMO_plain:
-	case WMO_release:
-		__step_write(trans);
-		break;
-
-	default:
-		BUG(); // unreachable
-	}
-}
-
 ////////////////////////
 // Step on memory read
 
-static void step_read(struct ghost_simplified_model_transition trans)
+static void step_read(struct ghost_hw_step *step)
 {
-	struct sm_location *loc = location(trans.read_data.phys_addr);
+	ghost_assert(step->kind == HW_MEM_READ);
+	struct sm_location *loc = location(step->read_data.phys_addr);
 
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
@@ -1733,12 +1715,12 @@ static void reset_write_authorizations(void) {
 	}
 }
 
-static void step_dsb(struct ghost_simplified_model_transition trans)
+static void step_dsb(struct ghost_hw_step *step)
 {
 	// annoyingly, DSBs aren't annotated with their addresses.
 	// so we do the really dumb thing: we go through every pagetable that we know about
 	// and step any we find in the right state.
-	traverse_all_unclean_PTE(dsb_visitor, &trans.dsb_data, GHOST_STAGE_NONE);
+	traverse_all_unclean_PTE(dsb_visitor, &step->dsb_data, GHOST_STAGE_NONE);
 
 	// The DSBs also enforce a sufficient barrier to allow plain writes again
 	reset_write_authorizations();
@@ -1845,7 +1827,7 @@ static bool all_children_invalid(struct sm_location *loc)
 {
 	// Assert that we are on a table descriptor
 	ghost_assert(loc->initialised && loc->is_pte);
-	
+
 	if (loc->descriptor.kind != PTE_KIND_TABLE)
 		return true;
 
@@ -1952,11 +1934,11 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void step_tlbi(struct ghost_simplified_model_transition trans)
+static void step_tlbi(struct ghost_hw_step *step)
 {
-	ghost_assert(trans.kind == TRANS_TLBI);
+	ghost_assert(step->kind == HW_TLBI);
 
-	struct sm_tlbi_op decoded = decode_tlbi(trans.tlbi_data);
+	struct sm_tlbi_op decoded = decode_tlbi(step->tlbi_data);
 
 	switch (decoded.regime) {
 	/* TLBIs that hit host/guest tables */
@@ -1977,9 +1959,39 @@ static void step_tlbi(struct ghost_simplified_model_transition trans)
 /////////////////////
 // ISB
 
-static void step_isb(struct ghost_simplified_model_transition trans)
+static void step_isb(struct ghost_hw_step *step)
 {
 	// ISB is a NOP?
+}
+
+
+///////////////////////
+// Hardware Steps
+
+static void step_hw(struct ghost_hw_step *step)
+{
+	switch (step->kind) {
+	case HW_MEM_WRITE:
+		step_write(step);
+		break;
+	case HW_MEM_READ:
+		step_read(step);
+		break;
+	case HW_DSB:
+		step_dsb(step);
+		break;
+	case HW_ISB:
+		step_isb(step);
+		break;
+	case HW_TLBI:
+		step_tlbi(step);
+		break;
+	case HW_MSR:
+		step_msr(step);
+		break;
+	default:
+		BUG();
+	}
 }
 
 
@@ -2056,20 +2068,20 @@ static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
 	loc->thread_owner = val;
 }
 
-static void step_hint(struct ghost_simplified_model_transition trans)
+static void step_hint(struct ghost_hint_step *step)
 {
-	switch (trans.hint_data.hint_kind) {
+	switch (step->kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
-		step_hint_set_root_lock(trans.hint_data.location, (gsm_lock_t *)trans.hint_data.value);
+		step_hint_set_root_lock(step->location, (gsm_lock_t *)step->value);
 		break;
 	case GHOST_HINT_SET_OWNER_ROOT:
-		step_hint_set_owner_root(trans.hint_data.location, trans.hint_data.value);
+		step_hint_set_owner_root(step->location, step->value);
 		break;
 	case GHOST_HINT_RELEASE_TABLE:
-		step_hint_release_table(trans.hint_data.location);
+		step_hint_release_table(step->location);
 		break;
 	case GHOST_HINT_SET_PTE_THREAD_OWNER:
-		step_hint_set_PTE_thread_owner(trans.hint_data.location, trans.hint_data.value);
+		step_hint_set_PTE_thread_owner(step->location, step->value);
 		break;
 	default:
 		BUG(); // unreachable;
@@ -2077,7 +2089,7 @@ static void step_hint(struct ghost_simplified_model_transition trans)
 }
 
 //////////////////////
-// LOCK
+// ABS
 
 static void __step_lock(gsm_lock_t *lock_addr)
 {
@@ -2113,7 +2125,6 @@ static void __step_unlock(gsm_lock_t *lock_addr)
 				the_ghost_state->lock_state.locker[i] = the_ghost_state->lock_state.locker[len];
 				the_ghost_state->lock_state.address[i] = the_ghost_state->lock_state.address[len];
 				the_ghost_state->lock_state.len--;
-						
 				return;
 			} else {
 				GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to unlock a cpmponent that was held by another thread");
@@ -2123,14 +2134,40 @@ static void __step_unlock(gsm_lock_t *lock_addr)
 	GHOST_SIMPLIFIED_MODEL_CATCH_FIRE("Tried to unlock a component that was not held");
 }
 
-static void step_lock(struct ghost_simplified_model_transition trans)
+
+static void __step_memset(u64 phys_addr, u64 size, u64 val)
 {
-	switch (trans.lock_data.kind) {
-	case GHOST_SIMPLIFIED_LOCK:
-		__step_lock((gsm_lock_t *) trans.lock_data.address);
+	ghost_assert(IS_PAGE_ALIGNED(phys_addr));
+	ghost_assert((size % 8) == 0);
+
+	/* Implement MEMSET by repeated WRITE transitions. */
+	for (u64 i = 0; i < size; i += 8) {
+		struct ghost_hw_step write_step = {
+			.kind = HW_MEM_WRITE,
+			.write_data = (struct trans_write_data){
+				.mo=WMO_plain,
+				.phys_addr=phys_addr+i*sizeof(u64),
+				.val=val,
+			},
+		};
+		step_write(&write_step);
+	}
+}
+
+static void step_abs(struct ghost_abs_step *step)
+{
+	switch (step->kind) {
+	case GHOST_ABS_LOCK:
+		__step_lock((gsm_lock_t *) step->lock_data.address);
 		break;
-	case GHOST_SIMPLIFIED_UNLOCK:
-		__step_unlock((gsm_lock_t *) trans.lock_data.address);
+	case GHOST_ABS_UNLOCK:
+		__step_unlock((gsm_lock_t *) step->lock_data.address);
+		break;
+	case GHOST_ABS_INIT:
+		// Nothing to do
+		break;
+	case GHOST_ABS_MEMSET:
+		__step_memset(step->memset_data.address, step->memset_data.size, step->memset_data.value);
 		break;
 	default:
 		BUG(); // unreachable;
@@ -2157,33 +2194,17 @@ static void step(struct ghost_simplified_model_transition trans)
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_DIFF_ON_TRANS */
 
 	switch (trans.kind) {
-	case TRANS_MEM_WRITE:
-		step_write(trans);
+	case TRANS_HW_STEP:
+		step_hw(&trans.hw_step);
 		break;
-	case TRANS_MEM_ZALLOC:
-		// Nothing to do
-		break;
-	case TRANS_MEM_READ:
-		step_read(trans);
-		break;
-	case TRANS_DSB:
-		step_dsb(trans);
-		break;
-	case TRANS_ISB:
-		step_isb(trans);
-		break;
-	case TRANS_TLBI:
-		step_tlbi(trans);
-		break;
-	case TRANS_MSR:
-		step_msr(trans);
+	case TRANS_ABS_STEP:
+		step_abs(&trans.abs_step);
 		break;
 	case TRANS_HINT:
-		step_hint(trans);
+		step_hint(&trans.hint_step);
 		break;
-	case TRANS_LOCK:
-		step_lock(trans);
-		break;
+	default:
+		BUG();  // unreachable;
 	};
 
 	if (__this_cpu_read(ghost_print_this_hypercall) && ghost_print_on("sm_dump_trans"))
@@ -2278,8 +2299,8 @@ static void initialise_ghost_hint_transitions(void)
 	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
-		.hint_data = (struct trans_hint_data){
-			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
+		.hint_step = (struct ghost_hint_step){
+			.kind = GHOST_HINT_SET_ROOT_LOCK,
 			.location = pkvm_pgd,
 			.value = hyp_virt_to_phys(&pkvm_pgd_lock),
 		},
@@ -2287,14 +2308,17 @@ static void initialise_ghost_hint_transitions(void)
 	step((struct ghost_simplified_model_transition){
 		.src_loc = SRC_LOC, // report as coming from _here_
 		.kind = TRANS_HINT,
-		.hint_data = (struct trans_hint_data){
-			.hint_kind = GHOST_HINT_SET_ROOT_LOCK,
+		.hint_step = (struct ghost_hint_step){
+			.kind = GHOST_HINT_SET_ROOT_LOCK,
 			.location = (u64)hyp_virt_to_phys(host_mmu.pgt.pgd),
 			.value = hyp_virt_to_phys(&host_mmu.lock),
 		},
 	});
 	GHOST_LOG_CONTEXT_EXIT();
 }
+
+/* TODO: BS: make this more generic. */
+extern void get_fixmap(void);
 
 static void initialise_fixmap(void)
 {
@@ -2332,6 +2356,8 @@ void initialise_ghost_simplified_model(phys_addr_t phys, u64 size, unsigned long
 
 //////////////////////////////
 //// Printers
+
+#pragma GCC diagnostic ignored "-Wunused-variable"
 
 #define ID_STRING(x) [x]=#x
 static const char *automaton_state_names[] = {
@@ -2386,16 +2412,18 @@ static const char *sysreg_names[] = {
 	ID_STRING(SYSREG_TTBR_EL2),
 };
 
+static const char *abs_step_names[] = {
+	ID_STRING(GHOST_ABS_LOCK),
+	ID_STRING(GHOST_ABS_UNLOCK),
+	ID_STRING(GHOST_ABS_INIT),
+	ID_STRING(GHOST_ABS_MEMSET),
+};
+
 static const char *hint_names[] = {
 	ID_STRING(GHOST_HINT_SET_ROOT_LOCK),
 	ID_STRING(GHOST_HINT_SET_OWNER_ROOT),
 	ID_STRING(GHOST_HINT_RELEASE_TABLE),
 	ID_STRING(GHOST_HINT_SET_PTE_THREAD_OWNER),
-};
-
-static const char *lock_type_names[] = {
-	[GHOST_SIMPLIFIED_LOCK] = "LOCK",
-	[GHOST_SIMPLIFIED_UNLOCK] = "UNLOCK",
 };
 
 int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
@@ -2408,9 +2436,6 @@ int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 	case WMO_release:
 		kind = "rel";
 		break;
-	case GHOST_MEMSET_PAGE:
-		kind="page";
-		break;
 	default:
 		BUG(); // unreachable?
 	}
@@ -2418,8 +2443,20 @@ int gp_print_write_trans(gp_stream_t *out, struct trans_write_data *write_data)
 	return ghost_sprintf(out, "W%s %p %lx", kind, write_data->phys_addr, write_data->val);
 }
 
-int gp_print_zalloc_trans(gp_stream_t *out, struct trans_zalloc_data *zalloc_data) {
-	return ghost_sprintf(out, "ZALLOC %lx size: %lx", zalloc_data->location, zalloc_data->size);
+int gp_print_init_trans(gp_stream_t *out, struct trans_init_data *init_data) {
+	if (ghost_sm_options.legacy_log_format)
+		/* LEGACY: used to be called ZALLOC */
+		return ghost_sprintf(out, "ZALLOC %lx size: %lx", init_data->location, init_data->size);
+	else
+		return ghost_sprintf(out, "INIT %p %lx", init_data->location, init_data->size);
+}
+
+int gp_print_memset_trans(gp_stream_t *out, struct trans_memset_data *data) {
+	if (ghost_sm_options.legacy_log_format && data->size == 512)
+		/* LEGACY: used to be called Wpage */
+		return ghost_sprintf(out, "Wpage %p %lx", data->address, data->value);
+	else
+		return ghost_sprintf(out, "MEMSET %p %lx %lx", data->address, data->size, data->value);
 }
 
 int gp_print_read_trans(gp_stream_t *out, struct trans_read_data *read_data)
@@ -2497,28 +2534,14 @@ int gp_print_msr_trans(gp_stream_t *out, struct trans_msr_data *msr_data)
 	return ghost_sprintf(out, "MSR %s %lx", sysreg_names[msr_data->sysreg], msr_data->val);
 }
 
-int gp_print_hint_trans(gp_stream_t *out, struct trans_hint_data *hint_data)
-{
-	const char *hint_name = hint_names[hint_data->hint_kind];
-
-	switch (hint_data->hint_kind) {
-	case GHOST_HINT_SET_ROOT_LOCK:
-	case GHOST_HINT_SET_OWNER_ROOT:
-	case GHOST_HINT_SET_PTE_THREAD_OWNER:
-		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_data->location, hint_data->value);
-		break;
-	case GHOST_HINT_RELEASE_TABLE:
-		return ghost_sprintf(out, "HINT %s %lx", hint_name, hint_data->location);
-		break;
-	default:
-		BUG(); // unreachable?
-	}
-}
-
 int gp_print_lock_trans(gp_stream_t *out, struct trans_lock_data *lock_data)
 {
+	return ghost_sprintf(out, "%s %lx", "LOCK", lock_data->address);
+}
 
-	return ghost_sprintf(out, "%s %lx", lock_type_names[lock_data->kind], lock_data->address);
+int gp_print_unlock_trans(gp_stream_t *out, struct trans_lock_data *lock_data)
+{
+	return ghost_sprintf(out, "%s %lx", "UNLOCK", lock_data->address);
 }
 
 int gp_print_src_loc(gp_stream_t *out, struct src_loc *src_loc)
@@ -2526,38 +2549,89 @@ int gp_print_src_loc(gp_stream_t *out, struct src_loc *src_loc)
 	return ghost_sprintf(out, "at %s:%d in %s", src_loc->file, src_loc->lineno, src_loc->func);
 }
 
+int gp_print_sm_hw_step(gp_stream_t *out, struct ghost_hw_step *step)
+{
+	int ret;
+	switch (step->kind) {
+	case HW_MEM_WRITE:
+		ret = gp_print_write_trans(out, &step->write_data);
+		break;
+	case HW_MEM_READ:
+		ret = gp_print_read_trans(out, &step->read_data);
+		break;
+	case HW_DSB:
+		ret = gp_print_dsb_trans(out, &step->dsb_data);
+		break;
+	case HW_ISB:
+		ret = ghost_sprintf(out, "ISB");
+		break;
+	case HW_TLBI:
+		ret = gp_print_tlbi_trans(out, &step->tlbi_data);
+		break;
+	case HW_MSR:
+		ret = gp_print_msr_trans(out, &step->msr_data);
+		break;
+	}
+	return ret;
+}
+
+int gp_print_sm_abs_step(gp_stream_t *out, struct ghost_abs_step *step)
+{
+	int ret;
+	switch (step->kind) {
+	case GHOST_ABS_LOCK:
+		ret = gp_print_lock_trans(out, &step->lock_data);
+		break;
+	case GHOST_ABS_UNLOCK:
+		ret = gp_print_unlock_trans(out, &step->lock_data);
+		break;
+	case GHOST_ABS_INIT:
+		ret = gp_print_init_trans(out, &step->init_data);
+		break;
+	case GHOST_ABS_MEMSET:
+		ret = gp_print_memset_trans(out, &step->memset_data);
+		break;
+	default:
+		BUG();  // unreachable;
+	}
+	return ret;
+}
+
+int gp_print_sm_hint_step(gp_stream_t *out, struct ghost_hint_step *hint_step)
+{
+	const char *hint_name = hint_names[hint_step->kind];
+
+	switch (hint_step->kind) {
+	case GHOST_HINT_SET_ROOT_LOCK:
+	case GHOST_HINT_SET_OWNER_ROOT:
+	case GHOST_HINT_SET_PTE_THREAD_OWNER:
+		return ghost_sprintf(out, "HINT %s %lx %lx", hint_name, hint_step->location, hint_step->value);
+		break;
+	case GHOST_HINT_RELEASE_TABLE:
+		return ghost_sprintf(out, "HINT %s %lx", hint_name, hint_step->location);
+		break;
+	default:
+		BUG(); // unreachable?
+	}
+}
+
 int gp_print_sm_trans(gp_stream_t *out, struct ghost_simplified_model_transition *trans)
 {
 	int ret;
 
 	switch (trans->kind) {
-	case TRANS_MEM_WRITE:
-		ret = gp_print_write_trans(out, &trans->write_data);
+	case TRANS_HW_STEP:
+		ret = gp_print_sm_hw_step(out, &trans->hw_step);
 		break;
-	case TRANS_MEM_ZALLOC:
-		ret = gp_print_zalloc_trans(out, &trans->zalloc_data);
+
+	case TRANS_ABS_STEP:
+		ret = gp_print_sm_abs_step(out, &trans->abs_step);
 		break;
-	case TRANS_MEM_READ:
-		ret = gp_print_read_trans(out, &trans->read_data);
-		break;
-	case TRANS_DSB:
-		ret = gp_print_dsb_trans(out, &trans->dsb_data);
-		break;
-	case TRANS_ISB:
-		ret = ghost_sprintf(out, "ISB");
-		break;
-	case TRANS_TLBI:
-		ret = gp_print_tlbi_trans(out, &trans->tlbi_data);
-		break;
-	case TRANS_MSR:
-		ret = gp_print_msr_trans(out, &trans->msr_data);
-		break;
+
 	case TRANS_HINT:
-		ret = gp_print_hint_trans(out, &trans->hint_data);
+		ret = gp_print_sm_hint_step(out, &trans->hint_step);
 		break;
-	case TRANS_LOCK:
-		ret = gp_print_lock_trans(out, &trans->lock_data);
-		break;
+
 	default:
 		BUG();
 	};
@@ -2749,7 +2823,7 @@ int gp_print_sm_roots(gp_stream_t *out, char *name, u64 len, u64 *roots)
 	return ghost_sprintf(out, "]");
 }
 
-int gp_print_sm_lock(gp_stream_t *out, struct owner_locks *locks, int i)
+int gp_print_sm_lock(gp_stream_t *out, struct lock_owner_map *locks, int i)
 {
 	int ret;
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
@@ -2757,7 +2831,7 @@ int gp_print_sm_lock(gp_stream_t *out, struct owner_locks *locks, int i)
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
 
 #ifndef CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY
-	if (is_correctly_locked(locks->locks[i], &state)) 
+	if (is_correctly_locked(locks->locks[i], &state))
 		ret = ghost_sprintf(out, "(%p,%p, locked by thread %d, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
 	else
 #endif /* CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL_LOG_ONLY */
@@ -2766,7 +2840,7 @@ int gp_print_sm_lock(gp_stream_t *out, struct owner_locks *locks, int i)
 	return ret;
 }
 
-int gp_print_sm_locks(gp_stream_t *out, struct owner_locks *locks)
+int gp_print_sm_locks(gp_stream_t *out, struct lock_owner_map *locks)
 {
 	int ret;
 	ret = ghost_sprintf(out, "%s", "locks: [");
