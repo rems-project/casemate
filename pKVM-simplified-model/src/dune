@@ -11,5 +11,5 @@
  (name simplified)
  (preprocess
   (staged_pps ppx_import ppx_deriving.show))
- (libraries str zarith fmt fmt.tty cmdliner extraction)
+ (libraries str zarith sexplib fmt fmt.tty cmdliner extraction)
  (package simplified))

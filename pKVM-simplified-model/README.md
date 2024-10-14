@@ -4,7 +4,7 @@ pKVM simplified model sketch, in Coq, ported from C
 Install base packages with opam:
 ```bash
 opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
-opam install coq coq-lsp coq-stdpp coq-stdpp-bitvector zarith fmt
+opam install coq coq-lsp coq-stdpp coq-stdpp-bitvector zarith fmt sexplib
 ```
 
 Install RecordUpdate:
