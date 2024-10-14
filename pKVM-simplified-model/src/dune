@@ -7,8 +7,8 @@
  (infer true))
 
 (executable
- (public_name parser)
- (name parser)
+ (public_name simplified)
+ (name simplified)
  (preprocess
   (staged_pps ppx_import ppx_deriving.show))
  (libraries str zarith fmt fmt.tty cmdliner extraction)
