@@ -1,0 +1,17 @@
+#ifndef CASEMATE_DUMMY_MACROS_H
+#define CASEMATE_DUMMY_MACROS_H
+
+/*
+ * WIP Porting macross
+ *
+ * These will go away.
+ */
+
+#define GHOST_LOG_CONTEXT_ENTER()
+#define GHOST_LOG(NAME,TYPE)
+#define GHOST_LOG_CONTEXT_EXIT()
+#define GHOST_LOG_CONTEXT_ENTER_INNER(NAME)
+#define GHOST_LOG_INNER(LOGNAME,NAME,TYPE)
+#define GHOST_LOG_CONTEXT_EXIT_INNER(NAME)
+
+#endif /* CASEMATE_DUMMY_MACROS_H */

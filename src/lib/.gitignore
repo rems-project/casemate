@@ -1,0 +1,13 @@
+*.d
+*.o
+*.o.cmd
+*.out
+*.log
+
+# clangd
+/compile_commands.json
+.cache/
+
+# top-level things
+/casemate.o
+/casemate.o.S
