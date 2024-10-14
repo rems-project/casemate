@@ -18,13 +18,13 @@ let parse_line line =
   let prefix = "\o033[46;37;1m" and suffix = "\o033[0m" in
   match strip_prefix line ~prefix with
   | None -> None
-  | Some line' -> (
+  | Some line' ->
       match strip_suffix line' ~suffix with
       | None -> Fmt.invalid_arg "Ill-formed line: %S" line
-      | Some line' -> (
-          let buf = Lexing.from_string line' in
-          try Some (Menhir_parser.trans Lexer.token buf)
-          with Menhir_parser.Error -> Fmt.invalid_arg "Parse error: %S" line))
+      | Some line' ->
+          match Parser_v1.of_line line' with
+          | None -> Fmt.invalid_arg "Parse error: %S" line
+          | res -> res
 
 let transitions ic = Iters.lines ic |> Iters.filter_map parse_line
 
