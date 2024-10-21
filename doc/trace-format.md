@@ -7,7 +7,7 @@ where each record is a trace event tagged with a sequence ID and an originating 
 ```
 SEQ = "(", "id", int, ")";
 TID = "(", "thread", int, ")";
-SRC = "(", "src", string, ")"
+SRC = "(", "src", (string | int), ")"
 
 TRANSITION =
     MEM-WRITE
@@ -16,15 +16,24 @@ TRANSITION =
   | MEM-SET
   | BARRIER
   | TLBI
-  | MSR
+  | SYSREG
   | HINT
   | LOCK
   ;
 
 RECORD(t: TRANSITION) =
-    "(", t[0], SEQ, TID, SRC, t[1..], ")"
+    "(", t[0], SEQ, TID, t[1..], SRC?, ")"
   ;
 ```
+
+Records are s-exps which start with the name of the transition,
+followed by the sequence and thread IDs,
+then the remainin fields,
+with the source location in final position.
+
+The source location is optional,
+and is either a string containing the source line
+or an integer key into an externally defined map from tracepoint to source location.
 
 ## transitions
 
@@ -56,7 +65,7 @@ MEM-READ =
 Zero initialise memory.
 
 ```
-MEM-ZALLOC =
+MEM-INIT =
     "mem-init",
          "(", "address", u64, ")",
          "(", "size", u64, ")";
@@ -83,10 +92,6 @@ MEM-SET =
 ### barrier
 
 Barriers/fences.
-
-(mem-write x 12)
-(barrier ISB)
-(barrier DSB (kind ISH))
 
 ```
 BARRIER =
@@ -139,10 +144,11 @@ TLBI-OP-ADDR =
 ### MSR (SysReg Write)
 
 ```
-MSR =
-   "msr"
-         "(", "sysreg", ( "VTTBR_El2" | "TTBR0_EL2" ), ")",
-         "(", "value", u64, ")";
+SYSREG =
+    "sysreg-write"
+        "(", "sysreg", ( "VTTBR_El2" | "TTBR0_EL2" ), ")",
+        "(", "value", u64, ")"
+  ;
 ```
 
 ### HINTs
