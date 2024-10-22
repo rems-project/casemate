@@ -10,13 +10,18 @@ dev-repo: "git+https://github.com/rems-project/xxx.git"
 synopsis: "Simplified model"
 
 depends: [
-  "coq" { (= "8.19.0") | (= "dev") }
+  "ocaml" {>= "4.14.0"}
+  "dune"
+  "coq" { (>= "8.19.0") & (<= "8.19.99") | (= "dev") }
   "coq-stdpp-unstable"
   "coq-record-update" { (= "0.3.3") | (= "dev") }
-  "bisect_ppx" {dev & >= "2.5.0"}
+  "menhir" {= "20240715"}
   "zarith"
+  "fmt"
+  "ppx_deriving"
+  "ppx_import"
   "sexplib" {>= "v0.16"}
-  "dune" {= "3.9.1"} # dune updates like to break things so we fix a version
+  "bisect_ppx" {dev & >= "2.5.0"}
 ]
 
 build: [

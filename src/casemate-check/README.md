@@ -1,17 +1,24 @@
-pKVM simplified model sketch, in Coq, ported from C
+Casemate offline checker in Coq. Ported from C.
 
-### Install dependencies
-Install base packages with opam:
+## Building
+
+First, register additional repositories with your Opam switch:
+
 ```bash
 opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
-opam install coq coq-lsp coq-stdpp coq-stdpp-bitvector zarith fmt sexplib
+opam pin add --no-action https://github.com/tchajed/coq-record-update.git
 ```
 
-Install RecordUpdate:
+(Press `y` at prompts.)
+
+After that, either install `casemate` by running:
+
 ```bash
-opam pin add coq-record-update https://github.com/tchajed/coq-record-update.git
+opam install .
 ```
 
-### Extracting traces that can be parsed
+Or install just the dependencies (e.g. for development) by running:
 
-To extract logs of the right format, a few options have to be set correctly for compiling the linux kernel.  The options `Runtime simplified model checking` and `Colours in the output of nVHE ghost spec` have to be enabled. Optionally, the option `Only log simplified model steps` can be enabled.
+```bash
+opam install --deps-only .
+```
