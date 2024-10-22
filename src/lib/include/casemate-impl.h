@@ -1,9 +1,6 @@
 #ifndef CASEMATE_IMPL_H
 #define CASEMATE_IMPL_H
 
-/* the implementation should not need this! */
-#define GHOST_CPU_ID 0
-
 /* grab public API */
 #include <casemate.h>
 

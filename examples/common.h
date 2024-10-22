@@ -1,7 +1,6 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-#define GHOST_CPU_ID 0
 #include <casemate.h>
 
 void common_init(int argc, char **argv);

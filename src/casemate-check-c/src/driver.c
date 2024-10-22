@@ -91,7 +91,7 @@ void ghost_cm_trace(const char *record)
 	printf("\n");
 }
 
-u64 casemate_cpu_id()
+u64 casemate_cpu_id(void)
 {
 	return 0;
 }

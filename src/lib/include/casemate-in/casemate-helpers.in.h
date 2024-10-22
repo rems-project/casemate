@@ -11,11 +11,11 @@
 extern u64 casemate_cpu_id(void);
 #define THREAD_ID casemate_cpu_id()
 
-#define casemate_model_step_write(...) __casemate_model_step_write(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_write(struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)
+#define casemate_model_step_write(...) __casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -29,11 +29,11 @@ static inline void __casemate_model_step_write(struct src_loc src_loc, enum memo
 	});
 }
 
-#define casemate_model_step_read(...) __casemate_model_step_read(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_read(struct src_loc src_loc, phys_addr_t phys, u64 val)
+#define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, phys_addr_t phys, u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -46,11 +46,11 @@ static inline void __casemate_model_step_read(struct src_loc src_loc, phys_addr_
 	});
 }
 
-#define casemate_model_step_dsb(...) __casemate_model_step_dsb(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_dsb(struct src_loc src_loc, enum dxb_kind kind)
+#define casemate_model_step_dsb(...) __casemate_model_step_dsb(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, enum dxb_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -63,11 +63,11 @@ static inline void __casemate_model_step_dsb(struct src_loc src_loc, enum dxb_ki
 	});
 }
 
-#define casemate_model_step_isb() __casemate_model_step_isb(SRC_LOC)
-static inline void __casemate_model_step_isb(struct src_loc src_loc)
+#define casemate_model_step_isb() __casemate_model_step_isb(THREAD_ID, SRC_LOC)
+static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -79,11 +79,11 @@ static inline void __casemate_model_step_isb(struct src_loc src_loc)
 	});
 }
 
-#define casemate_model_step_tlbi3(...) __casemate_model_step_tlbi3(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi3(struct src_loc src_loc, enum tlbi_kind kind, u64 page, int level)
+#define casemate_model_step_tlbi3(...) __casemate_model_step_tlbi3(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi3(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 page, int level)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -97,11 +97,11 @@ static inline void __casemate_model_step_tlbi3(struct src_loc src_loc, enum tlbi
 	});
 }
 
-#define casemate_model_step_tlbi1(...) __casemate_model_step_tlbi1(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi1(struct src_loc src_loc, enum tlbi_kind kind)
+#define casemate_model_step_tlbi1(...) __casemate_model_step_tlbi1(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi1(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -113,11 +113,11 @@ static inline void __casemate_model_step_tlbi1(struct src_loc src_loc, enum tlbi
 	});
 }
 
-#define casemate_model_step_msr(...) __casemate_model_step_msr(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_msr(struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
+#define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
 		.hw_step = (struct ghost_hw_step){
@@ -130,11 +130,11 @@ static inline void __casemate_model_step_msr(struct src_loc src_loc, enum ghost_
 	});
 }
 
-#define casemate_model_step_hint(...) __casemate_model_step_hint(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_hint(struct src_loc src_loc, enum ghost_hint_kind kind, u64 location, u64 value)
+#define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc, enum ghost_hint_kind kind, u64 location, u64 value)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HINT,
 		.hint_step = (struct ghost_hint_step){
@@ -145,11 +145,11 @@ static inline void __casemate_model_step_hint(struct src_loc src_loc, enum ghost
 	});
 }
 
-#define casemate_model_step_init(...) __casemate_model_step_init(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_init(struct src_loc src_loc, u64 location, u64 size)
+#define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u64 location, u64 size)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
 		.abs_step = (struct ghost_abs_step){
@@ -162,11 +162,11 @@ static inline void __casemate_model_step_init(struct src_loc src_loc, u64 locati
 	});
 }
 
-#define casemate_model_step_memset(...) __casemate_model_step_memset(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_memset(struct src_loc src_loc, u64 location, u64 value, u64 size)
+#define casemate_model_step_memset(...) __casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc, u64 location, u64 value, u64 size)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
 		.abs_step = (struct ghost_abs_step){
@@ -180,11 +180,11 @@ static inline void __casemate_model_step_memset(struct src_loc src_loc, u64 loca
 	});
 }
 
-#define casemate_model_step_lock(...) __casemate_model_step_lock(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_lock(struct src_loc src_loc, u64 address)
+#define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u64 address)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
 		.abs_step = (struct ghost_abs_step){
@@ -196,11 +196,11 @@ static inline void __casemate_model_step_lock(struct src_loc src_loc, u64 addres
 	});
 }
 
-#define casemate_model_step_unlock(...) __casemate_model_step_unlock(SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_unlock(struct src_loc src_loc, u64 address)
+#define casemate_model_step_unlock(...) __casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_unlock(u64 tid, struct src_loc src_loc, u64 address)
 {
 	casemate_model_step((struct casemate_model_step){
-		.tid = GHOST_CPU_ID,
+		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
 		.abs_step = (struct ghost_abs_step){

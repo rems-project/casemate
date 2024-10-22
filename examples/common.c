@@ -190,6 +190,11 @@ void common_read_argv(int argc, char **argv)
 	}
 }
 
+u64 casemate_cpu_id(void)
+{
+	return 0;
+}
+
 void common_init(int argc, char **argv)
 {
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
