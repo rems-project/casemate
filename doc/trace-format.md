@@ -98,18 +98,18 @@ BARRIER =
     "barrier", BARRIER-KIND;
 
 DxB-KIND =
-    "ISH"
-  | "ISHST"
-  | "NSH"
-  | "SY"
+    "ish"
+  | "ishst"
+  | "nsh"
+  | "sy"
   ;
 
 BARRIER-DSB =
-    "DSB",
+    "dsb",
       "(", "kind", DxB-KIND, ")"
 
 BARRIER-KIND =
-    "ISB" | BARRIER-DSB;
+    "isb" | BARRIER-DSB;
 ```
 
 ### TLBIs
@@ -120,17 +120,17 @@ TLBI =
          (TLBI-OP-ALL | TLBI-OP-ADDR);
 
 TLBI-OP-ALL =
-    "VMALLS12E1"
-  | "VMALLS12E1IS"
-  | "VMALLE1IS"
-  | "ALLE1IS"
+    "vmalls12e1"
+  | "vmalls12e1is"
+  | "vmalle1is"
+  | "alle1is"
   | ...
   ;
 
 TLBI-OP-ADDR-KIND =
-    "VAE2"
-  | "VAE2IS"
-  | "IPAS2E1IS"
+    "vae2"
+  | "vae2is"
+  | "ipas2e1is"
   | ...
   ;
 
@@ -146,7 +146,7 @@ TLBI-OP-ADDR =
 ```
 SYSREG =
     "sysreg-write"
-        "(", "sysreg", ( "VTTBR_El2" | "TTBR0_EL2" ), ")",
+        "(", "sysreg", ( "vttbr_el2" | "ttbr0_el2" ), ")",
         "(", "value", u64, ")"
   ;
 ```
@@ -159,8 +159,8 @@ assocating pagetables with locks and so on.
 ```
 HINT =
     "hint",
-         "(", "kind", ( "SET_ROOT_LOCK" | "SET_OWNER_ROOT" |
-                        "RELEASE" | "SET_PTE_THREAD_OWNER" ), ")",
+         "(", "kind", ( "set_root_lock" | "set_owner_root" |
+                        "release" | "set_pte_thread_owner" ), ")",
          "(", "location", u64, ")",
          "(", "value", u64, ")";
 ```
@@ -178,81 +178,81 @@ LOCK =
 ## Example trace
 
 ```
-(MEM-INIT
+(mem-init
   (id 0)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:29")
   (address 0xaaaaaf200000)
-  (size 0x1000))
-(MEM-INIT
+  (size 0x1000)
+  (src "test04_bad_bbm_missing_tlbi.c:29"))
+(mem-init
   (id 1)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:30")
   (address 0xaaaaaf201000)
-  (size 0x1000))
-(HINT
+  (size 0x1000)
+  (src "test04_bad_bbm_missing_tlbi.c:30"))
+(hint
   (id 2)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:31")
-  (kind SET_ROOT_LOCK)
+  (kind set_root_lock)
   (location 0xaaaaaf200000)
-  (value 0xaaaaaf203000))
-(HINT
+  (value 0xaaaaaf203000)
+  (src "test04_bad_bbm_missing_tlbi.c:31"))
+(hint
   (id 3)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:32")
-  (kind SET_OWNER_ROOT)
+  (kind set_owner_root)
   (location 0xaaaaaf201000)
-  (value 0xaaaaaf200000))
-(HINT
+  (value 0xaaaaaf200000)
+  (src "test04_bad_bbm_missing_tlbi.c:32"))
+(hint
   (id 4)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:33")
-  (kind SET_OWNER_ROOT)
+  (kind set_owner_root)
   (location 0xaaaaaf202000)
-  (value 0xaaaaaf200000))
-(MEM-WRITE
+  (value 0xaaaaaf200000)
+  (src "test04_bad_bbm_missing_tlbi.c:33"))
+(mem-write
   (id 5)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:36")
   (mem-order plain)
   (address 0xaaaaaf200000)
-  (value 0xaaaaaf201003))
-(MSR
+  (value 0xaaaaaf201003)
+  (src "test04_bad_bbm_missing_tlbi.c:36"))
+(msr
   (id 6)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:39")
-  (sysreg VTTBR_EL2)
-  (value 0xaaaaaf200000))
-(LOCK
+  (sysreg vttbr_el2)
+  (value 0xaaaaaf200000)
+  (src "test04_bad_bbm_missing_tlbi.c:39"))
+(lock
   (id 7)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:41")
-  (address 0xaaaaaf203000))
-(MEM-WRITE
+  (address 0xaaaaaf203000)
+  (src "test04_bad_bbm_missing_tlbi.c:41"))
+(mem-write
   (id 8)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:42")
   (mem-order plain)
   (address 0xaaaaaf200000)
-  (value 0x0))
-(BARRIER
+  (value 0x0)
+  (src "test04_bad_bbm_missing_tlbi.c:42"))
+(barrier
   (id 9)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:43")
-  DSB (kind ish))
-(BARRIER
+  dsb (kind ish)
+  (src "test04_bad_bbm_missing_tlbi.c:43"))
+(barrier
   (id 10)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:44")
-  DSB (kind ish))
-(MEM-WRITE
+  dsb (kind ish)
+  (src "test04_bad_bbm_missing_tlbi.c:44"))
+(mem-write
   (id 11)
   (tid 0)
-  (src "test04_bad_bbm_missing_tlbi.c:45")
   (mem-order plain)
   (address 0xaaaaaf200000)
-  (value 0xaaaaaf202003))
+  (value 0xaaaaaf202003)
+  (src "test04_bad_bbm_missing_tlbi.c:45"))
 ```
 
 Arguments can be also be given positionally for more compressed traces:

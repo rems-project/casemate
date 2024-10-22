@@ -17,35 +17,35 @@ let u64 sexp = match sexp with
     ) with Invalid_argument _ -> of_sexp_error "bad u64" sexp
 
 let mem_write_order = function
-  | Atom "PLAIN"   -> WMO_plain
-  | Atom "PAGE"    -> WMO_page
-  | Atom "RELEASE" -> WMO_release
+  | Atom "plain"   -> WMO_plain
+  | Atom "page"    -> WMO_page
+  | Atom "release" -> WMO_release
   | sexp -> of_sexp_error "bad mem-write mem-order" sexp
 
 let msr_sysreg = function
-  | Atom "VTTBR_EL2" -> SYSREG_VTTBR
-  | Atom "TTBR0_EL2" -> SYSREG_TTBR_EL2
+  | Atom "vttbr_el2" -> SYSREG_VTTBR
+  | Atom "ttbr0_el2" -> SYSREG_TTBR_EL2
   | sexp -> of_sexp_error "bad msr sysreg" sexp
 
 let hint_kind = function
-  | Atom "SET_ROOT_LOCK"        -> GHOST_HINT_SET_ROOT_LOCK
-  | Atom "SET_OWNER_ROOT"       -> GHOST_HINT_SET_OWNER_ROOT
-  | Atom "RELEASE"              -> GHOST_HINT_RELEASE
-  | Atom "SET_PTE_THREAD_OWNER" -> GHOST_HINT_SET_PTE_THREAD_OWNER
+  | Atom "set_root_lock"        -> GHOST_HINT_SET_ROOT_LOCK
+  | Atom "set_owner_root"       -> GHOST_HINT_SET_OWNER_ROOT
+  | Atom "release"              -> GHOST_HINT_RELEASE
+  | Atom "set_pte_thread_owner" -> GHOST_HINT_SET_PTE_THREAD_OWNER
   | sexp -> of_sexp_error "bad lock hint kind" sexp
 
 
 let barrier_kind = function
-  | Atom "ISH"   -> MBReqDomain_InnerShareable
-  | Atom "ISHST" -> MBReqDomain_InnerShareable
-  | Atom "NSH"   -> MBReqDomain_Nonshareable
-  | Atom "SY"    -> MBReqDomain_FullSystem
+  | Atom "ish"   -> MBReqDomain_InnerShareable
+  | Atom "ishst" -> MBReqDomain_InnerShareable
+  | Atom "nsh"   -> MBReqDomain_Nonshareable
+  | Atom "sy"    -> MBReqDomain_FullSystem
   | sexp         -> of_sexp_error "bad barrier kind" sexp
 
 let barrier_of = function
-  | List [Atom "DSB";
+  | List [Atom "dsb";
       List [Atom "kind"; kind]] -> Barrier_DSB (barrier_kind kind)
-  | Atom "ISB" -> Barrier_ISB ()
+  | Atom "isb" -> Barrier_ISB ()
   | sexp       -> of_sexp_error "bad barrier" sexp
 
 
@@ -95,15 +95,15 @@ let tlbi ?level ?addr ~regime ~shr op =
   }
 
 let tlbi_of = function
-| Atom "VMALLS12E1"   -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`NSH
-| Atom "VMALLS12E1IS" -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`ISH
-| Atom "VMALLE1IS"    -> tlbi `VMALL ~regime:`EL10 ~shr:`ISH
-| Atom "ALLE1IS"      -> tlbi `ALL ~regime:`EL10 ~shr:`ISH
-| List [Atom "VAE2"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+| Atom "vmalls12e1"   -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`NSH
+| Atom "vmalls12e1is" -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`ISH
+| Atom "vmalle1is"    -> tlbi `VMALL ~regime:`EL10 ~shr:`ISH
+| Atom "alle1is"      -> tlbi `ALL ~regime:`EL10 ~shr:`ISH
+| List [Atom "vae2"; List [Atom "addr"; addr]; List [Atom "level"; level]]
                       -> tlbi `VA ~regime:`EL2 ~shr:`NSH ~addr ~level
-| List [Atom "VAE2IS"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+| List [Atom "vae2is"; List [Atom "addr"; addr]; List [Atom "level"; level]]
                       -> tlbi `VA ~regime:`EL2 ~shr:`ISH ~addr ~level
-| List [Atom "IPAS2E1IS"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+| List [Atom "ipas2e1is"; List [Atom "addr"; addr]; List [Atom "level"; level]]
                       -> tlbi `IPAS2 ~regime:`EL10 ~shr:`NSH ~addr ~level
 | sexp                -> of_sexp_error "bad tlbi" sexp
 
