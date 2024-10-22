@@ -1,13 +1,13 @@
 opam-version: "2.0"
-name: "simplified"
+name: "casemate"
 maintainer: "? <?@?>"
 authors: "Jean Pichon"
 license: "BSD-3-Clause"
-homepage: "https://github.com/rems-project/xxx"
-bug-reports: "https://github.com/rems-project/xxx/issues"
-dev-repo: "git+https://github.com/rems-project/xxx.git"
+homepage: "https://github.com/rems-project/casemate"
+bug-reports: "https://github.com/rems-project/casemate/issues"
+dev-repo: "git+https://github.com/rems-project/casemate.git"
 
-synopsis: "Simplified model"
+synopsis: "Casemate offline checker"
 
 depends: [
   "ocaml" {>= "4.14.0"}

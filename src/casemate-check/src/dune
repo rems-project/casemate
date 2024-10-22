@@ -7,9 +7,9 @@
  (infer true))
 
 (executable
- (public_name simplified)
- (name simplified)
+ (public_name casemate)
+ (name casemate)
  (preprocess
   (staged_pps ppx_import ppx_deriving.show))
  (libraries str zarith sexplib fmt fmt.tty cmdliner extraction)
- (package simplified))
+ (package casemate))
