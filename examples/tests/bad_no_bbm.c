@@ -18,9 +18,6 @@ u64 l;
 int main(int argc, char **argv)
 {
 	common_init(argc, argv);
-	MARK_VAR(root);
-	MARK_VAR(child);
-	MARK_VAR(l);
 
 	/* tell the modle pud and pgd tables exist,
 	 * and logically associate them with the lock. */

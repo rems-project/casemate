@@ -6,14 +6,6 @@
 
 void common_init(int argc, char **argv);
 
-/**
- * MARK_VAR() - Mark variables used in tests.
- *
- * Since the addresses may change from run-to-run, we name variables in the output to let us check relatively simple simulations
- */
-#define MARK_VAR(VAR) \
-	printf("#define %s %p\n", #VAR, &VAR)
-
 /* dummy variables pretending to be hypervisor system registers */
 extern u64 TCR_EL2;
 extern u64 VTCR_EL2;

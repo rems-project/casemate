@@ -16,8 +16,6 @@ u64 x, y;
 int main(int argc, char **argv)
 {
 	common_init(argc, argv);
-	MARK_VAR(x);
-	MARK_VAR(y);
 
 	WRITE_ONCE(y, 0);
 	DSB(ish);

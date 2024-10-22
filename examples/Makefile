@@ -35,10 +35,10 @@ tests/%.o: tests/%.c
 	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
 
 $(EXPECTEDDIR)/%.log: FORCE
-	$(call run_cmd,RUN,$*,$* -at 1> $@ 2>/dev/null || true)
+	$(call run_cmd,RUN,$*,test -f ./$* && (./$* -at 1> $@ 2>/dev/null || true))
 
-%.log: FORCE
-	$(call run_cmd,RUN,$*,$* -at 1> $@ 2>/dev/null || true)
+tests/%.log: FORCE
+	$(call run_cmd,RUN,$*,test -f ./$* && (./$* -at 1> $@ 2>/dev/null || true))
 
 check-%: tests/%.log FORCE
 	$(call run_cmd,CHECK,$*,./scripts/check_simulation.py $< $(EXPECTEDDIR)/$*.log)

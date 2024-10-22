@@ -35,6 +35,10 @@ struct string_builder {
 	u64 rem;
 };
 
+#define DEFINE_STRING_BUFFER(VAR, LEN) \
+	char __##VAR##__buf[LEN] = {0}; \
+	struct string_builder VAR = {.out = __##VAR##__buf, .cur = __##VAR##__buf, .rem=LEN}
+
 int sb_putc(struct string_builder *buf, const char c);
 int sb_puts(struct string_builder *buf, const char *s);
 int sb_putbool(struct string_builder *buf, const bool b);

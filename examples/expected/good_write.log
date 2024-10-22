@@ -1,8 +1,6 @@
-#define table 0xaaaabd472000
-#define l 0xaaaabd473000
-(MEM-INIT (id 0) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:25") (address 0xaaaabd472000) (size 0x1000))
-(HINT (id 1) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:26") (kind SET_ROOT_LOCK) (location 0xaaaabd472000) (value 0xaaaabd473000))
-(MSR (id 2) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:29") (sysreg VTTBR_EL2) (value 0xaaaabd472000))
-(LOCK (id 3) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:31") (address 0xaaaabd473000))
-(MEM-WRITE (id 4) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:32") (mem-order plain) (address 0xaaaabd472000) (value 0x0))
-(UNLOCK (id 5) (tid 0) (src "/home/vscode/rems/casemate/examples/tests/good_write.c:33") (address 0xaaaabd473000))
+(mem-init (id 0) (tid 0) (address 0xaaaad11b2000) (size 0x1000) (src "tests/good_write.c:23"))
+(hint (id 1) (tid 0) (kind set_root_lock) (location 0xaaaad11b2000) (value 0xaaaad11b3000) (src "tests/good_write.c:24"))
+(sysreg-write (id 2) (tid 0) (sysreg vttbr_el2) (value 0xaaaad11b2000) (src "tests/good_write.c:27"))
+(lock (id 3) (tid 0) (address 0xaaaad11b3000) (src "tests/good_write.c:29"))
+(mem-write (id 4) (tid 0) (mem-order plain) (address 0xaaaad11b2000) (value 0x0) (src "tests/good_write.c:30"))
+(unlock (id 5) (tid 0) (address 0xaaaad11b3000) (src "tests/good_write.c:31"))

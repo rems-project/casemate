@@ -8,19 +8,19 @@
 #define ID_STRING(x) [x]=#x
 
 static const char *tlbi_kind_names[] = {
-	[TLBI_vmalls12e1] = "VMALLS12E1",
-	[TLBI_vmalls12e1is] = "VMALLS12E1IS",
-	[TLBI_vmalle1is] = "VMALLE1IS",
-	[TLBI_alle1is] = "ALLE1IS",
-	[TLBI_vmalle1] = "VMALLE1",
-	[TLBI_vale2is] = "VALE2IS",
-	[TLBI_vae2is] = "VAE2IS",
-	[TLBI_ipas2e1is] = "IPAS2E1IS",
+	[TLBI_vmalls12e1] = "vmalls12e1",
+	[TLBI_vmalls12e1is] = "vmalls12e1is",
+	[TLBI_vmalle1is] = "vmalle1is",
+	[TLBI_alle1is] = "alle1is",
+	[TLBI_vmalle1] = "vmalle1",
+	[TLBI_vale2is] = "vale2is",
+	[TLBI_vae2is] = "vae2is",
+	[TLBI_ipas2e1is] = "ipas2e1is",
 };
 
 static const char *sysreg_names[] = {
-	[SYSREG_VTTBR] = "VTTBR_EL2",
-	[SYSREG_TTBR_EL2] = "TTBR0_EL2",
+	[SYSREG_VTTBR] = "vttbr_el2",
+	[SYSREG_TTBR_EL2] = "ttbr0_el2",
 };
 
 static const char *mem_order_names[] = {
@@ -35,30 +35,32 @@ static const char *barrier_dxb_kind_names[] = {
 };
 
 static const char *barrier_kind_names[] = {
-	[BARRIER_DSB] = "DSB",
-	[BARRIER_ISB] = "ISB",
+	[BARRIER_DSB] = "dsb",
+	[BARRIER_ISB] = "isb",
 };
 
 static const char *hw_step_names[] = {
-	[HW_MEM_WRITE] = "MEM-WRITE",
-	[HW_MEM_READ] = "MEM-READ",
-	[HW_BARRIER] = "BARRIER",
-	[HW_TLBI] = "TLBI",
-	[HW_MSR] = "MSR",
+	[HW_MEM_WRITE] = "mem-write",
+	[HW_MEM_READ] = "mem-read",
+	[HW_BARRIER] = "barrier",
+	[HW_TLBI] = "tlbi",
+	[HW_MSR] = "sysreg-write",
 };
 
 static const char *abs_step_names[] = {
-	[GHOST_ABS_LOCK] = "LOCK",
-	[GHOST_ABS_UNLOCK] = "UNLOCK",
-	[GHOST_ABS_INIT] = "MEM-INIT",
-	[GHOST_ABS_MEMSET] = "MEM-SET",
+	[GHOST_ABS_LOCK] = "lock",
+	[GHOST_ABS_UNLOCK] = "unlock",
+	[GHOST_ABS_INIT] = "mem-init",
+	[GHOST_ABS_MEMSET] = "mem-set",
 };
 
+static const char *hint_step_name = "hint";
+
 static const char *hint_names[] = {
-	[GHOST_HINT_SET_ROOT_LOCK] = "SET_ROOT_LOCK",
-	[GHOST_HINT_SET_OWNER_ROOT] = "SET_OWNER_ROOT",
-	[GHOST_HINT_RELEASE_TABLE] = "RELEASE_TABLE",
-	[GHOST_HINT_SET_PTE_THREAD_OWNER] = "SET_PTE_THREAD_OWNER",
+	[GHOST_HINT_SET_ROOT_LOCK] = "set_root_lock",
+	[GHOST_HINT_SET_OWNER_ROOT] = "set_owner_root",
+	[GHOST_HINT_RELEASE_TABLE] = "release_table",
+	[GHOST_HINT_SET_PTE_THREAD_OWNER] = "set_pte_thread_owner",
 };
 
 //////////////////////
@@ -211,13 +213,11 @@ static int record_common_src_field(struct string_builder *buf, struct src_loc *l
 	return 0;
 }
 
-static int record_common_fields(struct string_builder *buf, struct casemate_model_step *trans)
+static int record_common_required_fields(struct string_builder *buf, struct casemate_model_step *trans)
 {
 	TRY_PUT_KV("id", sb_putn(buf, trans->seq_id));
 	TRY_PUT(' ');
 	TRY_PUT_KV("tid", sb_putn(buf, trans->tid));
-	TRY_PUT(' ');
-	TRY_PUT_KV("src", record_common_src_field(buf, &trans->src_loc));
 	return 0;
 }
 
@@ -235,7 +235,7 @@ static int record_prefix(struct string_builder *buf, struct casemate_model_step 
 		break;
 
 	case TRANS_HINT:
-		prefix = "HINT";
+		prefix = hint_step_name;
 		break;
 
 	default:
@@ -246,14 +246,22 @@ static int record_prefix(struct string_builder *buf, struct casemate_model_step 
 	return 0;
 }
 
+static int record_common_optional_fields(struct string_builder *buf, struct casemate_model_step *trans)
+{
+	TRY_PUT_KV("src", record_common_src_field(buf, &trans->src_loc));
+	return 0;
+}
+
 static int record_cm_trans(struct string_builder *buf, struct casemate_model_step *trans)
 {
 	TRY_PUT('(');
 	TRY(record_prefix(buf, trans));
 	TRY_PUT(' ');
-	TRY(record_common_fields(buf, trans));
+	TRY(record_common_required_fields(buf, trans));
 	TRY_PUT(' ');
 	TRY(record_trans_fields(buf, trans));
+	TRY_PUT(' ');
+	TRY(record_common_optional_fields(buf, trans));
 	TRY_PUT(')');
 	return 0;
 }
@@ -261,8 +269,8 @@ static int record_cm_trans(struct string_builder *buf, struct casemate_model_ste
 void trace_step(struct casemate_model_step *trans)
 {
 	int ret;
-	char buf[256] = {0};
-	struct string_builder sb = {.out = buf, .cur = buf, .rem = 256};
+	DEFINE_STRING_BUFFER(sb, 256);
+
 	ret = record_cm_trans(&sb, trans);
 
 	if (ret) {
@@ -270,5 +278,5 @@ void trace_step(struct casemate_model_step *trans)
 		side_effect()->abort("trace record too long");
 	}
 
-	side_effect()->trace(buf);
+	side_effect()->trace(sb.out);
 }
