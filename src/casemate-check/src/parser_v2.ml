@@ -3,10 +3,18 @@ open Sexplib0.Sexp
 open Sexplib0.Sexp_conv
 open Coq_executable_sm
 
+let (~$) = Z0.(~$)
+
 let int = Sexplib0.Sexp_conv.int_of_sexp
 let u64 sexp = match sexp with
 | List _ -> of_sexp_error "bad u64" sexp
-| Atom s -> try Z0.of_string s with Invalid_argument _ -> of_sexp_error "bad u64" sexp
+| Atom s ->
+    let n = String.length s in
+    try (
+      if n > 2 && s.[0] == '0' && s.[1] == 'x' then
+        Z0.of_substring_base 16 s ~pos:2 ~len:(n - 2)
+      else Z0.of_string s
+    ) with Invalid_argument _ -> of_sexp_error "bad u64" sexp
 
 let mem_write_order = function
   | Atom "PLAIN"   -> WMO_plain
@@ -14,49 +22,9 @@ let mem_write_order = function
   | Atom "RELEASE" -> WMO_release
   | sexp -> of_sexp_error "bad mem-write mem-order" sexp
 
-let tlbi_op = function
-  | Atom "DALL"     -> TLBIOp_DALL
-  | Atom "DASID"    -> TLBIOp_DASID
-  | Atom "DVA"      -> TLBIOp_DVA
-  | Atom "IALL"     -> TLBIOp_IALL
-  | Atom "IASID"    -> TLBIOp_IASID
-  | Atom "IVA"      -> TLBIOp_IVA
-  | Atom "ALL"      -> TLBIOp_ALL
-  | Atom "ASID"     -> TLBIOp_ASID
-  | Atom "IPAS2"    -> TLBIOp_IPAS2
-  | Atom "VAA"      -> TLBIOp_VAA
-  | Atom "VA"       -> TLBIOp_VA
-  | Atom "VMALL"    -> TLBIOp_VMALL
-  | Atom "VMALLS12" -> TLBIOp_VMALLS12
-  | Atom "RIPAS2"   -> TLBIOp_RIPAS2
-  | Atom "RVAA"     -> TLBIOp_RVAA
-  | Atom "RVA"      -> TLBIOp_RVA
-  | Atom "RPA"      -> TLBIOp_RPA
-  | Atom "PAALL"    -> TLBIOp_PAALL
-  | sexp -> of_sexp_error "bad tlbi op" sexp
-
-let tlbi_regime = function
-  | Atom "EL3"  -> Regime_EL3
-  | Atom "EL30" -> Regime_EL30
-  | Atom "EL2"  -> Regime_EL2
-  | Atom "EL20" -> Regime_EL20
-  | Atom "EL10" -> Regime_EL10
-  | sexp -> of_sexp_error "bad tlbi regime" sexp
-
-let tlbi_level = function
-  | Atom "ANY"  -> TLBILevel_Any 
-  | Atom "LAST" -> TLBILevel_Last
-  | sexp -> of_sexp_error "bad tlbi level" sexp
-
-let tlbi_shareability = function
-  | Atom "NSH" -> Shareability_NSH
-  | Atom "ISH" -> Shareability_ISH
-  | Atom "OSH" -> Shareability_OSH
-  | sexp -> of_sexp_error "bad tlbi shareability" sexp
-
 let msr_sysreg = function
-  | Atom "VTTBR"    -> SYSREG_VTTBR
-  | Atom "TTBR_EL2" -> SYSREG_TTBR_EL2
+  | Atom "VTTBR_EL2" -> SYSREG_VTTBR
+  | Atom "TTBR0_EL2" -> SYSREG_TTBR_EL2
   | sexp -> of_sexp_error "bad msr sysreg" sexp
 
 let hint_kind = function
@@ -66,99 +34,150 @@ let hint_kind = function
   | Atom "SET_PTE_THREAD_OWNER" -> GHOST_HINT_SET_PTE_THREAD_OWNER
   | sexp -> of_sexp_error "bad lock hint kind" sexp
 
-let lock_kind = function
-  | Atom "LOCK"   -> LOCK
-  | Atom "UNLOCK" -> UNLOCK
-  | sexp -> of_sexp_error "bad lock kind" sexp
 
-let dxb_of = function
-  | Atom "NON_SHAREABLE"   -> MBReqDomain_Nonshareable
-  | Atom "INNER_SHAREABLE" -> MBReqDomain_InnerShareable
-  | Atom "OUTER_SHAREABLE" -> MBReqDomain_OuterShareable
-  | Atom "FULL_SYSTEM"     -> MBReqDomain_FullSystem
-  | sexp -> of_sexp_error "bad DxB domain" sexp
+let barrier_kind = function
+  | Atom "ISH"   -> MBReqDomain_InnerShareable
+  | Atom "ISHST" -> MBReqDomain_InnerShareable
+  | Atom "NSH"   -> MBReqDomain_Nonshareable
+  | Atom "SY"    -> MBReqDomain_FullSystem
+  | sexp         -> of_sexp_error "bad barrier kind" sexp
 
 let barrier_of = function
-  | List [Atom "DSB"; dxb] -> Barrier_DSB (dxb_of dxb)
-  | List [Atom "DMB"; dxb] -> Barrier_DMB (dxb_of dxb)
-  | Atom "ISB"   -> Barrier_ISB ()
-  | Atom "SSBB"  -> Barrier_SSBB ()
-  | Atom "PSSBB" -> Barrier_PSSBB ()
-  | Atom "SB"    -> Barrier_SB ()
-  | sexp -> of_sexp_error "bad BARRIER" sexp
+  | List [Atom "DSB";
+      List [Atom "kind"; kind]] -> Barrier_DSB (barrier_kind kind)
+  | Atom "ISB" -> Barrier_ISB ()
+  | sexp       -> of_sexp_error "bad barrier" sexp
+
+
+let tlbi_op = function
+| `DALL     -> TLBIOp_DALL        
+| `DASID    -> TLBIOp_DASID       
+| `DVA      -> TLBIOp_DVA         
+| `IALL     -> TLBIOp_IALL        
+| `IASID    -> TLBIOp_IASID       
+| `IVA      -> TLBIOp_IVA         
+| `ALL      -> TLBIOp_ALL         
+| `ASID     -> TLBIOp_ASID        
+| `IPAS2    -> TLBIOp_IPAS2       
+| `VAA      -> TLBIOp_VAA         
+| `VA       -> TLBIOp_VA          
+| `VMALL    -> TLBIOp_VMALL       
+| `VMALLS12 -> TLBIOp_VMALLS12    
+| `RIPAS2   -> TLBIOp_RIPAS2      
+| `RVAA     -> TLBIOp_RVAA        
+| `RVA      -> TLBIOp_RVA         
+| `RPA      -> TLBIOp_RPA         
+| `PAALL    -> TLBIOp_PAALL       
+and regime_of = function
+| `EL3  -> Regime_EL3   
+| `EL30 -> Regime_EL30  
+| `EL2  -> Regime_EL2   
+| `EL20 -> Regime_EL20  
+| `EL10 -> Regime_EL10
+and shareability = function
+| `NSH -> Shareability_NSH
+| `ISH -> Shareability_ISH
+| `OSH -> Shareability_OSH
+let tlbi ?level ?addr ~regime ~shr op =
+  let level = match level with
+  | None               -> TLBILevel_Any
+  | Some (Atom "any")  -> TLBILevel_Any
+  | Some (Atom "last") -> TLBILevel_Last
+  | Some sexp          -> of_sexp_error "bad tlbi level" sexp
+  and address = match addr with Some a -> u64 a | _ -> Z0.zero
+  in {
+    tLBI_shareability = shareability shr;
+    tLBI_rec = {
+      tLBIRecord_op = tlbi_op op;
+      tLBIRecord_regime = regime_of regime;
+      tLBIRecord_level = level;
+      tLBIRecord_address = address };
+  }
+
+let tlbi_of = function
+| Atom "VMALLS12E1"   -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`NSH
+| Atom "VMALLS12E1IS" -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`ISH
+| Atom "VMALLE1IS"    -> tlbi `VMALL ~regime:`EL10 ~shr:`ISH
+| Atom "ALLE1IS"      -> tlbi `ALL ~regime:`EL10 ~shr:`ISH
+| List [Atom "VAE2"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+                      -> tlbi `VA ~regime:`EL2 ~shr:`NSH ~addr ~level
+| List [Atom "VAE2IS"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+                      -> tlbi `VA ~regime:`EL2 ~shr:`ISH ~addr ~level
+| List [Atom "IPAS2E1IS"; List [Atom "addr"; addr]; List [Atom "level"; level]]
+                      -> tlbi `IPAS2 ~regime:`EL10 ~shr:`NSH ~addr ~level
+| sexp                -> of_sexp_error "bad tlbi" sexp
 
 let transition sexp =
-  let data = match sexp with
-  | List [Atom "mem-write"; _; _;
-      List [Atom "mem-order"; order];
-      List [Atom "address"; addr];
-      List [Atom "value"; value]] ->
+  let data, id, tid, tl = match sexp with
+  | List (Atom "mem-write" :: id :: tid ::
+      List [Atom "mem-order"; order] ::
+      List [Atom "address"; addr] ::
+      List [Atom "value"; value] :: tl) ->
     GSMDT_TRANS_MEM_WRITE {
       twd_mo = mem_write_order order;
       twd_phys_addr = u64 addr;
       twd_val = u64 value;
-    }
-  | List [Atom "mem-zalloc"; _; _;
-      List [Atom "address"; addr];
-      List [Atom "size"; size]] ->
-    GSMDT_TRANS_MEM_ZALLOC {
-      tzd_addr = u64 addr;
-      tzd_size = u64 size
-    }
-  | List [Atom "mem-read"; _; _;
-      List [Atom "address"; addr];
-      List [Atom "value"; value]] ->
+    }, id, tid, tl
+  | List (Atom "mem-set" :: id :: tid ::
+      List [Atom "address"; addr] ::
+      List [Atom "size"; size] ::
+      List [Atom "value"; value] :: tl) ->
+    if u64 size <> ~$4096 then
+      of_sexp_error "bad mem-set size" sexp
+    else GSMDT_TRANS_MEM_WRITE {
+      twd_mo = WMO_page;
+      twd_phys_addr = u64 addr;
+      twd_val = u64 value;
+    }, id, tid, tl
+  | List (Atom "mem-read" :: id :: tid ::
+      List [Atom "address"; addr] ::
+      List [Atom "value"; value] :: tl) ->
     GSMDT_TRANS_MEM_READ {
       trd_phys_addr = u64 addr;
       trd_val = u64 value
-    }
-  | List [Atom "barrier"; _; _; barrier] ->
-    GSMDT_TRANS_BARRIER (barrier_of barrier)
-  | List [Atom "tlbi"; _; _;
-      List [Atom "op"; op];
-      List [Atom "regime"; regime];
-      List [Atom "level"; level];
-      List [Atom "address"; addr];
-      List [Atom "share"; share] ] ->
-    GSMDT_TRANS_TLBI {
-      tLBI_rec = {
-        tLBIRecord_op = tlbi_op op;
-        tLBIRecord_regime = tlbi_regime regime;
-        tLBIRecord_level = tlbi_level level;
-        tLBIRecord_address = u64 addr
-      };
-      tLBI_shareability = tlbi_shareability share;
-    }
-  | List [Atom "msr"; _; _;
-      List [Atom "sysreg"; sysreg];
-      List [Atom "value"; value]] ->
+    }, id, tid, tl
+  | List (Atom "mem-init" :: id :: tid ::
+      List [Atom "address"; addr] ::
+      List [Atom "size"; size] :: tl) ->
+    GSMDT_TRANS_MEM_ZALLOC {
+      tzd_addr = u64 addr;
+      tzd_size = u64 size
+    }, id, tid, tl
+  | List (Atom "barrier" :: id :: tid :: barrier :: tl) ->
+    GSMDT_TRANS_BARRIER (barrier_of barrier), id, tid, tl
+  | List (Atom "tlbi" :: id :: tid :: tlbi :: tl) ->
+    GSMDT_TRANS_TLBI (tlbi_of tlbi), id, tid, tl
+  | List (Atom "sysreg-write" :: id :: tid ::
+      List [Atom "sysreg"; sysreg] ::
+      List [Atom "value"; value] :: tl) ->
     GSMDT_TRANS_MSR {
       tmd_sysreg = msr_sysreg sysreg;
       tmd_val = u64 value;
-    }
-  | List [Atom "hint"; _; _;
-      List [Atom "kind"; kind];
-      List [Atom "location"; loc];
-      List [Atom "value"; value]] ->
+    }, id, tid, tl
+  | List (Atom "hint" :: id :: tid ::
+      List [Atom "kind"; kind] ::
+      List [Atom "location"; loc] ::
+      List [Atom "value"; value] :: tl) ->
     GSMDT_TRANS_HINT {
       thd_hint_kind = hint_kind kind;
       thd_location = u64 loc;
       thd_value = u64 value;
-    }
-  | List [Atom "lock"; _; _;
-      List [Atom "kind"; kind];
-      List [Atom "address"; addr]] ->
-    GSMDT_TRANS_LOCK {
-      tld_kind = lock_kind kind;
-      tld_addr = u64 addr;
-    }
+    }, id, tid, tl
+  | List (Atom "lock" :: id :: tid :: List [Atom "address"; addr] :: tl) ->
+    GSMDT_TRANS_LOCK { tld_kind = LOCK; tld_addr = u64 addr }, id, tid, tl
+  | List (Atom "unlock" :: id :: tid :: List [Atom "address"; addr] :: tl) ->
+    GSMDT_TRANS_LOCK { tld_kind = UNLOCK; tld_addr = u64 addr }, id, tid, tl
   | sexp -> of_sexp_error "bad event" sexp
   in
-  let List (_::id::thread::_) = sexp [@@warning "-8"] in
+  let loc = match tl with
+    | [List [Atom "src"; Atom _loc]] -> None
+    | [] -> None
+    | sexp -> of_sexp_error "bad location or extra data" (List sexp)
+  in
   Some {
-    gsmt_src_loc = None;
+    gsmt_src_loc = loc;
     gsmt_id = int id;
-    gsmt_thread_identifier = int thread;
+    gsmt_thread_identifier = int tid;
     gsmt_data = data
   }
 
