@@ -11,3 +11,6 @@
 # top-level things
 /casemate.o
 /casemate.o.S
+
+# Generated configuration
+/config.mk

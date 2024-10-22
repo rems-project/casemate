@@ -1,33 +1,9 @@
-CC = clang
-LD = ld
-OBJDUMP = objdump
-CFLAGS = \
-	-Wall \
-	-I include/ \
-	-fPIC -fno-PIE \
-	-fno-omit-frame-pointer -fno-unwind-tables \
-	-march=armv8-a+nofp -mstrict-align \
-	-fno-common -nostdlib \
-	-g -gdwarf-4
-LDS = model.lds
-LDFLAGS = \
-	-r \
-	-T $(LDS)
+all: include/casemate.h casemate.o casemate.o.S compile_commands.json
+
+include config.mk
+include ../../tools/utils.mk
 
 LIBDIR = src
-
-all: include/casemate.h casemate.o compile_commands.json casemate.o.S
-
-define run_cmd
-	@echo "  $1		$2" 2>&1
-	@$3
-endef
-
-define run_clean
-	$(call run_cmd,CLEAN,$1, \
-		@rm -f $2 \
-	)
-endef
 
 objs = \
 	$(LIBDIR)/model.o \
@@ -55,16 +31,13 @@ include/casemate.h: $(HEADER_INCLUDES)
 		./tools/generate_header.py \
 	)
 
-compile_commands.json: $(objs) $(HEADER_INCLUDES)
+compile_commands.json:
 	$(call run_cmd,MK,$@, \
-		./tools/generate_compile_commands.py \
-	)
+		$(ROOTDIR)/tools/generate_compile_commands.py $(SRCDIR))
+.PHONY: compile_commands.json
 
 $(LIBDIR)/%.o: $(LIBDIR)/%.c
-	$(call run_cmd,CC,$<, \
-		echo $(CC) $(CFLAGS) -c $< -o $@ > $@.cmd \
-		; $(CC) $(CFLAGS) -c $< -o $@ \
-	)
+	$(call run_cc,$<,$@)
 
 casemate.o: $(objs)
 	$(call run_cmd,LD,$@, \

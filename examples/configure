@@ -1,21 +1,15 @@
 #!/usr/bin/env bash
 srcdir=$(cd "$(dirname "$0")"; pwd)
-bindir=${srcdir}/bin
-casematedir=$(cd "${srcdir}/.."; pwd)
-onlinedir=$(cd "${casematedir}/src/lib"; pwd)
-
-mkdir -p ${bindir}/
-mkdir -p ${bindir}/tests/
+rootdir=$(cd "${srcdir}/.."; pwd)
+libdir=$(cd "${rootdir}/src/lib"; pwd)
 
 cat <<EOF > config.mk
 # Auto-generated, see ./configure script.
+ROOTDIR = ${rootdir}
+LIBDIR = ${libdir}
 SRCDIR = ${srcdir}
-BINDIR = ${bindir}
 EXPECTEDDIR = ${srcdir}/expected
-LOGDIR = ${bindir}/logs
-CASEMATEDIR = ${casematedir}
-ONLINEDIR = ${onlinedir}
 CC = clang
 LD = ld
-CFLAGS = -I${onlinedir}/include/ -I${srcdir} -g -gdwarf-4
+CFLAGS = -I${libdir}/include/ -I${srcdir} -g -gdwarf-4
 EOF

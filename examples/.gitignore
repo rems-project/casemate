@@ -1,2 +1,19 @@
+*.d
+*.o
+*.o.cmd
+*.out
+*.log
+
+# clangd
+/compile_commands.json
+.cache/
+
+# Generated configuration filess
 /config.mk
-/bin
+
+# top-level test files
+/simple
+/good_write
+/bad_no_bbm
+/bad_bbm_missing_tlbi
+/good_bbm

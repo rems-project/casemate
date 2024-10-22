@@ -17,7 +17,7 @@ $ make
 Once built, tests can be run directly:
 
 ```
-$ ./bin/bad_bbm_missing_tlbi
+$ ./bad_bbm_missing_tlbi
 #define root 0xaaaacf902000
 #define child 0xaaaacf903000
 #define new_child 0xaaaacf904000
@@ -39,7 +39,7 @@ $ ./bin/bad_bbm_missing_tlbi
 
 Logs can be checked against the expected result:
 ```
-$ ./bin/bad_bbm_missing_tlbi -a > /tmp/test.log   # Note -a to turn off formatting
+$ ./bad_bbm_missing_tlbi -a > /tmp/test.log   # Note -a to turn off formatting
 $ ./scripts/check_simulation.py /tmp/test.log expected/bad_bbm_missing_tlbi.log
 ```
 
@@ -66,7 +66,7 @@ The examples can be ran with the printing and diffing machinery enabled,
 which shows updates to unclean locations:
 
 ```
-$ ./bin/bad_bbm_missing_tlbi -d
+$ ./bad_bbm_missing_tlbi -d
 #define root 0xaaaad8a72000
 #define child 0xaaaad8a73000
 #define new_child 0xaaaad8a74000

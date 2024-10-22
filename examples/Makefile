@@ -1,4 +1,5 @@
 include config.mk
+include ../tools/utils.mk
 
 tests += simple
 tests += good_write
@@ -6,26 +7,15 @@ tests += bad_no_bbm
 tests += bad_bbm_missing_tlbi
 tests += good_bbm
 
-test_exes = $(patsubst %,$(BINDIR)/%,$(tests))
-test_objs = $(patsubst %,$(BINDIR)/tests/%.o,$(tests))
+test_exes = $(patsubst %,%,$(tests))
+test_objs = $(patsubst %,tests/%.o,$(tests))
 test_expects = $(patsubst %,$(EXPECTEDDIR)/%.log,$(tests))
-test_logs = $(patsubst %,$(LOGDIR)/%.log,$(tests))
+test_logs = $(patsubst %,tests/%.log,$(tests))
 test_checks = $(patsubst %,check-%,$(tests))
-common_obj = $(BINDIR)/common.o
-casemate_obj = $(ONLINEDIR)/casemate.o
+common_obj = common.o
+casemate_obj = $(LIBDIR)/casemate.o
 
-define run_cmd
-	@echo "  $1			$2" 2>&1
-	@$3
-endef
-
-define run_clean
-	$(call run_cmd,CLEAN,$1, \
-		@rm -f $2 \
-	)
-endef
-
-all: $(test_exes)
+all: $(test_exes) compile_commands.json
 checks: $(test_checks)
 expected: $(test_expects)
 
@@ -35,28 +25,26 @@ expected: $(test_expects)
 FORCE:
 .PHONY: FORCE
 
-$(BINDIR)/%.o: $(SRCDIR)/%.c
-	$(call run_cmd,CC,$<,$(CC) $(CFLAGS) -c $< -o $@)
+%.o: %.c
+	$(call run_cc,$<,$@)
 
-$(BINDIR)/tests/%.o: $(SRCDIR)/tests/%.c
-	$(call run_cmd,CC,$<,$(CC) $(CFLAGS) -c $< -o $@)
+tests/%.o: tests/%.c
+	$(call run_cc,$<,$@)
 
-$(BINDIR)/%: $(BINDIR)/tests/%.o $(common_obj) $(casemate_obj)
+%: tests/%.o $(common_obj) $(casemate_obj)
 	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
 
 $(EXPECTEDDIR)/%.log: FORCE
-	$(BINDIR)/$* -at 1> $@ 2>/dev/null || true
-# $(call run_cmd,RUN,$*,$(BINDIR)/$* -at 1> $@ 2>/dev/null || true)
+	$(call run_cmd,RUN,$*,$* -at 1> $@ 2>/dev/null || true)
 
-$(LOGDIR)/%.log: FORCE
-	@mkdir -p $(LOGDIR)
-	$(call run_cmd,RUN,$*,$(BINDIR)/$* -at 1> $@ 2>/dev/null || true)
+%.log: FORCE
+	$(call run_cmd,RUN,$*,$* -at 1> $@ 2>/dev/null || true)
 
-check-%: $(LOGDIR)/%.log FORCE
+check-%: tests/%.log FORCE
 	$(call run_cmd,CHECK,$*,./scripts/check_simulation.py $< $(EXPECTEDDIR)/$*.log)
 
 clean-%:
-	$(call run_clean,$*.log,rm -f $(BINDIR)/$* $(BINDIR)/$*.o $(LOGDIR)/$*.log)
+	$(call run_clean,$*,rm -f $(BINDIR)/$* $(BINDIR)/tests/$*.o $(LOGDIR)/$*.log)
 
 clean_objs = $(patsubst %,clean-%,$(tests))
 clean: $(clean_objs)
@@ -64,3 +52,8 @@ clean: $(clean_objs)
 
 clean-expected:
 	$(call run_clean,$(EXPECTEDDIR),rm -f $(EXPECTEDDIR)/*.log)
+
+compile_commands.json:
+	$(call run_cmd,MK,$@, \
+		$(ROOTDIR)/tools/generate_compile_commands.py $(SRCDIR))
+.PHONY: compile_commands.json
