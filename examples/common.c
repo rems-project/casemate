@@ -26,11 +26,6 @@ bool QUIET = false;
 
 bool COLOUR = true;
 
-u64 ghost_cm_read_physmem(u64 p)
-{
-	return *(u64*)p;
-}
-
 u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 {
 	switch (sysreg) {
@@ -200,7 +195,7 @@ void common_init(int argc, char **argv)
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
 	u64 sm_size = 2 * sizeof(struct casemate_model_state);
 	struct ghost_driver sm_driver = {
-		.read_physmem = ghost_cm_read_physmem,
+		.read_physmem = NULL,
 		.read_sysreg = ghost_cm_read_sysreg,
 		.abort = ghost_cm_abort,
 		.print = ghost_cm_print,

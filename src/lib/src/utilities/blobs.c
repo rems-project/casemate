@@ -200,12 +200,14 @@ static u64 __read_phys(u64 addr, bool pre)
 		GHOST_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
 
 
-	hyp_val = side_effect()->read_physmem((u64)addr);
-
 	if (! loc->initialised) {
+		if (side_effect()->read_physmem == NULL)
+			GHOST_MODEL_CATCH_FIRE("saw uninitialised location %p, without read_physmem side-effect instantiated\n");
+
 		// if not yet initialised
 		// assume the program was well-behaved up until now
 		// and just return the current concrete value
+		hyp_val = side_effect()->read_physmem((u64)addr);
 		return hyp_val;
 	}
 
@@ -227,7 +229,7 @@ static u64 __read_phys(u64 addr, bool pre)
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
 	// but we only need to check for locations we are supposedly tracking
-	if (loc->is_pte && hyp_val != value) {
+	if (loc->is_pte && side_effect()->read_physmem && (hyp_val = side_effect()->read_physmem((u64)addr)) != value) {
 		GHOST_LOG_CONTEXT_ENTER();
 		GHOST_LOG(hyp_va, u64);
 		GHOST_LOG(value, u64);

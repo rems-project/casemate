@@ -386,6 +386,24 @@ static bool pre_all_reachable_clean(struct sm_location *loc)
 	return all_clean;
 }
 
+static void initialise_location(struct sm_location *loc, u64 val)
+{
+	if (loc->initialised)
+		GHOST_MODEL_CATCH_FIRE("cannot initialise an already-initialised location");
+
+	loc->initialised = true;
+
+	// by default, the location is not owned by any thread
+	loc->thread_owner = -1;
+
+	// sanity check: we really aren't writing to it ...
+	if (is_on_write_transition(loc->phys_addr))
+		ghost_assert(false);
+
+	loc->val = val;
+	loc->is_pte = false;
+}
+
 /**
  * Callback to mark a location in the page table as a page table entry
  * in the ghost model.
@@ -395,22 +413,7 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 	struct sm_location *loc = ctxt->loc;
 
 	if (! loc->initialised) {
-		// if this was the first time we saw it
-		// initialise it and copy in the value
-		loc->initialised = true;
-		// by default, the location is not owned by any thread
-		loc->thread_owner = -1;
-
-		// we didn't see a previous write transition for this location
-		// (otherwise it'd have been marked as initialised)
-		// so attach the value now.
-
-		// sanity check: we really aren't writing to it ...
-		if (is_on_write_transition(loc->phys_addr))
-			ghost_assert(false);
-
-
-		loc->val = ctxt->descriptor;
+		initialise_location(loc, ctxt->descriptor);
 	} else if (loc->is_pte) {
 		GHOST_MODEL_CATCH_FIRE("double-use pte");
 	}
@@ -428,11 +431,7 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 	struct sm_location *loc = ctxt->loc;
 
 	if (! loc->initialised) {
-		// if this was the first time we saw it
-		// initialise it and copy in the value
-		loc->initialised = true;
-		// by default, the location is not owned by any thread
-		loc->thread_owner = -1;
+		initialise_location(loc, ctxt->descriptor);
 	} else if (! loc->is_pte) {
 		// TODO: BS: is this catch-fire or simply unreachable?
 		GHOST_MODEL_CATCH_FIRE("unmark non-PTE");
@@ -1358,6 +1357,15 @@ static void __step_memset(u64 phys_addr, u64 size, u64 val)
 	}
 }
 
+static void __step_init(u64 phys_addr, u64 size)
+{
+	u64 p;
+	for (p = phys_addr; p < phys_addr+size; p += 8) {
+		struct sm_location *loc = location(p);
+		initialise_location(loc, 0);
+	}
+}
+
 static void step_abs(struct ghost_abs_step *step)
 {
 	switch (step->kind) {
@@ -1369,7 +1377,7 @@ static void step_abs(struct ghost_abs_step *step)
 		break;
 	case GHOST_ABS_INIT:
 		// Nothing to do
-		break;
+		__step_init(step->init_data.location, step->init_data.size);
 	case GHOST_ABS_MEMSET:
 		__step_memset(step->memset_data.address, step->memset_data.size, step->memset_data.value);
 		break;
