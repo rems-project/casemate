@@ -3,6 +3,8 @@
 
 #include <casemate-impl/types.h>
 
+#ifndef __KVM_NVHE_HYPERVISOR__
+
 #define GHOST_WHITE_ON_BLACK "\033[40;37;1m"
 #define GHOST_WHITE_ON_RED "\033[41;37;1m"
 #define GHOST_WHITE_ON_GREEN "\033[42;37;1m"
@@ -12,14 +14,19 @@
 #define GHOST_WHITE_ON_CYAN "\033[46;37;1m"
 #define GHOST_NORMAL "\033[0m"
 
-/**
- * ghost_printf() - Printf-like function that uses the ghost driver.
- */
-int ghost_printf(void *arg, const char *fmt, ...);
+int ghost_printf(const char *fmt, ...);
 
-/* define an _extended version,
- * this is just a hint to the programmer that we're using extended %-codes */
-#define ghost_printf_ext ghost_printf
+#else  /* __KVM_NVHE_HYPERVISOR__ */
+
+#include <nvhe/ghost/ghost_extra_debug-pl011.h>
+#include <nvhe/ghost/ghost_printer.h>
+
+#endif /* __KVM_NVHE_HYPERVISOR__ */
+
+/**
+ * ghost_fprintf() - fprintf-like function that uses the ghost driver.
+ */
+int ghost_fprintf(void *arg, const char *fmt, ...);
 
 /**
  * ghost_print_indent() - Insert an indent.
@@ -80,5 +87,9 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n);
 			TRY_PUT(')'); \
 		} \
 	} while (0)
+
+
+void put_trans(void *arg);
+#define GHOST_transprinter put_trans
 
 #endif /* CASEMATE_PRINT_H */

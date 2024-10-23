@@ -1,5 +1,3 @@
-#include <stdarg.h>
-
 #include <casemate-impl.h>
 #include <casemate-impl/printer.h>
 
@@ -104,14 +102,14 @@ static int __put_val_string(struct diff_val val, char *buf)
 {
 	switch (val.kind) {
 	case Tu64:
-		return ghost_printf(buf, "%lx", val.n);
+		return ghost_fprintf(buf, "%lx", val.n);
 	case Tstr:
-		return ghost_printf(buf, "%s", val.s);
+		return ghost_fprintf(buf, "%s", val.s);
 	case Tbool:
 		if (val.b)
-			return ghost_printf(buf, "true");
+			return ghost_fprintf(buf, "true");
 		else
-			return ghost_printf(buf, "false");
+			return ghost_fprintf(buf, "false");
 	case Tgprint:
 		return val.gp.fn(buf, val.gp.obj);
 	default:
@@ -162,16 +160,16 @@ static void __put_val(struct diff_val val, u64 indent)
 {
 	switch (val.kind) {
 	case Tu64:
-		ghost_printf(NULL, "%lx", val.n);
+		ghost_printf("%lx", val.n);
 		break;
 	case Tstr:
-		ghost_printf(NULL, "%s", val.s);
+		ghost_printf("%s", val.s);
 		break;
 	case Tbool:
 		if (val.b)
-			ghost_printf(NULL, "true");
+			ghost_printf("true");
 		else
-			ghost_printf(NULL, "false");
+			ghost_printf("false");
 		break;
 	case Tgprint:
 		val.gp.fn(NULL, val.gp.obj);
@@ -190,11 +188,11 @@ static void __put_dirty_string(char *s, bool *dirty, bool negate)
 		bool d = *dirty++;
 
 		if (!d)
-			ghost_printf(NULL, "%c", c);
+			ghost_printf("%c", c);
 		else if (negate)
-			ghost_printf(NULL, "%s%c%s", GHOST_WHITE_ON_MAGENTA, c, GHOST_NORMAL);
+			ghost_printf("%s%c%s", GHOST_WHITE_ON_MAGENTA, c, GHOST_NORMAL);
 		else
-			ghost_printf(NULL, "%s%c%s", GHOST_WHITE_ON_GREEN, c, GHOST_NORMAL);
+			ghost_printf("%s%c%s", GHOST_WHITE_ON_GREEN, c, GHOST_NORMAL);
 	}
 }
 
@@ -223,14 +221,14 @@ static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val 
 			dirty[i] = true;
 	}
 
-	ghost_printf(NULL, "\n");
+	ghost_printf("\n");
 	ghost_print_indent(NULL, node->depth*4);
-	ghost_printf(NULL, "-");
+	ghost_printf("-");
 	__put_dirty_string(lhs_s, dirty, true);
 
-	ghost_printf(NULL, "\n");
+	ghost_printf("\n");
 	ghost_print_indent(NULL, node->depth*4);
-	ghost_printf(NULL, "+");
+	ghost_printf("+");
 	__put_dirty_string(rhs_s, dirty, false);
 }
 
@@ -243,13 +241,13 @@ static void __ghost_print_diff(struct diff_container *node, struct ghost_diff *d
 		ghost_print_indent(NULL, node->depth*4);
 
 		if (diff->pm.add)
-			ghost_printf(NULL, GHOST_WHITE_ON_GREEN "+");
+			ghost_printf(GHOST_WHITE_ON_GREEN "+");
 		else
-			ghost_printf(NULL, GHOST_WHITE_ON_MAGENTA "-");
+			ghost_printf(GHOST_WHITE_ON_MAGENTA "-");
 
 		__put_val(diff->pm.val, 0);
 
-		ghost_printf(NULL, GHOST_NORMAL);
+		ghost_printf(GHOST_NORMAL);
 		break;
 	case GHOST_DIFF_PAIR:
 		__hyp_dump_string_diff(node, diff->pair.lhs, diff->pair.rhs);
@@ -262,7 +260,7 @@ static int __put_key(struct diff_container *node, struct diff_val key)
 	if (! val_equal(key, EMPTY_KEY)) {
 		ghost_print_indent(NULL, node->depth*4);
 		__put_val(key, 0);
-		ghost_printf(NULL, ":");
+		ghost_printf(":");
 
 		/* the key is really just a transient node */
 		node->depth++;
@@ -280,27 +278,24 @@ static struct ghost_diff diff_pair(struct diff_val lhs, struct diff_val rhs)
 	if (val_equal(lhs, rhs))
 		return DIFF_NONE;
 
-	struct ghost_diff n = {
+	return (struct ghost_diff){
 		.kind = GHOST_DIFF_PAIR,
 		.pair = (struct diff_pair_data){
 			.lhs = lhs,
 			.rhs = rhs,
 		},
 	};
-
-	return n;
 }
 
 static struct ghost_diff diff_pm(bool add, struct diff_val val)
 {
-	struct ghost_diff n = {
+	return (struct ghost_diff){
 		.kind = GHOST_DIFF_PM,
 		.pm = (struct diff_pm_data){
 			.add = add,
 			.val = val,
 		},
 	};
-	return n;
 }
 
 static void __attach(struct diff_container *node, struct diff_val key, struct ghost_diff diff)
@@ -315,10 +310,10 @@ static void __attach(struct diff_container *node, struct diff_val key, struct gh
 		for (int i = node->clean_prefix; i < node->depth; i++) {
 			ghost_print_indent(NULL, i*4);
 			__put_val(node->path[i], 0);
-			ghost_printf(NULL, ":");
+			ghost_printf(":");
 		};
 		if (node->clean_prefix != node->depth && node->nr_subfield_diffs >= MAX_PRINT_DIFF_PER_SUBFIELDS)
-			ghost_printf(NULL, GHOST_WHITE_ON_YELLOW "<skip diff>" GHOST_NORMAL "\n");
+			ghost_printf(GHOST_WHITE_ON_YELLOW "<skip diff>" GHOST_NORMAL "\n");
 
 		node->clean_prefix = node->depth;
 		node->saw_diff = true;
@@ -329,8 +324,8 @@ static void __attach(struct diff_container *node, struct diff_val key, struct gh
 			node->depth -= i;
 		} else if (node->nr_subfield_diffs == MAX_PRINT_DIFF_PER_SUBFIELDS) {
 			// only once, not too noisy...
-			ghost_printf(NULL, "\n");
-			ghost_printf(NULL, GHOST_WHITE_ON_YELLOW "<skipping diffs>" GHOST_NORMAL "\n");
+			ghost_printf("\n");
+			ghost_printf(GHOST_WHITE_ON_YELLOW "<skipping diffs>" GHOST_NORMAL "\n");
 		}
 	}
 }
@@ -369,11 +364,11 @@ static void ghost_diff_attach(struct diff_container *container, struct ghost_dif
 // Differ!
 
 int gp_print_cm_loc(void *arg, struct sm_location *loc);
-int gp_print_cm_blob_noindent(void *arg, struct ghost_memory_blob *b);
+int gp_print_cm_blob_noindent(void *arg, struct casemate_memory_blob *b);
 
 int gp_track_cm_loc(void *arg, struct sm_location *loc)
 {
-	TRY(ghost_printf(arg, "track "));
+	TRY(ghost_fprintf(arg, "track "));
 	return gp_track_cm_loc(arg, loc);
 }
 
@@ -381,7 +376,7 @@ int gp_track_cm_loc(void *arg, struct sm_location *loc)
 #define TSMLOC_TRACK(LOC) TGPRINT((gp_print_cb)gp_track_cm_loc, (LOC))
 #define TSMBLOB(BLOB) TGPRINT((gp_print_cb)gp_print_cm_blob_noindent, (BLOB))
 
-static void one_way_diff_blob_slots(struct diff_container *container, struct ghost_memory_blob *b1, struct ghost_memory_blob *b2, bool add)
+static void one_way_diff_blob_slots(struct diff_container *container, struct casemate_memory_blob *b1, struct casemate_memory_blob *b2, bool add)
 {
 	bool saw_unclean = false;
 
@@ -406,8 +401,8 @@ static void one_way_diff_blobs(struct diff_container *container, struct casemate
 {
 	bool found;
 	for (u64 bi = 0; bi < m1->nr_allocated_blobs; bi++) {
-		struct ghost_memory_blob *b1 = blob_of(m1, bi);
-		struct ghost_memory_blob *b2 = find_blob(m2, b1->phys);
+		struct casemate_memory_blob *b1 = blob_of(m1, bi);
+		struct casemate_memory_blob *b2 = find_blob(m2, b1->phys);
 
 		if (b2) {
 			found = true;
@@ -482,5 +477,5 @@ void ghost_diff_and_print_sm_state(struct casemate_model_state *s1, struct casem
 	struct diff_container node = container();
 	ghost_diff_sm_state(&node, s1, s2);
 	if (!node.saw_diff)
-		ghost_printf(NULL, "<identical>");
+		ghost_printf("<identical>");
 }

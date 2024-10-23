@@ -45,7 +45,7 @@ static bool check_sanity_of_no_blob(u64 phys)
 	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *b = &the_ghost_state->memory.blobs_backing[i];
+		struct casemate_memory_blob *b = &the_ghost_state->memory.blobs_backing[i];
 		if (b->valid && b->phys == page) {
 			return false;
 		}
@@ -56,15 +56,15 @@ static bool check_sanity_of_no_blob(u64 phys)
 
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
 
-struct ghost_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i)
+struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i)
 {
 	return &mem->blobs_backing[BLOBINDX(mem, i)];
 }
 
-struct ghost_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
+struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
 {
 	int l, r;
-	struct ghost_memory_blob *this;
+	struct casemate_memory_blob *this;
 	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
 	l = 0;
@@ -111,7 +111,7 @@ static int bubble_blob_down(struct casemate_model_memory *mem)
 static int get_free_blob(void)
 {
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct ghost_memory_blob *this = &the_ghost_state->memory.blobs_backing[i];
+		struct casemate_memory_blob *this = &the_ghost_state->memory.blobs_backing[i];
 		if (!this->valid)
 			return i;
 	}
@@ -121,10 +121,10 @@ static int get_free_blob(void)
 	return 0;
 }
 
-static struct ghost_memory_blob *ensure_blob(u64 phys)
+static struct casemate_memory_blob *ensure_blob(u64 phys)
 {
 	u64 blob_phys = ALIGN_DOWN_TO_BLOB(phys);
-	struct ghost_memory_blob *this;
+	struct casemate_memory_blob *this;
 
 	/* already one exists, done. */
 	this = find_blob(&the_ghost_state->memory, blob_phys);
@@ -158,7 +158,7 @@ static struct ghost_memory_blob *ensure_blob(u64 phys)
 	return this;
 }
 
-bool blob_unclean(struct ghost_memory_blob *blob)
+bool blob_unclean(struct casemate_memory_blob *blob)
 {
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
 		if (blob->slots[i].is_pte && blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
@@ -174,7 +174,7 @@ bool blob_unclean(struct ghost_memory_blob *blob)
  */
 struct sm_location *location(u64 phys)
 {
-	struct ghost_memory_blob *blob = ensure_blob(phys);
+	struct casemate_memory_blob *blob = ensure_blob(phys);
 	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
 	return loc;
 }
@@ -190,7 +190,7 @@ static u64 __read_phys(u64 addr, bool pre)
 {
 	struct sm_location *loc;
 	u64 value;
-	u64 hyp_val;
+	u64 phys_val;
 
 	// otherwise, convert to index in memory and get the val
 	loc = location(addr);
@@ -199,7 +199,6 @@ static u64 __read_phys(u64 addr, bool pre)
 	if (! is_location_locked(loc))
 		GHOST_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
 
-
 	if (! loc->initialised) {
 		if (side_effect()->read_physmem == NULL)
 			GHOST_MODEL_CATCH_FIRE("saw uninitialised location %p, without read_physmem side-effect instantiated\n");
@@ -207,8 +206,8 @@ static u64 __read_phys(u64 addr, bool pre)
 		// if not yet initialised
 		// assume the program was well-behaved up until now
 		// and just return the current concrete value
-		hyp_val = side_effect()->read_physmem((u64)addr);
-		return hyp_val;
+		phys_val = side_effect()->read_physmem((u64)addr);
+		return phys_val;
 	}
 
 	value = loc->val;
@@ -229,11 +228,10 @@ static u64 __read_phys(u64 addr, bool pre)
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
 	// but we only need to check for locations we are supposedly tracking
-	if (loc->is_pte && side_effect()->read_physmem && (hyp_val = side_effect()->read_physmem((u64)addr)) != value) {
+	if (loc->is_pte && side_effect()->read_physmem && (phys_val = side_effect()->read_physmem((u64)addr)) != value) {
 		GHOST_LOG_CONTEXT_ENTER();
-		GHOST_LOG(hyp_va, u64);
 		GHOST_LOG(value, u64);
-		GHOST_LOG(hyp_val, u64);
+		GHOST_LOG(phys_val, u64);
 		GHOST_MODEL_CATCH_FIRE("the ghost model detected a PTE that changed under it");
 		GHOST_LOG_CONTEXT_EXIT();
 	}

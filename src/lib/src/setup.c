@@ -13,7 +13,7 @@ bool is_initialised = false;
 /**
  * opts() - Get model options.
  */
-struct casemate_options *opts()
+struct casemate_options *opts(void)
 {
 	return &sm_options;
 }
@@ -21,7 +21,7 @@ struct casemate_options *opts()
 /**
  * side_effect() - Perform a side-effect using the ghost driver.
  */
-struct ghost_driver *side_effect()
+struct ghost_driver *side_effect(void)
 {
 	return &driver;
 }

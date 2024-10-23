@@ -35,24 +35,24 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size);
  *
  * Returns NULL if no blob is found.
  */
-struct ghost_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys);
+struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys);
 
 /**
  * blob_of() - Given an index in the ordered_blob_list, return the corresponding blob
  */
-struct ghost_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i);
+struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i);
 
 /**
  * blob_unclean() - Is any slot in the blob in an unclean state.
  */
-bool blob_unclean(struct ghost_memory_blob *blob);
+bool blob_unclean(struct casemate_memory_blob *blob);
 
 /**
  * location() - Retrieve the ghost-model memory for a given physical address
  */
 struct sm_location *location(u64 phys);
 
-void try_register_root(ghost_stage_t stage, phys_addr_t root);
+void try_register_root(entry_stage_t stage, phys_addr_t root);
 
 /**
  * current_transition - The step currently being executed.

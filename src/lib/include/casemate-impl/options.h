@@ -8,26 +8,26 @@ extern struct casemate_options sm_options;
 /**
  * opts() - Get model options.
  */
-struct casemate_options *opts();
+struct casemate_options *opts(void);
 
 /**
  * side_effect() - Perform a side-effect using the ghost driver.
  */
-struct ghost_driver *side_effect();
+struct ghost_driver *side_effect(void);
 
 /*
  * TODO: BS: make these functions with callbacks into the driver
  * so the ghost driver can do more fine-grained choice of tracing/printing/diffing.
  */
 
-static inline bool should_trace()
+static inline bool should_trace(void)
 {
 	return (
 		    opts()->enable_tracing
 	);
 }
 
-static inline bool should_print_step()
+static inline bool should_print_step(void)
 {
 	return (
 		    opts()->check_opts.enable_printing
@@ -35,7 +35,7 @@ static inline bool should_print_step()
 	);
 }
 
-static inline bool should_print_unclean_only()
+static inline bool should_print_unclean_only(void)
 {
 	return (
 		    opts()->check_opts.enable_printing
@@ -43,7 +43,7 @@ static inline bool should_print_unclean_only()
 	);
 }
 
-static inline bool should_print_diff_on_step()
+static inline bool should_print_diff_on_step(void)
 {
 	return (
 		    opts()->check_opts.enable_printing
@@ -51,7 +51,7 @@ static inline bool should_print_diff_on_step()
 	);
 }
 
-static inline bool should_trace_condensed()
+static inline bool should_trace_condensed(void)
 {
 	return (
 		   opts()->enable_tracing

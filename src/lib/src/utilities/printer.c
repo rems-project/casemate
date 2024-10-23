@@ -1,5 +1,3 @@
-#include <stdarg.h>
-
 #include <casemate-impl.h>
 
 
@@ -57,15 +55,14 @@ int sb_putn(struct string_builder *buf, u64 n)
 
 int sb_putd(struct string_builder *buf, s64 n)
 {
+	int i =0;
+	char digits[20];
 	bool negative = false;
 
 	if (n < 0) {
 		negative = true;
 		n = -n;
 	}
-
-	char digits[20] = {0};
-	int i = 0;
 
 	do {
 		digits[i] = (n % 10) + '0';
@@ -119,7 +116,25 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n)
 //////////
 // Printf
 
-int ghost_printf(void *arg, const char *fmt, ...)
+#ifndef __KVM_NVHE_HYPERVISOR__
+int ghost_printf(const char *fmt, ...)
+{
+	int ret;
+	va_list ap;
+	va_start(ap, fmt);
+	ret = side_effect()->print(NULL, fmt, ap);
+	va_end(ap);
+
+	/* instead of returning error codes, really just fail,
+	 * as no recovery on printing to UART. */
+	if (ret)
+		BUG();
+
+	return ret;
+}
+#endif /* __KVM_NVHE_HYPERVISOR__ */
+
+int ghost_fprintf(void *arg, const char *fmt, ...)
 {
 	int ret;
 	va_list ap;
@@ -138,7 +153,7 @@ int ghost_printf(void *arg, const char *fmt, ...)
 int ghost_print_indent(void *arg, u64 n)
 {
 	for (u64 i = 0; i < n; i++)
-		TRY(ghost_printf(arg, " "));
+		TRY(ghost_fprintf(arg, " "));
 	return 0;
 }
 
@@ -193,21 +208,21 @@ int gp_print_cm_pte_state(void *arg, struct sm_pte_state *st)
 {
 	const char *prefix = KIND_PREFIX_NAMES[st->kind];
 
-	TRY(ghost_printf(arg, "%s", prefix));
+	TRY(ghost_fprintf(arg, "%s", prefix));
 
 	switch (st->kind) {
 	case STATE_PTE_INVALID:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN - INVALIDATOR_TID_NAME_LEN);
-		return ghost_printf(arg, "%d", st->invalid_clean_state.invalidator_tid);
+		return ghost_fprintf(arg, "%d", st->invalid_clean_state.invalidator_tid);
 	case STATE_PTE_INVALID_UNCLEAN:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN);
-		return ghost_printf(arg, "%s %d", LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_fprintf(arg, "%s %d", LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	case STATE_PTE_VALID:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN);
 		return 0;
 	case STATE_PTE_NOT_WRITABLE:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN);
-		return ghost_printf(arg, "%s%I%s %d", LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+		return ghost_fprintf(arg, "%s%I%s %d", LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
 	}
 }
 
@@ -219,17 +234,17 @@ int gp_print_cm_loc(void *arg, struct sm_location *loc)
 		u64 start = loc->descriptor.ia_region.range_start;
 		u64 end = loc->descriptor.ia_region.range_size + start;
 
-		TRY(ghost_printf(arg, "%s[%16p]=%16lx (pte_st:", init, loc->phys_addr, loc->val));
+		TRY(ghost_fprintf(arg, "%s[%16p]=%16lx (pte_st:", init, loc->phys_addr, loc->val));
 		TRY(gp_print_cm_pte_state(arg, &loc->state));
-		TRY(ghost_printf(arg, " root:%16p, range:%16lx-%16lx)", loc->owner, start, end));
+		TRY(ghost_fprintf(arg, " root:%16p, range:%16lx-%16lx)", loc->owner, start, end));
 		return 0;
 	} else {
-		return ghost_printf(arg, "%s[%16p]=%16lx", init, loc->phys_addr, loc->val);
+		return ghost_fprintf(arg, "%s[%16p]=%16lx", init, loc->phys_addr, loc->val);
 	}
 
 }
 
-int gp_print_cm_blob_info(void *arg, struct ghost_memory_blob *b)
+int gp_print_cm_blob_info(void *arg, struct casemate_memory_blob *b)
 {
 	if (b->valid) {
 		int tracked = 0;
@@ -248,13 +263,13 @@ int gp_print_cm_blob_info(void *arg, struct ghost_memory_blob *b)
 				invalid_unclean++;
 		}
 
-		return ghost_printf(arg, "<blob %16p->%16p, %d tracked, %d invalid (clean), %d invalid (unclean)>", b->phys, b->phys + BLOB_SIZE, tracked, invalid, invalid_unclean);
+		return ghost_fprintf(arg, "<blob %16p->%16p, %d tracked, %d invalid (clean), %d invalid (unclean)>", b->phys, b->phys + BLOB_SIZE, tracked, invalid, invalid_unclean);
 	} else {
-		return ghost_printf(arg, "<invalid blob>");
+		return ghost_fprintf(arg, "<invalid blob>");
 	}
 }
 
-int gp_print_cm_blob(void *arg, struct ghost_memory_blob *b, u64 indent)
+int gp_print_cm_blob(void *arg, struct casemate_memory_blob *b, u64 indent)
 {
 	int ret;
 
@@ -262,9 +277,9 @@ int gp_print_cm_blob(void *arg, struct ghost_memory_blob *b, u64 indent)
 		return 0;
 
 	if (!b->valid)
-		return ghost_printf(arg, "<invalid blob>");
+		return ghost_fprintf(arg, "<invalid blob>");
 
-	TRY(ghost_printf(arg, "\n"));
+	TRY(ghost_fprintf(arg, "\n"));
 	TRY(ghost_print_indent(arg, indent));
 	TRY(gp_print_cm_blob_info(arg, b));
 
@@ -276,7 +291,7 @@ int gp_print_cm_blob(void *arg, struct ghost_memory_blob *b, u64 indent)
 
 		// don't waste energy printing 'clean' entries...
 		if (!should_print_unclean_only() || loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
-			TRY(ghost_printf(arg, "\n"));
+			TRY(ghost_fprintf(arg, "\n"));
 			TRY(ghost_print_indent(arg, indent+2));
 			TRY(gp_print_cm_loc(arg, loc));
 		}
@@ -285,7 +300,7 @@ int gp_print_cm_blob(void *arg, struct ghost_memory_blob *b, u64 indent)
 	return 0;
 }
 
-int gp_print_cm_blob_noindent(void *arg, struct ghost_memory_blob *b)
+int gp_print_cm_blob_noindent(void *arg, struct casemate_memory_blob *b)
 {
 	return gp_print_cm_blob(arg, b, 0);
 }
@@ -296,12 +311,12 @@ int gp_print_cm_mem(void *arg, struct casemate_model_memory *mem)
 	int ret;
 	bool empty = true;
 
-	ret = ghost_printf(arg, "mem:");
+	ret = ghost_fprintf(arg, "mem:");
 	if (ret)
 		return ret;
 
 	for (int bi = 0; bi < mem->nr_allocated_blobs; bi++) {
-		struct ghost_memory_blob *b = blob_of(mem, bi);
+		struct casemate_memory_blob *b = blob_of(mem, bi);
 
 		if (!should_print_unclean_only() || blob_unclean(b))
 			empty = false;
@@ -312,8 +327,8 @@ int gp_print_cm_mem(void *arg, struct casemate_model_memory *mem)
 	}
 
 	if (empty) {
-		TRY(ghost_printf(arg, "\n"));
-		ret = ghost_printf(arg, "<clean>");
+		TRY(ghost_fprintf(arg, "\n"));
+		ret = ghost_fprintf(arg, "<clean>");
 		if (ret)
 			return ret;
 	}
@@ -325,23 +340,23 @@ int gp_print_cm_roots(void *arg, char *name, u64 len, u64 *roots)
 {
 	int ret;
 
-	ret = ghost_printf(arg, "%s roots: [", name);
+	ret = ghost_fprintf(arg, "%s roots: [", name);
 	if (ret)
 		return ret;
 
 	if (len > 0) {
-		ret = ghost_printf(arg, "%16p", roots[0]);
+		ret = ghost_fprintf(arg, "%16p", roots[0]);
 		if (ret)
 			return ret;
 
 		for (u64 i = 1; i < len; i++) {
-			ret = ghost_printf(arg, ", %16p", roots[i]);
+			ret = ghost_fprintf(arg, ", %16p", roots[i]);
 			if (ret)
 				return ret;
 		}
 	}
 
-	return ghost_printf(arg, "]");
+	return ghost_fprintf(arg, "]");
 }
 
 int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
@@ -353,10 +368,10 @@ int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 
 #ifndef CONFIG_NVHE_casemate_model_LOG_ONLY
 	if (is_correctly_locked(locks->locks[i], &state))
-		ret = ghost_printf(arg, "(%16p,%16p, locked by thread %d, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
+		ret = ghost_fprintf(arg, "(%16p,%16p, locked by thread %d, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
 	else
 #endif /* CONFIG_NVHE_casemate_model_LOG_ONLY */
-		ret = ghost_printf(arg, "(%16p,%16p)", locks->owner_ids[i], locks->locks[i]);
+		ret = ghost_fprintf(arg, "(%16p,%16p)", locks->owner_ids[i], locks->locks[i]);
 
 	return ret;
 }
@@ -364,24 +379,24 @@ int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 int gp_print_cm_locks(void *arg, struct lock_owner_map *locks)
 {
 	int ret;
-	ret = ghost_printf(arg, "%s", "locks: [");
+	ret = ghost_fprintf(arg, "%s", "locks: [");
 	if (ret)
 		return ret;
 
 	if (locks->len > 0) {
 	ret = gp_print_cm_lock(arg, locks, 0);
 		for (u64 i = 1; i < locks->len; i++) {
-			ret = ghost_printf(arg,", ");
+			ret = ghost_fprintf(arg,", ");
 			ret = gp_print_cm_lock(arg, locks, i);
 		}
 	}
 
-	return ghost_printf(arg, "]");
+	return ghost_fprintf(arg, "]");
 }
 
 int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 {
-	TRY(ghost_printf(
+	TRY(ghost_fprintf(
 		arg,
 		""
 		"base_addr:.......%16p\n"
@@ -394,11 +409,11 @@ int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 		s->nr_s2_roots
 	));
 	TRY(gp_print_cm_roots(arg, "s1", s->nr_s1_roots, s->s1_roots));
-	TRY(ghost_printf(arg, "\n"));
+	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_roots(arg, "s2", s->nr_s2_roots, s->s2_roots));
-	TRY(ghost_printf(arg, "\n"));
+	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_locks(arg, &s->locks));
-	TRY(ghost_printf(arg, "\n"));
+	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_mem(arg, &s->memory));
 	return 0;
 }

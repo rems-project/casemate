@@ -2,9 +2,21 @@
 #ifndef CASEMATE_H
 #define CASEMATE_H
 
+/*
+ * Casemate public interface
+ */
+
+/* auto-included by Makefile */
+/* Types also defined by UoC's pKVM ghost code headers
+ * so do not try to include them in the top-level casemate.h if they are already defined
+ */
+
+#ifndef __KVM_NVHE_HYPERVISOR__
+
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
+
 typedef unsigned long u64;
 typedef signed long s64;
 typedef unsigned int u32;
@@ -12,52 +24,12 @@ typedef signed int s32;
 typedef int u8;
 typedef u64 phys_addr_t;
 
-/*
- * Casemate public interface
- */
+#else
 
-/* auto-included by Makefile */
-/* Shared types with ghost */
+#include <linux/stdarg.h>
+#include <linux/types.h>
 
-/**
- * enum ghost_stage - (optional) stage of translation
- */
-typedef enum {
-	GHOST_STAGE2 = 2,
-	GHOST_STAGE1 = 1,
-
-	/**
-	 * @GHOST_STAGE_NONE: for memblocks and other non-pgtable mappings.
-	 */
-	GHOST_STAGE_NONE = 0,
-} ghost_stage_t;
-
-/**
- * enum maplet_permissions - Abstract permissions for a range of OA, as bitflags
- */
-enum maplet_permissions {
-	MAPLET_PERM_R = 1,
-	MAPLET_PERM_W = 2,
-	MAPLET_PERM_X = 4,
-
-	/*
-	 * MAPLET_PERM_UNKNOWN for encodings that do not correspond to any of the above.
-	 */
-	MAPLET_PERM_UNKNOWN = 8,
-};
-#define MAPLET_PERM_RW (MAPLET_PERM_R | MAPLET_PERM_W)
-#define MAPLET_PERM_RWX (MAPLET_PERM_R | MAPLET_PERM_W | MAPLET_PERM_X)
-
-/**
- * enum maplet_memtype_attr - Abstract memory type.
- */
-enum maplet_memtype_attr {
-	MAPLET_MEMTYPE_DEVICE,
-	MAPLET_MEMTYPE_NORMAL_CACHEABLE,
-
-	/* MAPLET_MEMTYPE_UNKNOWN for encodings that do not correspond to any of the above */
-	MAPLET_MEMTYPE_UNKNOWN,
-};
+#endif /* __KVM_NVHE_HYPERVISOR */
 
 
 /* auto-included by Makefile */
@@ -369,9 +341,51 @@ struct addr_range {
 	u64 range_size;
 };
 
+
+/**
+ * enum entry_stage - (optional) stage of translation
+ */
+typedef enum {
+	ENTRY_STAGE2 = 2,
+	ENTRY_STAGE1 = 1,
+
+	/**
+	 * @ENTRY_STAGE_NONE: for memblocks and other non-pgtable mappings.
+	 */
+	ENTRY_STAGE_NONE = 0,
+} entry_stage_t;
+
+/**
+ * enum entry_permissions - Abstract permissions for a range of OA, as bitflags
+ */
+enum entry_permissions {
+	ENTRY_PERM_R = 1,
+	ENTRY_PERM_W = 2,
+	ENTRY_PERM_X = 4,
+
+	/*
+	 * ENTRY_PERM_UNKNOWN for encodings that do not correspond to any of the above.
+	 */
+	ENTRY_PERM_UNKNOWN = 8,
+};
+#define ENTRY_PERM_RW (ENTRY_PERM_R | ENTRY_PERM_W)
+#define ENTRY_PERM_RWX (ENTRY_PERM_R | ENTRY_PERM_W | ENTRY_PERM_X)
+
+/**
+ * enum entry_memtype_attr - Abstract memory type.
+ */
+enum entry_memtype_attr {
+	ENTRY_MEMTYPE_DEVICE,
+	ENTRY_MEMTYPE_NORMAL_CACHEABLE,
+
+	/* ENTRY_MEMTYPE_UNKNOWN for encodings that do not correspond to any of the above */
+	ENTRY_MEMTYPE_UNKNOWN,
+};
+
+
 struct entry_attributes {
-	enum maplet_permissions prot;
-	enum maplet_memtype_attr memtype;
+	enum entry_permissions prot;
+	enum entry_memtype_attr memtype;
 
 	/**
 	 * @raw_arch_attrs: the raw descriptor, masked to the attribute bits
@@ -382,7 +396,7 @@ struct entry_attributes {
 
 
 /**
- * struct  ghost_exploded_descriptor - Cached information about a PTE.
+ * struct  entry_exploded_descriptor - Cached information about a PTE.
  * @kind: Whether the descriptor is invalid/a table/a block or page mapping.
  * @region: the input-address region this PTE covers.
  * @level: the level within the pgtable this entry is at.
@@ -390,13 +404,13 @@ struct entry_attributes {
  * @table_data: if kind is PTE_KIND_TABLE, the table descriptor data (next level table address).
  * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range, and other attributes).
  *
- * TODO: replace with maplet_target...
+ * TODO: replace with entry_target...
  */
-struct ghost_exploded_descriptor {
+struct entry_exploded_descriptor {
 	enum pte_kind kind;
 	struct addr_range ia_region;
 	u64 level;
-	ghost_stage_t stage;
+	entry_stage_t stage;
 	union {
 		struct {
 			u64 next_level_table_addr;
@@ -429,7 +443,7 @@ struct sm_location {
 	u64 phys_addr;
 	u64 val;
 	bool is_pte;
-	struct ghost_exploded_descriptor descriptor;
+	struct entry_exploded_descriptor descriptor;
 	struct sm_pte_state state;
 	sm_owner_t owner;
 	int thread_owner;
@@ -456,14 +470,14 @@ struct sm_location {
 #define MAX_UNCLEAN_LOCATIONS 10
 
 /**
- * struct ghost_memory_blob - A page of memory.
+ * struct casemate_memory_blob - A page of memory.
  * @valid: whether this blob is being used.
  * @phys: if valid, the physical address of the start of this region.
  * @slots: if valid, the array of memory locations within this region.
  *
  * Each blob is a aligned and contiguous page of memory.
  */
-struct ghost_memory_blob {
+struct casemate_memory_blob {
 	bool valid;
 	u64 phys;
 	struct sm_location slots[SLOTS_PER_PAGE];
@@ -476,7 +490,7 @@ struct ghost_memory_blob {
  * @ordered_blob_list: a list of indices of allocated blobs, in order of their physical addresses.
  */
 struct casemate_model_memory {
-	struct ghost_memory_blob blobs_backing[MAX_BLOBS];
+	struct casemate_memory_blob blobs_backing[MAX_BLOBS];
 
 	u64 nr_allocated_blobs;
 	u64 ordered_blob_list[MAX_BLOBS];
@@ -860,9 +874,13 @@ void casemate_model_step(struct casemate_model_step trans);
 
 #define SRC_LOC (struct src_loc){.file=__FILE__, .lineno=__LINE__, .func=__func__}
 
-#ifndef GHOST_CPU_ID
- #error REQUIRE_DEFINE_GHOST_CPU_ID
-#endif
+/**
+ * casemate_cpu_id() - Return current CPU identifier.
+ *
+ * Users should implement this if they want to use the helper macros.
+ */
+extern u64 casemate_cpu_id(void);
+#define THREAD_ID casemate_cpu_id()
 
 #define casemate_model_step_write(...) __casemate_model_step_write(SRC_LOC, __VA_ARGS__)
 static inline void __casemate_model_step_write(struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)

@@ -266,15 +266,25 @@ static int record_cm_trans(struct string_builder *buf, struct casemate_model_ste
 	return 0;
 }
 
+void put_trans(void *arg)
+{
+	int ret;
+	DEFINE_STRING_BUFFER(sb, 256);
+	struct casemate_model_step *step = (struct casemate_model_step *)arg;
+	ret = record_cm_trans(&sb, step);
+	if (ret)
+		side_effect()->abort("trace record too long");
+	ghost_printf("%s", sb.out);
+}
+
 void trace_step(struct casemate_model_step *trans)
 {
 	int ret;
 	DEFINE_STRING_BUFFER(sb, 256);
-
 	ret = record_cm_trans(&sb, trans);
 
 	if (ret) {
-		GHOST_WARN("failed to generate trace record for transition with id=%d, message too long.", 0);
+		GHOST_WARN("failed to generate trace record, message too long.");
 		side_effect()->abort("trace record too long");
 	}
 

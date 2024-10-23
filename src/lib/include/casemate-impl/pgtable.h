@@ -6,7 +6,6 @@
 #include <casemate-impl/types.h>
 #include <casemate-impl/bitwise.h>
 
-
 /*
  * Concrete masks, and field bitpatterns for a variety of PTE bits
  *
@@ -133,11 +132,11 @@ typedef struct {
 
 #define TCR_TG0_LO 14
 #define TCR_TG0_WIDTH 2
-#define TCR_TG0_MASK GENMASK(TCR_TG0_WIDTH, TCR_TG0_LO)
+#define TCR_TG0_MASK (GENMASK(TCR_TG0_WIDTH - 1, 0) << TCR_TG0_LO)
 
 #define TCR_EL2_T0SZ_LO 0
 #define TCR_EL2_T0SZ_WIDTH 6
-#define TCR_EL2_T0SZ_MASK GENMASK(TCR_EL2_T0SZ_WIDTH, TCR_EL2_T0SZ_LO)
+#define TCR_EL2_T0SZ_MASK (GENMASK(TCR_EL2_T0SZ_WIDTH - 1, 0) << TCR_EL2_T0SZ_LO)
 
 /* outside of realm security state, bit[55] is IGNORED, so can be used by software */
 #define PTE_FIELD_UPPER_ATTRS_SW_LO 55
@@ -196,12 +195,12 @@ static inline phys_addr_t extract_s1_root(u64 ttb)
 	return ttb & TTBR0_EL2_BADDR_MASK;
 }
 
-bool is_desc_table(u64 descriptor, u64 level, ghost_stage_t stage);
+bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage);
 bool is_desc_valid(u64 descriptor);
 u64 extract_output_address(u64 desc, u64 level);
 u64 extract_table_address(u64 desc);
-struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage);
-struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage);
+struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage);
+struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage);
 
 struct pgtable_traverse_context {
 	struct sm_location *loc;
@@ -210,10 +209,10 @@ struct pgtable_traverse_context {
 	u64 level;
 	bool leaf;
 
-	struct ghost_exploded_descriptor exploded_descriptor;
+	struct entry_exploded_descriptor exploded_descriptor;
 
 	u64 root;
-	ghost_stage_t stage;
+	entry_stage_t stage;
 
 	void* data;
 };
@@ -225,20 +224,20 @@ enum pgtable_traversal_flag {
 
 typedef void (*pgtable_traverse_cb)(struct pgtable_traverse_context *ctxt);
 
-void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
-void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
+void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
+void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
 
-void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, ghost_stage_t stage);
+void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_stage_t stage);
 void add_location_to_unclean_PTE(struct sm_location* loc);
 
 struct pgtable_walk_result {
 	u64 requested_pte;
 	bool found;
 
-	struct ghost_exploded_descriptor descriptor;
+	struct entry_exploded_descriptor descriptor;
 
 	u64 root;
-	ghost_stage_t stage;
+	entry_stage_t stage;
 
 	u64 level;
 };

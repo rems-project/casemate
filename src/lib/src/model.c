@@ -87,6 +87,10 @@ bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state)
 
 bool is_location_locked(struct sm_location *loc)
 {
+	struct lock_state *state;
+	sm_owner_t owner_id;
+	gsm_lock_addr_t *lock;
+
 	if (!loc->initialised || !loc->is_pte)
 		return true;
 
@@ -95,13 +99,12 @@ bool is_location_locked(struct sm_location *loc)
 		return loc->thread_owner == cpu_id();
 
 	// Otherwise, get the owner of the location
-	struct lock_state *state;
-	sm_owner_t owner_id = loc->owner;
+	owner_id = loc->owner;
 	// assume 0 cannot be a valid owner id
 	if (!owner_id)
 		GHOST_MODEL_CATCH_FIRE("must have associated location with an owner");
 	// get the address of the lock
-	gsm_lock_addr_t *lock = owner_lock(owner_id);
+	lock = owner_lock(owner_id);
 	// check the state of the lock
 	return is_correctly_locked(lock, &state);
 }
@@ -111,12 +114,18 @@ bool is_location_locked(struct sm_location *loc)
  */
 void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 {
+	sm_owner_t owner_id;
+	gsm_lock_addr_t *lock;
+
 	ghost_assert(loc->initialised && loc->is_pte);
-	sm_owner_t owner_id = loc->owner;
+
+	owner_id = loc->owner;
+
 	// assume 0 cannot be a valid owner id
 	if (!owner_id)
 		GHOST_MODEL_CATCH_FIRE("must have associated location with an owner");
-	gsm_lock_addr_t *lock = owner_lock(owner_id);
+
+	lock = owner_lock(owner_id);
 	if (!lock)
 		GHOST_MODEL_CATCH_FIRE("must have associated owner with a root");
 
@@ -293,8 +302,8 @@ static bool is_only_update_to_sw_bits(u64 before, u64 after)
  */
 static bool requires_bbm(struct sm_location *loc, u64 before, u64 after)
 {
-	struct ghost_exploded_descriptor before_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, before, loc->descriptor.level, loc->descriptor.stage);
-	struct ghost_exploded_descriptor after_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, after, loc->descriptor.level, loc->descriptor.stage);
+	struct entry_exploded_descriptor before_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, before, loc->descriptor.level, loc->descriptor.stage);
+	struct entry_exploded_descriptor after_descriptor = deconstruct_pte(loc->descriptor.ia_region.range_start, after, loc->descriptor.level, loc->descriptor.stage);
 
 	/* BBM is only a requirement between writes of valid PTEs */
 	if (before_descriptor.kind == PTE_KIND_INVALID || after_descriptor.kind == PTE_KIND_INVALID)
@@ -510,19 +519,20 @@ static void try_remove_root(u64 *root_table, u64 root)
 }
 
 
-void try_register_root(ghost_stage_t stage, phys_addr_t root)
+void try_register_root(entry_stage_t stage, phys_addr_t root)
 {
+	u64 *root_table;
+
 	GHOST_LOG_CONTEXT_ENTER();
 	if (root_exists(root))
 		GHOST_MODEL_CATCH_FIRE("root already exists");
 
-	u64 *root_table =
-		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+	root_table = stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
 
 	// TODO: also associate ASID/VMID ?
 	try_insert_root(root_table, root);
 
-	if (stage == GHOST_STAGE1) {
+	if (stage == ENTRY_STAGE1) {
 		the_ghost_state->nr_s1_roots++;
 	} else {
 		the_ghost_state->nr_s2_roots++;
@@ -532,12 +542,14 @@ void try_register_root(ghost_stage_t stage, phys_addr_t root)
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
+static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 {
+	u64 *root_table;
+
 	GHOST_LOG_CONTEXT_ENTER();
 
-	u64 *root_table =
-		stage == GHOST_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+	root_table =
+		stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
 
 	if (! root_exists_in(root_table, root))
 		GHOST_MODEL_CATCH_FIRE("root doesn't exist");
@@ -545,7 +557,7 @@ static void try_unregister_root(ghost_stage_t stage, phys_addr_t root)
 	// TODO: also associate ASID/VMID ?
 	traverse_pgtable(root, stage, unmark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	try_remove_root(root_table, root);
-	if (stage == GHOST_STAGE1) {
+	if (stage == ENTRY_STAGE1) {
 		the_ghost_state->nr_s1_roots--;
 	} else {
 		the_ghost_state->nr_s2_roots--;
@@ -566,7 +578,7 @@ static void step_msr(struct ghost_hw_step *step)
 		root = extract_s1_root(step->msr_data.val);
 
 		if (! root_exists_in(the_ghost_state->s1_roots, root)) {
-			try_register_root(GHOST_STAGE1, root);
+			try_register_root(ENTRY_STAGE1, root);
 		}
 		// TODO: BS: else, at least check ASID/VMID match...
 
@@ -575,7 +587,7 @@ static void step_msr(struct ghost_hw_step *step)
 		root = extract_s2_root(step->msr_data.val);
 
 		if (! root_exists_in(the_ghost_state->s2_roots, root)) {
-			try_register_root(GHOST_STAGE2, root);
+			try_register_root(ENTRY_STAGE2, root);
 		}
 		// TODO: BS: else, at least check ASID/VMID match...
 
@@ -728,13 +740,17 @@ static void write_is_authorized(struct sm_location *loc, struct ghost_hw_step *s
 
 static void step_write(struct ghost_hw_step *step)
 {
+	enum memory_order_t mo;
+	u64 val;
+	struct sm_location *loc;
+
 	ghost_assert(step->kind == HW_MEM_WRITE);
 
-	enum memory_order_t mo = step->write_data.mo;
-	u64 val = step->write_data.val;
+	mo = step->write_data.mo;
+	val = step->write_data.val;
 
 	// look inside memory at `addr`
-	struct sm_location *loc = location(step->write_data.phys_addr);
+	loc = location(step->write_data.phys_addr);
 
 	if (!loc->is_pte) {
 		goto done;
@@ -771,8 +787,9 @@ done:
 
 static void step_read(struct ghost_hw_step *step)
 {
+	struct sm_location *loc;
 	ghost_assert(step->kind == HW_MEM_READ);
-	struct sm_location *loc = location(step->read_data.phys_addr);
+	loc = location(step->read_data.phys_addr);
 
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
@@ -802,7 +819,7 @@ static void step_dsb_invalid_unclean_unmark_children(struct sm_location *loc)
 {
 	u64 old;
 	struct aut_invalid aut;
-	struct ghost_exploded_descriptor old_desc;
+	struct entry_exploded_descriptor old_desc;
 
 	if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
 		return;
@@ -918,7 +935,7 @@ static void step_dsb(struct ghost_hw_step *step)
 	// annoyingly, DSBs aren't annotated with their addresses.
 	// so we do the really dumb thing: we go through every pagetable that we know about
 	// and step any we find in the right state.
-	traverse_all_unclean_PTE(dsb_visitor, &step->barrier_data.dxb_data, GHOST_STAGE_NONE);
+	traverse_all_unclean_PTE(dsb_visitor, &step->barrier_data.dxb_data, ENTRY_STAGE_NONE);
 
 	// The DSBs also enforce a sufficient barrier to allow plain writes again
 	reset_write_authorizations();
@@ -1039,15 +1056,16 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 
 static bool all_children_invalid(struct sm_location *loc)
 {
+	phys_addr_t table_addr;
+	struct sm_location *child;
+
 	// Assert that we are on a table descriptor
 	ghost_assert(loc->initialised && loc->is_pte);
 
 	if (loc->descriptor.kind != PTE_KIND_TABLE)
 		return true;
 
-	phys_addr_t table_addr = loc->descriptor.table_data.next_level_table_addr;
-	struct sm_location *child;
-
+	table_addr = loc->descriptor.table_data.next_level_table_addr;
 
 	for (int i = 0; i< 512; i++) {
 		// For each child, check that it is an invalid child
@@ -1064,6 +1082,7 @@ static bool all_children_invalid(struct sm_location *loc)
 
 static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 {
+	struct sm_tlbi_op *tlbi;
 	u64 tlbi_addr;
 	u64 ia_start;
 	u64 ia_end;
@@ -1072,7 +1091,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	if (!is_location_locked(ctxt->loc))
 		return false;
 
-	struct sm_tlbi_op *tlbi = (struct sm_tlbi_op*)ctxt->data;
+	tlbi = (struct sm_tlbi_op*)ctxt->data;
 
 	// TODO: BS: need to match up regime with which pgtable loc is in.
 	//           and broadcast and so on.
@@ -1150,19 +1169,19 @@ static void tlbi_visitor(struct pgtable_traverse_context *ctxt)
 
 static void step_tlbi(struct ghost_hw_step *step)
 {
+	struct sm_tlbi_op decoded;
 	ghost_assert(step->kind == HW_TLBI);
 
-	struct sm_tlbi_op decoded = decode_tlbi(step->tlbi_data);
-
+	decoded = decode_tlbi(step->tlbi_data);
 	switch (decoded.regime) {
 	/* TLBIs that hit host/guest tables */
 	case TLBI_REGIME_EL10:
-		traverse_all_unclean_PTE(tlbi_visitor, &decoded, GHOST_STAGE2);
+		traverse_all_unclean_PTE(tlbi_visitor, &decoded, ENTRY_STAGE2);
 		break;
 
 	/* TLBIs that hit pKVM's own pagetable */
 	case TLBI_REGIME_EL2:
-		traverse_all_unclean_PTE(tlbi_visitor, &decoded, GHOST_STAGE1);
+		traverse_all_unclean_PTE(tlbi_visitor, &decoded, ENTRY_STAGE1);
 		break;
 
 	default:
@@ -1341,7 +1360,7 @@ static void __step_unlock(gsm_lock_addr_t *lock_addr)
 static void __step_memset(u64 phys_addr, u64 size, u64 val)
 {
 	ghost_assert(IS_PAGE_ALIGNED(phys_addr));
-	ghost_assert((size % 8) == 0);
+	ghost_assert((size & ~GENMASK(7,0)) == 0);
 
 	/* Implement MEMSET by repeated WRITE transitions. */
 	for (u64 i = 0; i < size; i += 8) {
@@ -1378,6 +1397,7 @@ static void step_abs(struct ghost_abs_step *step)
 	case GHOST_ABS_INIT:
 		// Nothing to do
 		__step_init(step->init_data.location, step->init_data.size);
+		break;
 	case GHOST_ABS_MEMSET:
 		__step_memset(step->memset_data.address, step->memset_data.size, step->memset_data.value);
 		break;
@@ -1427,12 +1447,12 @@ void step(struct casemate_model_step trans)
 
 	if (should_print_step()) {
 		ghost_dump_model_state(NULL, the_ghost_state);
-		ghost_printf(NULL, "\n");
+		ghost_printf("\n");
 	}
 
 	if (should_print_diff_on_step()) {
 		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
-		ghost_printf(NULL, "\n");
+		ghost_printf("\n");
 	}
 
 out:

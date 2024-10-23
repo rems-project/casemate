@@ -19,7 +19,6 @@ objs = \
 
 HEADER_INCLUDES = \
 	include/casemate-in/casemate.out.h \
-	include/casemate-in/casemate-ghost.out.h \
 	include/casemate-in/casemate-state.in.h \
 	include/casemate-in/casemate-transitions.in.h \
 	include/casemate-in/casemate-helpers.in.h \
@@ -52,6 +51,6 @@ casemate.o.S: casemate.o
 
 clean:
 	$(call run_clean, casemate.o, casemate.o)
-	$(call run_clean, includes, include/casemate.h include/casemate-ghost.h)
+	$(call run_clean, includes, include/casemate.h)
 	$(call run_clean, $(LIBDIR)/, $(objs) $(patsubst %.o,%.o.cmd,$(objs)))
 .PHONY: clean

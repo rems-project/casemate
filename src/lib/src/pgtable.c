@@ -43,9 +43,9 @@ static u64 read_start_level(u64 tcr)
 }
 
 
-static u64 discover_start_level(ghost_stage_t stage)
+static u64 discover_start_level(entry_stage_t stage)
 {
-	if (stage == GHOST_STAGE2) {
+	if (stage == ENTRY_STAGE2) {
 		u64 vtcr = side_effect()->read_sysreg(SYSREG_VTCR_EL2);
 		return read_start_level(vtcr);
 	} else {
@@ -54,12 +54,12 @@ static u64 discover_start_level(ghost_stage_t stage)
 	}
 }
 
-static u64 discover_page_size(ghost_stage_t stage)
+static u64 discover_page_size(entry_stage_t stage)
 {
 	u64 tcr;
 	u64 tg0;
 
-	if (stage == GHOST_STAGE2) {
+	if (stage == ENTRY_STAGE2) {
 		tcr = side_effect()->read_sysreg(SYSREG_VTCR_EL2);
 	} else {
 		tcr = side_effect()->read_sysreg(SYSREG_TCR_EL2);
@@ -78,21 +78,23 @@ static u64 discover_page_size(ghost_stage_t stage)
 	}
 }
 
-static u64 discover_nr_concatenated_pgtables(ghost_stage_t stage)
+static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 {
+	u64 t0sz;
+
 	/* stage1 is never concatenated */
-	if (stage == GHOST_STAGE1)
+	if (stage == ENTRY_STAGE1)
 		return 1;
 
 	/* as per J.a D8-5832 */
 
 	// assume pkvm has 4k graule
-	ghost_assert(discover_page_size(GHOST_STAGE2) == PAGE_SIZE);
+	ghost_assert(discover_page_size(ENTRY_STAGE2) == PAGE_SIZE);
 
 	// assume stage2 translations starting at level 0
-	ghost_assert(discover_start_level(GHOST_STAGE2) == 0);
+	ghost_assert(discover_start_level(ENTRY_STAGE2) == 0);
 
-	u64 t0sz = (side_effect()->read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
+	t0sz = (side_effect()->read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
 
 	// now we know t0sz must be between 24 and 12.
 	if (t0sz >= 16) {
@@ -115,7 +117,7 @@ bool is_desc_valid(u64 descriptor)
 	return (descriptor & PTE_BIT_VALID) == PTE_BIT_VALID;
 }
 
-bool is_desc_table(u64 descriptor, u64 level, ghost_stage_t stage)
+bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage)
 {
 	if (level == 3)
 		return false;
@@ -136,35 +138,36 @@ u64 extract_table_address(u64 desc)
 
 /**
  * parse_attrs() - Construct abstracted maplet attributes from the concrete pte encoding.
- * @stage: the stage (either GHOST_STAGE1 or GHOST_STAGE2) to parse the pte as from.
+ * @stage: the stage (either ENTRY_STAGE1 or ENTRY_STAGE2) to parse the pte as from.
  * @mair: the concrete MAIR_ELx value to use for Stage 1 memory attributes.
  * @desc: the concrete 64-bit descriptor.
  * @level: the level this PTE is at in the table.
  * @next_level_aal: the attrs-at-level so far, for re-constructing hierarchical permissions.
  */
-static struct entry_attributes parse_attrs(ghost_stage_t stage, ghost_mair_t mair, u64 desc, u8 level, struct aal next_level_aal)
+static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mair, u64 desc, u8 level, struct aal next_level_aal)
 {
 	// first fill in the permissions
-	enum maplet_permissions perms;
+	enum entry_permissions perms;
+	enum entry_memtype_attr memtype_attr;
 	switch (stage) {
-	case GHOST_STAGE1: {
+	case ENTRY_STAGE1: {
 		bool ro = __s1_is_ro(desc);
 		bool xn = __s1_is_xn(desc);
 
 		/* Stage1 always has R permission. */
-		perms = MAPLET_PERM_R;
+		perms = ENTRY_PERM_R;
 
 		/* If not read-only, also has W */
 		if (!ro)
-			perms |= MAPLET_PERM_W;
+			perms |= ENTRY_PERM_W;
 
 		/* If not e(x)-(n)ever, also has X */
 		if (!xn)
-			perms |= MAPLET_PERM_X;
+			perms |= ENTRY_PERM_X;
 
 		break;
 	}
-	case GHOST_STAGE2: {
+	case ENTRY_STAGE2: {
 		bool r = __s2_is_r(desc);
 		bool w = __s2_is_w(desc);
 		bool xn = __s2_is_xn(desc);
@@ -172,21 +175,21 @@ static struct entry_attributes parse_attrs(ghost_stage_t stage, ghost_mair_t mai
 		perms = 0;
 
 		if (r)
-			perms |= MAPLET_PERM_R;
+			perms |= ENTRY_PERM_R;
 
 		if (w)
-			perms |= MAPLET_PERM_W;
+			perms |= ENTRY_PERM_W;
 
 		if (!xn)
-			perms |= MAPLET_PERM_X;
+			perms |= ENTRY_PERM_X;
 
 		/* check for bad encoding, and overrule anything we did if we find one */
 		if (__s2_is_x(desc))
-		 	perms = MAPLET_PERM_UNKNOWN;
+		 	perms = ENTRY_PERM_UNKNOWN;
 
 		break;
 	}
-	case GHOST_STAGE_NONE:
+	case ENTRY_STAGE_NONE:
 		// can't parse attrs for a not-a-pagetable pte
 		BUG();
 	default:
@@ -197,42 +200,41 @@ static struct entry_attributes parse_attrs(ghost_stage_t stage, ghost_mair_t mai
 	// rather than just giving up with UNKNOWN
 	for (int i = 0; i < level; i++) {
 		if (next_level_aal.attr_at_level[i]) {
-			perms = MAPLET_PERM_UNKNOWN;
+			perms = ENTRY_PERM_UNKNOWN;
 		}
 	}
 
 	// finally, read out the mem_attr
-	enum maplet_memtype_attr memtype_attr;
 	switch (stage) {
-	case GHOST_STAGE1: {
+	case ENTRY_STAGE1: {
 		// hard case: pte contains AttrIndx, which indirects through MAIR_ELx
 		u64 attr_idx = PTE_EXTRACT(PTE_FIELD_S1_ATTRINDX, desc);
 		// mair must be read_mair(...) not no_mair() if asking for Stage 2
 		ghost_assert(mair.present);
 		switch(mair.attrs[attr_idx]) {
 		case MEMATTR_FIELD_DEVICE_nGnRE:
-			memtype_attr = MAPLET_MEMTYPE_DEVICE;
+			memtype_attr = ENTRY_MEMTYPE_DEVICE;
 			break;
 		case MEMATTR_FIELD_NORMAL_OUTER_INNER_WRITE_BACK_CACHEABLE:
-			memtype_attr = MAPLET_MEMTYPE_NORMAL_CACHEABLE;
+			memtype_attr = ENTRY_MEMTYPE_NORMAL_CACHEABLE;
 			break;
 		default:
-			memtype_attr = MAPLET_MEMTYPE_UNKNOWN;
+			memtype_attr = ENTRY_MEMTYPE_UNKNOWN;
 			break;
 		}
 		break;
 	}
-	case GHOST_STAGE2:
+	case ENTRY_STAGE2:
 		// easy case, MemAttr encoded directly into the pte.
 		switch (PTE_EXTRACT(PTE_FIELD_S2_MEMATTR, desc)) {
 		case PTE_FIELD_S2_MEMATTR_DEVICE_nGnRE:
-			memtype_attr = MAPLET_MEMTYPE_DEVICE;
+			memtype_attr = ENTRY_MEMTYPE_DEVICE;
 			break;
 		case PTE_FIELD_S2_MEMATTR_NORMAL_OUTER_INNER_WRITE_BACK_CACHEABLE:
-			memtype_attr = MAPLET_MEMTYPE_NORMAL_CACHEABLE;
+			memtype_attr = ENTRY_MEMTYPE_NORMAL_CACHEABLE;
 			break;
 		default:
-			memtype_attr = MAPLET_MEMTYPE_UNKNOWN;
+			memtype_attr = ENTRY_MEMTYPE_UNKNOWN;
 			break;
 		}
 		break;
@@ -248,9 +250,9 @@ static struct entry_attributes parse_attrs(ghost_stage_t stage, ghost_mair_t mai
 	};
 }
 
-struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage)
+struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage)
 {
-	struct ghost_exploded_descriptor deconstructed;
+	struct entry_exploded_descriptor deconstructed;
 
 	deconstructed.ia_region = (struct addr_range){
 		.range_start = partial_ia,
@@ -268,16 +270,16 @@ struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 		deconstructed.table_data.next_level_table_addr = extract_table_address(desc);
 		return deconstructed;
 	} else {
+		ghost_mair_t mair;
 		deconstructed.kind = PTE_KIND_MAP;
 		deconstructed.map_data.oa_region = (struct addr_range){
 			.range_start = extract_output_address(desc, level),
 			.range_size = MAP_SIZES[level],
 		};
-		ghost_mair_t mair;
 
 		// for pKVM's own Stage 1 tables, the memory attributes are actually stored
 		// in the indirection register (MAIR)
-		if (stage == GHOST_STAGE1)
+		if (stage == ENTRY_STAGE1)
 			// TODO: BS: read sysregs from ghost model not h/w
 			//           they should be part of s1_roots or something?
 			mair = read_mair(side_effect()->read_sysreg(SYSREG_MAIR_EL2));
@@ -288,7 +290,7 @@ struct ghost_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 	}
 }
 
-void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
+void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
 {
 	struct pgtable_traverse_context ctxt;
 
@@ -360,7 +362,7 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-void traverse_pgtable(u64 root, ghost_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
+void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
 {
 	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
@@ -415,10 +417,11 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 	return ctx;
 }
 
-void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, ghost_stage_t stage)
+void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_stage_t stage)
 {
 	struct sm_location *loc;
 	u64 *len = &the_ghost_state->unclean_locations.len;
+	struct pgtable_traverse_context ctx;
 
 	for (int i = 0; i < *len; i++) {
 		loc = the_ghost_state->unclean_locations.locations[i];
@@ -427,14 +430,14 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, ghost_
 		ghost_assert(loc->is_pte);
 		ghost_assert(loc->state.kind == STATE_PTE_INVALID_UNCLEAN);
 
-		if (stage != GHOST_STAGE_NONE)
+		if (stage != ENTRY_STAGE_NONE)
 			if (stage != loc->descriptor.stage)
 				break;
 
 
 
 		// We rebuild the context from the descriptor of the location
-		struct pgtable_traverse_context ctx = construct_context_from_pte(loc, data);
+		ctx = construct_context_from_pte(loc, data);
 		visitor_cb(&ctx);
 		// If the update resulted in cleaning the location, remove it from the list of
 		// unclean locations
@@ -477,10 +480,10 @@ struct pgtable_walk_result find_pte(struct sm_location *loc)
 /**
  * initial_state() - Construct an initial sm_pte_state for a clean descriptor.
  */
-struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, ghost_stage_t stage)
+struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage)
 {
 	struct sm_pte_state state;
-	struct ghost_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, stage);
+	struct entry_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, stage);
 	switch (deconstructed.kind) {
 	case PTE_KIND_INVALID:
 		state.kind = STATE_PTE_INVALID;

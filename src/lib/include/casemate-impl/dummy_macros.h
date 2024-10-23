@@ -1,11 +1,7 @@
 #ifndef CASEMATE_DUMMY_MACROS_H
 #define CASEMATE_DUMMY_MACROS_H
 
-/*
- * WIP Porting macross
- *
- * These will go away.
- */
+#ifndef __KVM_NVHE_HYPERVISOR__
 
 #define GHOST_LOG_CONTEXT_ENTER()
 #define GHOST_LOG(NAME,TYPE)
@@ -13,5 +9,15 @@
 #define GHOST_LOG_CONTEXT_ENTER_INNER(NAME)
 #define GHOST_LOG_INNER(LOGNAME,NAME,TYPE)
 #define GHOST_LOG_CONTEXT_EXIT_INNER(NAME)
+
+#define GHOST_WARN(MSG) { \
+		ghost_printf(GHOST_WHITE_ON_YELLOW "%s" GHOST_NORMAL "\n", MSG); \
+	}
+
+#else
+
+#include <nvhe/ghost/ghost_context.h>
+
+#endif
 
 #endif /* CASEMATE_DUMMY_MACROS_H */

@@ -12,7 +12,6 @@ INCLUDE = ROOT / 'include'
 compile_commands = []
 
 template = (INCLUDE / "casemate-in" / "casemate.out.h").read_text()
-template_ghost = (INCLUDE / "casemate-in" / "casemate-ghost.out.h").read_text()
 helpers = (INCLUDE / "casemate-in" / "casemate-helpers.in.h").read_text()
 ghost = (INCLUDE / "casemate-in" / "casemate-ghost-types.in.h").read_text()
 state = (INCLUDE / "casemate-in" / "casemate-state.in.h").read_text()
@@ -45,6 +44,3 @@ def make_header(template):
 
 with open(INCLUDE / "casemate.h", "w") as f:
   f.write(make_header(template))
-
-with open(INCLUDE / "casemate-ghost.h", "w") as f:
-  f.write(make_header(template_ghost))
