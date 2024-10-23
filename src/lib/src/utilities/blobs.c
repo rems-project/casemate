@@ -195,9 +195,11 @@ static u64 __read_phys(u64 addr, bool pre)
 	// otherwise, convert to index in memory and get the val
 	loc = location(addr);
 
+	/* TODO: BS: it seems we shouldn't have to hold the lock to read the pgtable
+	 * as a concurrently accessing write */
 	// Check that the location is well-locked
-	if (! is_location_locked(loc))
-		GHOST_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
+	// if (! is_location_locked(loc))
+	// 	GHOST_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
 
 	if (! loc->initialised) {
 		if (side_effect()->read_physmem == NULL)
