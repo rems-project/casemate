@@ -28,5 +28,7 @@ void *initialise_casemate(void);
 
 void *make_parser(FILE *f, struct casemate_model_step *step);
 void parse_record(void *parser);
+bool parser_at_EOF(void *parser);
+bool parser_at_exclamation(void *parser);
 
 #endif /* CASEMATE_CHECK_IMPL_H */

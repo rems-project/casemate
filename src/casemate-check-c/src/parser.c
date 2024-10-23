@@ -79,7 +79,7 @@ int maybe_lookahead(struct parser *p)
 	if (p->has_lookahead)
 		return p->lookahead_c;
 
-	ret = next(p);
+	ret = maybe_next(p);
 	if (ret > 0) {
 		p->lookahead_c = ret;
 		p->has_lookahead = true;
@@ -532,6 +532,27 @@ void *make_parser(FILE *f, struct casemate_model_step *step)
 	p->lookahead_c = '\0';
 	p->out = step;
 	return (void*)p;
+}
+
+bool parser_at_EOF(void *arg)
+{
+	struct parser *p = (struct parser *)arg;
+	consume_whitespace(p);
+	maybe_lookahead(p);
+	return p->at_EOF;
+}
+
+bool parser_at_exclamation(void *arg)
+{
+	int r;
+	struct parser *p = (struct parser *)arg;
+	consume_whitespace(p);
+
+	r = maybe_lookahead(p);
+	if (r < 0)
+		return false;
+
+	return (char)r == '!';
 }
 
 void parse_record(void *p)
