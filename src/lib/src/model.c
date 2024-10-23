@@ -1381,7 +1381,13 @@ static void __step_init(u64 phys_addr, u64 size)
 	u64 p;
 	for (p = phys_addr; p < phys_addr+size; p += 8) {
 		struct sm_location *loc = location(p);
-		initialise_location(loc, 0);
+
+		/* permit re-initialising locations
+		 * so long as they're still zero */
+		if (! loc->initialised)
+			initialise_location(loc, 0);
+		else
+			ghost_assert(loc->val == 0 && !loc->is_pte);
 	}
 }
 
