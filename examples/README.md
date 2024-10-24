@@ -7,13 +7,7 @@ Usage
 ---
 
 
-To configure and build the tests:
-
-```
-$ ./configure
-$ make
-```
-
+Configure and build the tests, see the top-level [README](../README.md).
 Once built, tests can be run directly:
 
 ```

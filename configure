@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+rootdir=$(cd "$(dirname "$0")"; pwd)
+libdir=$(cd "${rootdir}/src/lib"; pwd)
+exampledir=$(cd "${rootdir}/examples"; pwd)
+checkdir=$(cd "${rootdir}/src/casemate-check-c"; pwd)
+
+cc='clang'
+ld='ld'
+objdump='objdump'
+objcopy='objcopy'
+
+casemate_o="${libdir}/casemate.o"
+casemate_h="${libdir}/casemate.h"
+lib_includes="${libdir}/include"
+
+arch=`uname -m`
+prefix=
+
+usage() {
+  echo "Usage $0 [OPTIONS]";
+  echo
+  echo "Options:";
+  echo " -h --help         print this help";
+  echo " --prefix=PREFIX   compilation tool prefix";
+  echo " --cc=CC           compiler";
+  echo " --ld=LD           linker";
+  echo " --arch=ARCH       machine architecture (aarch64 or x86)";
+}
+
+# collect all the -arg and --args
+while [[ "$1" = -* ]]; do
+    opt="$1"; shift
+    arg=
+    if [[ "$opt" = *=* ]]; then
+      arg="${opt#*=}";
+      opt="${opt%%=*}";
+    fi
+    case "$opt" in
+    --prefix)
+        prefix="$arg"
+        ;;
+    --arch)
+        arch="$arg"
+        ;;
+    --cc)
+        cc="$arg"
+        ;;
+    --ld)
+        ld="$arg"
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+    esac
+done
+
+prefix=${prefix}
+
+cc=${prefix}${cc}
+ld=${prefix}${ld}
+objcopy=${prefix}${objcopy}
+objdump=${prefix}${objdump}
+
+# normalise arch name
+[ "$arch" = "arm64" ] && arch="aarch64"
+[ "$arch" = "i386" ] && arch="x86"
+[ "$arch" = "i686" ] && arch="x86"
+[ "$arch" = "x86_64" ] && arch="x86"
+
+arch_name=
+if [ "$arch" = "aarch64" ]; then
+  arch_name="AARCH64";
+elif [ "$arch" = "x86" ]; then
+  arch_name="X86";
+else
+  echo "unknown architecture '${arch}'"
+  exit 1
+fi
+
+cat <<EOF > config.mk
+# Auto-generated, see ./configure script.
+
+root = ${rootdir}
+
+CC = ${cc}
+LD = ${ld}
+OBJDUMP = ${objdump}
+OBJCOPY = ${objcopy}
+
+CFLAGS = -Wall -g -gdwarf-4 -D__${arch_name}__
+LDFLAGS =
+
+casemate_o = ${casemate_o}
+casemate_h = ${casemate_h}
+lib_includes = ${lib_includes}
+EOF

@@ -1,1 +1,5 @@
-/scripts/
+# auto-generated files
+/config.mk
+
+# top-level files
+/casemate-check

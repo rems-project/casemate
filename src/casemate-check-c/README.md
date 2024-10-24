@@ -5,12 +5,7 @@ An offline trace checker
 Build and run
 ---
 
-
-```
-$ ./configure
-$ make
-```
-
+Configure and build the tests, see the top-level [README](../../README.md).
 Then run with e.g.
 
 ```

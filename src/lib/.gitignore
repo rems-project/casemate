@@ -9,6 +9,7 @@
 .cache/
 
 # top-level things
+/include/casemate.h
 /casemate.o
 /casemate.o.S
 

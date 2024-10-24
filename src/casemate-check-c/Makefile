@@ -1,31 +1,24 @@
-include config.mk
-include ../../tools/utils.mk
+.PHONY: build clean
 
-EXE = casemate-check
+build-objs += src/opts.o
+build-objs += src/parser.o
+build-objs += src/driver.o
+build-objs += src/main.o
 
-casemate_obj = $(LIBDIR)/casemate.o
-c_files = \
-	src/opts.c \
-	src/parser.c \
-	src/driver.c \
-	src/main.c \
+build-objs := $(addprefix $(src)/,$(build-objs))
+check-obj := $(src)/casemate-check
 
-objs = \
-	$(patsubst %.c, %.o, $(c_files))
+build: $(check-obj) $(build-objs) $(src)/compile_commands.json $(root)/casemate-check
 
-all: $(EXE) compile_commands.json
+CFLAGS += -I$(src)/include
+CFLAGS += -I$(lib_includes)
 
-$(EXE): $(casemate_obj) $(objs)
-	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
+$(check-obj): $(casemate_o) $(build-objs)
+	$(call run_cc_as_ld,$^,$@)
 
-src/%.o: src/%.c
-	$(call run_cc,$<,$@)
-
-compile_commands.json:
-	$(call run_cmd,MK,$@, \
-		$(ROOTDIR)/tools/generate_compile_commands.py $(SRCDIR))
-.PHONY: compile_commands.json
+$(root)/casemate-check: $(check-obj)
+	$(call run_cp,$(root)/src/casemate-check-c/casemate-check,$(root)/casemate-check)
 
 clean:
-	$(call run_clean,src,rm -f $(objs))
-	$(call run_clean,$(EXE),rm -f $(EXE))
+	$(call run_clean,$(src)/src,rm -f $(build-objs))
+	$(call run_clean,$(check-obj),rm -f $(check-obj))

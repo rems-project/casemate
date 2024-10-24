@@ -1,59 +1,47 @@
-include config.mk
-include ../tools/utils.mk
+.PHONY: build clean logs
 
-tests += simple
-tests += good_write
-tests += bad_no_bbm
-tests += bad_bbm_missing_tlbi
-tests += good_bbm
+build-objs += simple
+build-objs += good_write
+build-objs += bad_no_bbm
+build-objs += bad_bbm_missing_tlbi
+build-objs += good_bbm
 
-test_exes = $(patsubst %,%,$(tests))
-test_objs = $(patsubst %,tests/%.o,$(tests))
-test_expects = $(patsubst %,$(EXPECTEDDIR)/%.log,$(tests))
-test_logs = $(patsubst %,tests/%.log,$(tests))
-test_checks = $(patsubst %,check-%,$(tests))
-common_obj = common.o
-casemate_obj = $(LIBDIR)/casemate.o
+build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
-all: $(test_exes) compile_commands.json
+CFLAGS += -I$(lib_includes)
+CFLAGS += -I$(src)/
+
+EXPECTEDDIR = expected
+
+test_objs = $(patsubst %,$(src)/tests/%.o,$(build-objs))
+test_expects = $(patsubst %,$(src)/$(EXPECTEDDIR)/%.log,$(build-objs))
+test_logs = $(patsubst %,$(src)/tests/%.log,$(build-objs))
+
+common_obj = $(src)/common.o
+
+test_checks = $(patsubst %,check-%,$(build-objs))
+
 checks: $(test_checks)
 expected: $(test_expects)
+logs: $(test_logs)
 
-.PHONY: all expected checks
 .PRECIOUS: $(common_obj) $(test_objs) $(test_logs)
 
-FORCE:
-.PHONY: FORCE
-
-%.o: %.c
-	$(call run_cc,$<,$@)
-
-tests/%.o: tests/%.c
-	$(call run_cc,$<,$@)
-
-%: tests/%.o $(common_obj) $(casemate_obj)
+$(src)/%: $(src)/tests/%.o $(common_obj) $(casemate_o)
 	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
 
-$(EXPECTEDDIR)/%.log: FORCE
-	$(call run_cmd,RUN,$*,test -f ./$* && (./$* -at 1> $@ 2>/dev/null || true))
+$(src)/tests/%.log: FORCE
+	$(call run_cmd,RUN,$(src)/$*,test -f $(src)/$* && ($(src)/$* -at 1> $@ 2>/dev/null || true))
 
-tests/%.log: FORCE
-	$(call run_cmd,RUN,$*,test -f ./$* && (./$* -at 1> $@ 2>/dev/null || true))
-
-check-%: tests/%.log FORCE
-	$(call run_cmd,CHECK,$*,./scripts/check_simulation.py $< $(EXPECTEDDIR)/$*.log)
+check-%: $(src)/tests/%.log FORCE
+	$(call run_cmd,CHECK,$(src)/$*,$(src)/scripts/check_simulation.py $< $(src)/$(EXPECTEDDIR)/$*.log)
 
 clean-%:
-	$(call run_clean,$*,rm -f $(BINDIR)/$* $(BINDIR)/tests/$*.o $(LOGDIR)/$*.log)
+	$(call run_clean,$(src)/$*,rm -f $(src)/$* $(src)/tests/$*.o $(src)/tests/$*.log)
 
-clean_objs = $(patsubst %,clean-%,$(tests))
+clean_objs = $(patsubst %,clean-%,$(build-objs))
 clean: $(clean_objs)
-	$(call run_clean,common,rm -f $(common_obj))
+	$(call run_clean,$(src)/common.o,rm -f $(common_obj))
 
 clean-expected:
-	$(call run_clean,$(EXPECTEDDIR),rm -f $(EXPECTEDDIR)/*.log)
-
-compile_commands.json:
-	$(call run_cmd,MK,$@, \
-		$(ROOTDIR)/tools/generate_compile_commands.py $(SRCDIR))
-.PHONY: compile_commands.json
+	$(call run_clean,$(src)/$(EXPECTEDDIR),rm -f $(src)/$(EXPECTEDDIR)/*.log)

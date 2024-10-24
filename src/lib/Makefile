@@ -1,56 +1,54 @@
-all: include/casemate.h casemate.o casemate.o.S compile_commands.json
 
-include config.mk
-include ../../tools/utils.mk
+.PHONY: build clean headers
 
-LIBDIR = src
+build-objs += casemate.h
+build-objs += casemate.o
+build-objs += casemate.o.S
 
-objs = \
-	$(LIBDIR)/model.o \
-	$(LIBDIR)/setup.o \
-	$(LIBDIR)/pgtable.o \
-	$(LIBDIR)/trace.o \
-	$(LIBDIR)/utilities/string.o \
-	$(LIBDIR)/utilities/sync.o \
-	$(LIBDIR)/utilities/blobs.o \
-	$(LIBDIR)/utilities/state_utils.o \
-	$(LIBDIR)/utilities/printer.o \
-	$(LIBDIR)/utilities/diff.o \
+build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
-HEADER_INCLUDES = \
-	include/casemate-in/casemate.out.h \
-	include/casemate-in/casemate-state.in.h \
-	include/casemate-in/casemate-transitions.in.h \
-	include/casemate-in/casemate-helpers.in.h \
-	include/casemate-in/casemate-ghost-types.in.h \
-	include/casemate-in/casemate-config.in.h
+CFLAGS += -I$(src)/include/
+CFLAGS += -fPIC -fno-PIE
+CFLAGS += -fno-omit-frame-pointer -fno-unwind-tables
+CFLAGS += -march=armv8-a+nofp -mstrict-align
+CFLAGS += -fno-common -nostdlib
 
-include/casemate.h: $(HEADER_INCLUDES)
+LDFLAGS += -r
+LDFLAGS += -T $(src)/model.lds
+
+casemate-obj += src/model.o
+casemate-obj += src/setup.o
+casemate-obj += src/pgtable.o
+casemate-obj += src/trace.o
+casemate-obj += src/utilities/string.o
+casemate-obj += src/utilities/sync.o
+casemate-obj += src/utilities/blobs.o
+casemate-obj += src/utilities/state_utils.o
+casemate-obj += src/utilities/printer.o
+casemate-obj += src/utilities/diff.o
+
+headers-deps += include/casemate-in/casemate-config.in.h
+headers-deps += include/casemate-in/casemate-helpers.in.h
+headers-deps += include/casemate-in/casemate-state.in.h
+headers-deps += include/casemate-in/casemate-ghost-types.in.h
+headers-deps += include/casemate-in/casemate-transitions.in.h
+headers-deps += include/casemate-in/casemate.out.h
+headers-objs += casemate.h
+headers: $(addprefix $(src)/,$(headers-objs))
+
+headers-deps := $(addprefix $(src)/,$(headers-deps))
+$(src)/include/casemate.h: $(headers-deps)
 	$(call run_cmd,MK,$@, \
-		./tools/generate_header.py \
+		$(src)/tools/generate_header.py \
 	)
 
-compile_commands.json:
-	$(call run_cmd,MK,$@, \
-		$(ROOTDIR)/tools/generate_compile_commands.py $(SRCDIR))
-.PHONY: compile_commands.json
+$(src)/casemate.o: $(addprefix $(src)/,$(casemate-obj))
+	$(call run_ld,$^,$@)
 
-$(LIBDIR)/%.o: $(LIBDIR)/%.c
-	$(call run_cc,$<,$@)
-
-casemate.o: $(objs)
-	$(call run_cmd,LD,$@, \
-		$(LD) $(LDFLAGS) $^ -o $@ \
-	)
-
-casemate.o.S: casemate.o
-	$(call run_cmd,OBJDUMP,$@, \
-		$(OBJDUMP) -S $^ > $@ \
-	)
-
+$(src)/casemate.h: $(src)/include/casemate.h
+	$(call run_cp,$^,$@)
 
 clean:
-	$(call run_clean, casemate.o, casemate.o)
-	$(call run_clean, includes, include/casemate.h)
-	$(call run_clean, $(LIBDIR)/, $(objs) $(patsubst %.o,%.o.cmd,$(objs)))
-.PHONY: clean
+	$(call run_clean,$(src)/includes, $(src)/include/casemate.h)
+	$(call run_clean,$(src)/src/, $(addprefix $(src)/,$(casemate-obj) $(patsubst %.o,%.o.cmd,$(casemate-obj))))
+	$(call run_clean,$(src)/casemate.o, $(src)/casemate.o)
