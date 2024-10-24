@@ -1,4 +1,7 @@
-# Casemate: Concurrent Architectural System-level Monitoring and Testing
+<h1>
+<img src="doc/logo/casemate_logo.png" align="left" width="75" height="75"/>
+Casemate: Concurrent Architectural System-level <br/> Monitoring and Testing
+</h1>
 
 Casemate is a dynamic monitoring tool for checking architecture-level protocols in systems code.
 
