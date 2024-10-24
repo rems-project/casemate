@@ -1,6 +1,6 @@
 # Examples
 
-A collection of small unit-test like programs which drive the online (WIP: and online) checks.
+A collection of small unit-test-like programs which drive the online (and offline) checks.
 Each test is a small C program which uses the C library hooks to step transitions to generate a trace
 
 Usage

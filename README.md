@@ -13,34 +13,34 @@ Concretely, they dictate how hardware *memory management units* (MMUs)
 in hardware translate *virtual addresses* manipulated by those VMs into the *physical addresses* of the system.
 They do so by maintaining *page tables*, the in-memory data structures that the MMUs read.
 
-Page tables are looked up by the MMU and use specialised caches, called Translation Lookaside Buffers (TLBs),
+Page tables are looked up by the MMUs, which use specialised caches, called Translation Lookaside Buffers (TLBs),
 and on Arm those TLBs must be manually cleared by software.
 Arm require software follow a specific protocol called **break-before-make**,
-and failure to follow this protocol will break any isolation guarantees the software tries to enforce.
+and failure to follow this protocol will break any isolation guarantees that the software tries to enforce.
 
 Overview
 ---
 
 There are two ways to use casemate:
 1. Offline, with `casemate-check`, passing log files generated at runtime.
-2. At runtime, with a C version of the checker baked into the library.
+2. At runtime, with a library version of the checker linked into the program to test.
 
 The offline checker takes log files containing traces,
-in a format described in `doc/trace-format.md`,
-and checks the trace does not violate the protocols being checked.
+in a format described in [doc/trace-format.md](./doc/trace-format.md),
+and checks that the trace does not violate the protocols being checked.
 
-One can also bake the check into the kernel using the library directly, linking the generated object file into the build.
-Hooks can be added into the kernel to initialise the model and step the transitions.
-The model performs trace checking dynamically, and asserts a failure when a violation of the protocol is detected.
-The online checker can also be integrated with some tracing infrastructure to generate logs suitable for offline checking later.
+One can also bake the checker into the kernel using the library directly, linking the generated object file into the build.
+Hooks can then be added into the kernel to initialise the model and step the transitions.
+The model performs trace checking dynamically, and notifies a failure when a violation of the protocol is detected.
+The online checker can also be integrated with tracing infrastructure to generate logs suitable for offline checking later.
 
 Examples of baking the checker into an executable can be found in the [examples](./examples/) directory,
-which are small C programs which drive the model and write the trace and final state to stdout.
+which contains small C programs which drive the model and write the trace and final state to stdout.
 
 Build and usage
 ---
 
-All of the parts can be built by running configure and make:
+All of the parts can be built by running `configure` and `make`:
 
 ```
 $ ./configure
@@ -70,9 +70,9 @@ Runtime annotation
 ---
 
 Programs can be annotated for checking at runtime (as in the [examples](./examples/)),
-which involves initialisation and then annotation of the key accesses in the program.
+which involves initialisation and annotation of the key accesses in the program.
 
-At some point the model can be initialised, e.g.:
+At some point, the model can be initialised, e.g.:
 ```
 void initialise_casemate(u64 phys_memory_start, u64 phys_memory_size)
 {
@@ -103,18 +103,19 @@ void initialise_casemate(u64 phys_memory_start, u64 phys_memory_size)
 }
 ```
 
-Then at runtime can annotate the accesses, e.g. at barriers, TLBIs, and, writes:
+Then annotate the accesses, e.g. at barriers, TLBIs, and, writes:
 
 ```
-void vmm_flush_tlb_vaddr(u64 va) {
-  dsb(sy);
-  casemate_model_step_dsb(DxB_sy);
-  tlbi_va(va);
-  casemate_model_step_tlbi3(TLBI_vae1is, va, 0);
-  dsb(sy);
-  casemate_model_step_dsb(sy);
-  isb();
-  casemate_model_step_isb();
+void vmm_flush_tlb_vaddr(u64 va)
+{
+	dsb(sy);
+	casemate_model_step_dsb(DxB_sy);
+	tlbi_va(va);
+	casemate_model_step_tlbi3(TLBI_vae1is, va, 0);
+	dsb(sy);
+	casemate_model_step_dsb(sy);
+	isb();
+	casemate_model_step_isb();
 }
 ```
 

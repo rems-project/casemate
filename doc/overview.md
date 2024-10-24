@@ -2,30 +2,33 @@
 
 Casemate is constructed of 3 parts:
 
-1. A sound abstraction of the underlying architecture, which requires software to follow a set of given protocols.
+1. A mathematical abstraction of the underlying architecture
+which captures key requirements that the architecture makes of the software,
+in particular the form of protocols to follow.
 
-2. A runtime library which embeds a monitor,
-which tracks the softwares use of the protocol and reports deviations.
+3. A C library that implements the abstraction,
+whose API makes it possible to track the software's use of the protocols and reports deviations.
+This library can be linked with a program to work as a monitor.
 
-2. Tracing infrastructure and an offline checker,
-which can perform the same check from a log file.
+2. An offline checker which can perform the same check from a log file,
+together with some tracing infrastructure to produce logs of in the offline checker's format.
 
 The break-before-make protocol
 ---
 
 Arm requires updates to the pagetable to follow a particular discipline, **break-before-make**:
 to update a pagetable entry,
-it must first be _broken_ (made invalid, and required TLB maintenance performed) before the new value is written (the entry is _made_).
+the entry must first be _broken_ (made invalid, and required TLB maintenance performed) before the new value is written (the entry is _made_).
 
 We implement an abstract model with an abstract memory,
-where each location contains a little automata which tracks the progress of break-before-make,
+where each location contains a little automaton which tracks the progress of break-before-make,
 and detects if the program misses a step.
 
 ### Automaton
 
 The page table entry automaton is written as a hierarchical automaton
-which keeps track of how far into break-before-make its page table entry is.
-At its toplevel, it keeps track whether a page table entry is:
+which keeps track of how far into break-before-make a page table entry is.
+At its toplevel, the automaton keeps track whether a page table entry is:
 
 1. `STATE_PTE_VALID`, meaning it contains a valid descriptor.
 
@@ -106,32 +109,33 @@ can easily be annotated.
 
 ### Atomicity and ownership
 
-For each pagetable location, the model tracks a single automata:
+For each pagetable location, the model tracks a single automaton:
 capturing the current state of the pagetable entry which corresponds to that location.
 
 In order for this approach to be valid, accesses to pagetable locations must be synchronised,
-so that therefore at each update to a pagetable location we can assert a 'current state' exists at all;
-additionaly, we require that this location appears in at most one tree of translation tables, in at most one branch, for the same reasons as previously given.
-This, in effect, requires trees rather than DAGs more generally for the translation tables,
+so that, at each update to a pagetable location, we can assert that a 'current state' exists at all.
+Additionaly, we require that this location appears in at most one tree of translation tables,
+in at most one branch, for the same reasons as previously given.
+This, in effect, requires trees rather than DAGs for the translation tables,
 and prevents sharing of translation table entries between different pagetables.
 
 Furthermore, writes to pagetable entries in a tree may require inspecting or updating the automata of entries below it in the tree,
-so in those cases we must ensure synchronisation between the different levels in the same tree.
+and in those cases we must ensure synchronisation between the different levels in the same tree.
 
 The model enforces both of these concerns by explicitly encoding a locking discipline:
 each entry is associated with a tree (a root),
 each root is associated with a lock,
-accesses to pagetables must be done while holding the lock for that tree's root,
+and accesses to pagetables must be done while holding the lock for that tree's root;
 entries may only be disassociated with a root once properly invalidated and cleaned.
 
 Soundness and completeness
 ---
 
-Our model is designed to refine the base architectural model, but operationally.
+Our abstraction is designed to refine the base architectural model, but be operational.
 To do this soundly, the model makes some assumptions about the behaviour of the code:
 
 1. It assumes that the code is disciplined and does not rely
 on corners of the architecture that exist to support legacy hypervisor designs
 (so the model is complete 'enough' to capture real software).
 
-2. It assumes that the code is synchronised enough; in particular we assume that accesses to the abstract state can be serialized (e.g. with locks, see limitations).
+2. It assumes that the code is synchronised enough. In particular, it assumes that accesses to the abstract state can be serialized (e.g. with locks, see limitations).
