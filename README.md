@@ -132,3 +132,8 @@ Documentation
 
 See [doc/overview.md](./doc/overview.md) for explanation of how the checker works.
 See [doc/trace-format.md](./doc/trace-format.md) for information about the format the offline checker accepts.
+
+Acknowledgements
+---
+
+See [ACKNOWLEDGEMENTS](./ACKNOWLEDGEMENTS).
