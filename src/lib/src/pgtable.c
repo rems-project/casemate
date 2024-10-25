@@ -74,7 +74,7 @@ static u64 discover_page_size(entry_stage_t stage)
 	} else if (tg0 == 2) {
 		return 16*1024;
 	} else {
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -108,7 +108,7 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	} else if (t0sz == 12) {
 		return 16;
 	} else {
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -240,7 +240,7 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 		break;
 	default:
 		// already checked
-		BUG();  // unreachable.
+		unreachable();
 	}
 
 	return (struct entry_attributes){
@@ -497,7 +497,7 @@ struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, entry_sta
 		}
 		break;
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 
 	return state;

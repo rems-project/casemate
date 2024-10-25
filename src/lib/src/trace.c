@@ -94,6 +94,9 @@ static int record_cm_tlbi_fields(struct string_builder *buf, struct trans_tlbi_d
 		TRY_PUT(' ');
 		TRY_PUT_KV("level", sb_putxn(buf, data->level, 64));
 		return 0;
+
+	default:
+		unreachable();
 	}
 }
 
@@ -109,6 +112,9 @@ static int record_cm_barrier_fields(struct string_builder *buf, struct trans_bar
 		TRY_PUT(' ');
 		TRY_PUT_KV("kind", sb_puts(buf, barrier_dxb_kind_names[data->dxb_data]));
 		return 0;
+
+	default:
+		unreachable();
 	}
 }
 
@@ -142,7 +148,7 @@ static int record_cm_hw_fields(struct string_builder *buf, struct ghost_hw_step 
 		break;
 
 	default:
-		BUG(); // unreachable.
+		unreachable();
 	}
 }
 
@@ -170,7 +176,7 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 		return 0;
 
 	default:
-		BUG();  // unreachable;
+		unreachable();
 	}
 }
 

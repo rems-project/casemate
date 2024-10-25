@@ -38,4 +38,9 @@
 
 #endif
 
+#define unreachable() do { \
+	ghost_assert(false); \
+	__builtin_unreachable(); \
+} while (0);
+
 #endif /* CASEMATE_ASSERTS_H */

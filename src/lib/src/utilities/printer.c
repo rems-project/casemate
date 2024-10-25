@@ -223,6 +223,8 @@ int gp_print_cm_pte_state(void *arg, struct sm_pte_state *st)
 	case STATE_PTE_NOT_WRITABLE:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 - INVALIDATOR_TID_NAME_LEN);
 		return ghost_fprintf(arg, "%s%I%s %d", LIS_NAMES[st->invalid_unclean_state.lis], st->invalid_unclean_state.invalidator_tid);
+	default:
+		unreachable();
 	}
 }
 

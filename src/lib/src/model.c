@@ -38,7 +38,7 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 
 	if (owner_lock(root)) {
 		GHOST_MODEL_CATCH_FIRE("can't append lock on already locked location");
-		BUG(); // unreachable;
+		unreachable();
 	}
 
 	i = the_ghost_state->locks.len++;
@@ -593,7 +593,7 @@ static void step_msr(struct ghost_hw_step *step)
 
 		break;
 	default:
-		BUG(); // unreachable?
+		unreachable();
 	}
 }
 
@@ -774,7 +774,7 @@ static void step_write(struct ghost_hw_step *step)
 		step_write_on_unwritable(loc, val);
 		break;
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 
 done:
@@ -983,12 +983,12 @@ static void step_pte_on_tlbi_after_dsb(struct sm_location *loc, struct sm_tlbi_o
 			break;
 
 		default:
-			BUG(); // unreachable;
+			unreachable();
 		}
 		break;
 
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 
 }
@@ -1008,7 +1008,7 @@ static void step_pte_on_tlbi_after_tlbi_ipa(struct sm_location *loc, struct sm_t
 		break;
 
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -1150,7 +1150,7 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		return true;
 
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 
 	return true;
@@ -1185,7 +1185,7 @@ static void step_tlbi(struct ghost_hw_step *step)
 		break;
 
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -1306,7 +1306,7 @@ static void step_hint(struct ghost_hint_step *step)
 		step_hint_set_PTE_thread_owner(step->location, step->value);
 		break;
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -1408,7 +1408,7 @@ static void step_abs(struct ghost_abs_step *step)
 		__step_memset(step->memset_data.address, step->memset_data.size, step->memset_data.value);
 		break;
 	default:
-		BUG(); // unreachable;
+		unreachable();
 	}
 }
 
@@ -1448,7 +1448,7 @@ void step(struct casemate_model_step trans)
 		step_hint(&trans.hint_step);
 		break;
 	default:
-		BUG();  // unreachable;
+		unreachable();
 	};
 
 	if (should_print_step()) {

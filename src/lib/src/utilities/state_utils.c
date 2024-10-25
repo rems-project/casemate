@@ -30,6 +30,9 @@ bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2)
 	case STATE_PTE_NOT_WRITABLE:
 		// TODO: per-CPU LVS
 		return true;
+
+	default:
+		unreachable();
 	}
 }
 
