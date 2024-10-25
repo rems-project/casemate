@@ -3,7 +3,9 @@
 
 #ifndef __KVM_NVHE_HYPERVISOR__
 
+#ifndef NULL
 #define NULL ((void*)0)
+#endif
 
 #endif
 
