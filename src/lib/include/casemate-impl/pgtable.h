@@ -34,20 +34,6 @@
 #define PTE_FIELD_PKVM_OWNER_ID_HYP (PKVM_ID_HYP << PTE_FIELD_OWNER_ID_LO)
 #define PTE_FIELD_PKVM_OWNER_ID_GUEST (PKVM_ID_GUEST << PTE_FIELD_OWNER_ID_LO)
 
-// G.b p2742 4KB translation granule has a case split on whether "the Effective value of TCR_ELx.DS or VTCR_EL2.DS is 1".
-// DS is for 52-bit output addressing with FEAT_LPA2, and is zero in the register values we see; I'll hard-code that for now.  Thus, G.b says:
-// - For a level 1 Block descriptor, bits[47:30] are bits[47:30] of the output address. This output address specifies a 1GB block of memory.
-// - For a level 2 Block descriptor, bits[47:21] are bits[47:21] of the output address.This output address specifies a 2MB block of memory.
-#define PTE_FIELD_LVL1_OA_MASK GENMASK(47, 30)
-#define PTE_FIELD_LVL2_OA_MASK GENMASK(47, 21)
-#define PTE_FIELD_LVL3_OA_MASK GENMASK(47, 12)
-
-static u64 PTE_FIELD_OA_MASK[4] = {
-	[1] = PTE_FIELD_LVL1_OA_MASK,
-	[2] = PTE_FIELD_LVL2_OA_MASK,
-	[3] = PTE_FIELD_LVL3_OA_MASK,
-};
-
 #define PTE_FIELD_UPPER_ATTRS_LO 59
 #define PTE_FIELD_UPPER_ATTRS_MASK GENMASK(63, 50)
 

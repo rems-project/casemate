@@ -24,12 +24,19 @@ static const u64 MAP_SIZES[] = {
 	[3] = KiB(4ULL),
 };
 
-static const u64 OA_shift[] = {
-	[1] = 12+9+9,
-	[2] = 12+9,
-	[3] = 12,
-};
+// G.b p2742 4KB translation granule has a case split on whether "the Effective value of TCR_ELx.DS or VTCR_EL2.DS is 1".
+// DS is for 52-bit output addressing with FEAT_LPA2, and is zero in the register values we see; I'll hard-code that for now.  Thus, G.b says:
+// - For a level 1 Block descriptor, bits[47:30] are bits[47:30] of the output address. This output address specifies a 1GB block of memory.
+// - For a level 2 Block descriptor, bits[47:21] are bits[47:21] of the output address.This output address specifies a 2MB block of memory.
+#define PTE_FIELD_LVL1_OA_MASK GENMASK(47, 30)
+#define PTE_FIELD_LVL2_OA_MASK GENMASK(47, 21)
+#define PTE_FIELD_LVL3_OA_MASK GENMASK(47, 12)
 
+static u64 PTE_FIELD_OA_MASK[4] = {
+	[1] = PTE_FIELD_LVL1_OA_MASK,
+	[2] = PTE_FIELD_LVL2_OA_MASK,
+	[3] = PTE_FIELD_LVL3_OA_MASK,
+};
 
 static u64 read_start_level(u64 tcr)
 {
@@ -127,7 +134,7 @@ bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage)
 
 u64 extract_output_address(u64 desc, u64 level)
 {
-	u64 OA_mask = GENMASK(PTE_BIT_OA_MSB, OA_shift[level]);
+	u64 OA_mask = PTE_FIELD_OA_MASK[level];
 	return (desc & OA_mask);
 }
 
