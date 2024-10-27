@@ -14,7 +14,7 @@ args = parser.parse_args()
 compile_commands = []
 
 for f in args.dir.rglob("*.c"):
-    cmd_path = f.relative_to(args.dir).with_suffix(".o.cmd")
+    cmd_path = f.with_suffix(".o.cmd")
     if cmd_path.exists():
         compile_commands.append(
             {
