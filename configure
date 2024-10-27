@@ -91,6 +91,7 @@ CC = ${cc}
 LD = ${ld}
 OBJDUMP = ${objdump}
 OBJCOPY = ${objcopy}
+ARCH = ${arch_name}
 
 CFLAGS = -Wall -g -gdwarf-4 -D__${arch_name}__
 LDFLAGS =

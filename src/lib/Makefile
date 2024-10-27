@@ -10,7 +10,9 @@ build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 CFLAGS += -I$(src)/include/
 CFLAGS += -fPIC -fno-PIE
 CFLAGS += -fno-omit-frame-pointer -fno-unwind-tables
-CFLAGS += -march=armv8-a+nofp -mstrict-align
+ifeq ($(ARCH),AARCH4)
+  CFLAGS += -march=armv8-a+nofp -mstrict-align
+endif
 CFLAGS += -fno-common -nostdlib
 
 LDFLAGS += -r
