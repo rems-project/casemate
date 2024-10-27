@@ -21,8 +21,10 @@ CONFIG = $(root)/config.mk
 	)
 
 $(src)/compile_commands.json:
+ifneq ($(CLANGD),)
 	$(call run_cmd,MK,$@, \
 		$(root)/tools/generate_compile_commands.py $(src))
+endif
 .PHONY: $(src)/compile_commands.json
 
 $(src)/: $(target)

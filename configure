@@ -15,6 +15,7 @@ lib_includes="${libdir}/include"
 
 arch=`uname -m`
 prefix=
+clangd=1
 
 usage() {
   echo "Usage $0 [OPTIONS]";
@@ -25,6 +26,7 @@ usage() {
   echo " --cc=CC           compiler";
   echo " --ld=LD           linker";
   echo " --arch=ARCH       machine architecture (aarch64 or x86)";
+  echo " --[no-]clangd     force enable/disable clangd targets";
 }
 
 # collect all the -arg and --args
@@ -47,6 +49,12 @@ while [[ "$1" = -* ]]; do
         ;;
     --ld)
         ld="$arg"
+        ;;
+    --clangd)
+        clangd=1
+        ;;
+    --no-clangd)
+        clangd=
         ;;
     -h|--help)
         usage
@@ -95,6 +103,8 @@ ARCH = ${arch_name}
 
 CFLAGS = -Wall -g -gdwarf-4 -D__${arch_name}__
 LDFLAGS =
+
+CLANGD = ${clangd}
 
 casemate_o = ${casemate_o}
 casemate_h = ${casemate_h}
