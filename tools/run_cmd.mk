@@ -16,7 +16,8 @@ endef
 define run_cc
 $(call run_cmd,CC,$1, \
 		echo $(CC) $(CFLAGS) -c $1 -o $2 > $2.cmd \
-		; $(CC) $(CFLAGS) -c $1 -o $2 \
+		&& $(CC) $(CFLAGS) -c $1 -o $2 \
+		&& $(OBJDUMP) -rS $2 > $2.S \
 	)
 endef
 
