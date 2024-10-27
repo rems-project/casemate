@@ -8,9 +8,9 @@ build-objs += casemate.o.S
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
 CFLAGS += -I$(src)/include/
-CFLAGS += -fPIC -fno-PIE
 CFLAGS += -fno-omit-frame-pointer -fno-unwind-tables
 ifeq ($(ARCH),AARCH4)
+  CFLAGS += -fPIC -fno-PIE
   CFLAGS += -march=armv8-a+nofp -mstrict-align
 endif
 CFLAGS += -fno-common -nostdlib
