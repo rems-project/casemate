@@ -91,6 +91,8 @@ bool is_location_locked(struct sm_location *loc);
  * is_correctly_locked() - Returns true if the given lock is owned by this physical thread.
  * @lock: the address of the lock.
  * @state: output address to write the state of the lock to.
+ *
+ * NOTE: when synchronisation checking is disabled always returns false and *state is undefined.
  */
 bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state);
 

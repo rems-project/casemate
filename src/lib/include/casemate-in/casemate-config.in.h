@@ -34,6 +34,14 @@ struct casemate_checker_options {
 	 */
 	bool promote_TLBI_by_id;
 
+
+	/**
+	 * @check_synchronisation: check that locks are respected.
+	 *
+	 * WARNING: disabling is unsafe for online checking.
+	 */
+	bool check_synchronisation;
+
 	/**
 	 * @enable_printing: print out the current state of the
 	 * @print_opts: logging to perform.
@@ -47,6 +55,7 @@ struct casemate_checker_options {
 		.promote_DSB_nsh = false, \
 		.promote_TLBI_nsh = false, \
 		.promote_TLBI_by_id = false, \
+		.check_synchronisation = true, \
 		.enable_printing = false, \
 		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}

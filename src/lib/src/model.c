@@ -74,6 +74,11 @@ static void unregister_lock(u64 root)
 
 bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state)
 {
+	if (! opts()->check_opts.check_synchronisation) {
+		*state = NULL;
+		return false;
+	}
+
 	for (int i = 0; i < the_ghost_state->lock_state.len; i++) {
 		if (the_ghost_state->lock_state.address[i] == lock) {
 			if (state != NULL) {
@@ -82,6 +87,7 @@ bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state)
 			return the_ghost_state->lock_state.locker[i].id == cpu_id();
 		}
 	}
+
 	return false;
 }
 
@@ -92,6 +98,9 @@ bool is_location_locked(struct sm_location *loc)
 	gsm_lock_addr_t *lock;
 
 	if (!loc->initialised || !loc->is_pte)
+		return true;
+
+	if (! opts()->check_opts.check_synchronisation)
 		return true;
 
 	// If the location is owned by a thread, check that it is this thread.
@@ -112,12 +121,15 @@ bool is_location_locked(struct sm_location *loc)
 /**
  * assert_owner_locked() - Validates that the owner of a pte is locked by its lock.
  */
-void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
+static void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 {
 	sm_owner_t owner_id;
 	gsm_lock_addr_t *lock;
 
 	ghost_assert(loc->initialised && loc->is_pte);
+
+	if (! opts()->check_opts.check_synchronisation)
+		return;
 
 	owner_id = loc->owner;
 
@@ -707,9 +719,14 @@ static void step_write_on_unwritable(struct sm_location *loc, u64 val) {
 	GHOST_MODEL_CATCH_FIRE("Wrote on a page with an unclean parent");
 }
 
-static void write_is_authorized(struct sm_location *loc, struct ghost_hw_step *step, u64 val)
+static void check_write_is_authorized(struct sm_location *loc, struct ghost_hw_step *step, u64 val)
 {
 	struct lock_state *state_of_lock;
+
+	/* if synchronisation is disabled, then cannot check write authorization
+	 * as it comes from the synchronisation itself */
+	if (!opts()->check_opts.check_synchronisation)
+		return;
 
 	// if the location is owned by a given thread, just test if it is this one
 	if (loc->thread_owner >= 0) {
@@ -721,6 +738,7 @@ static void write_is_authorized(struct sm_location *loc, struct ghost_hw_step *s
 	}
 
 	assert_owner_locked(loc, &state_of_lock);
+	ghost_assert(state_of_lock);
 	switch (state_of_lock->write_authorization) {
 		case AUTHORIZED:
 			// We are not authorized to write plain on it anymore
@@ -757,7 +775,7 @@ static void step_write(struct ghost_hw_step *step)
 	}
 
 	// must own the lock on the pgtable this pte is in.
-	write_is_authorized(loc, step, val);
+	check_write_is_authorized(loc, step, val);
 
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
