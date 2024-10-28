@@ -30,4 +30,4 @@ endif
 $(src)/: $(target)
 
 source-targets := $(wildcard $(src)/**/*.c)
-include $(source-targets:.c=.d)
+-include $(source-targets:.c=.d)
