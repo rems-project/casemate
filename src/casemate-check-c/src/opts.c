@@ -29,9 +29,9 @@ static void print_help_and_quit(void)
 		"  -t --trace     	print trace record for each step\n"
 		"  -c             	condensed trace format\n"
 		"  -d --diff      	show diffs of state\n"
-		"  -U --cleans    	show clean locations in states/diffs\n"
+		"  -U --all        	show all (including unclean) locations in states/diffs\n"
 		"  -p --print     	print state out at each step\n"
-		"  --dry-run      	do not run checks\n"
+		"  -C --dry-run   	do not run checks\n"
 		"  -q             	quiet, do not print state, or trace steps, or show error messages\n"
 		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
 		"  -D --debug     	debug mode\n"
@@ -43,27 +43,25 @@ static void print_help_and_quit(void)
 void parse_opts(int argc, char **argv)
 {
 	static struct option long_options[] = {
-		{"print",      no_argument, 0,  0 },
-		{"quiet",      no_argument, 0,  1 },
-		{"trace",      no_argument, 0,  2 },
-		{"diff",       no_argument, 0,  3 },
-		{"clean",      no_argument, 0,  4 },
-		{"dry-run",    no_argument, 0,  5 },
-		{"no-colour",  no_argument, 0,  6 },
-		{"debug",      no_argument, 0,  7 },
-		{"help",       no_argument, 0,  8 },
+		{"print",      no_argument, 0,  'p' },
+		{"quiet",      no_argument, 0,  'q' },
+		{"trace",      no_argument, 0,  't' },
+		{"diff",       no_argument, 0,  'd' },
+		{"all",        no_argument, 0,  'U' },
+		{"dry-run",    no_argument, 0,  'C' },
+		{"no-colour",  no_argument, 0,  'a' },
+		{"debug",      no_argument, 0,  'D' },
+		{"help",       no_argument, 0,  'h' },
 		{0,            0,           0,  0 }
 	};
 
 	int c;
 	while ((c = getopt_long(argc, argv, "acptqdhUD", long_options, 0)) != - 1) {
 		switch (c) {
-		case 0:
 		case 'p':
 			SHOULD_PRINT_STATE = true;
 			break;
 
-		case 1:
 		case 'q':
 			SHOULD_TRACE = false;
 			SHOULD_PRINT_STATE = false;
@@ -71,12 +69,10 @@ void parse_opts(int argc, char **argv)
 			QUIET = true;
 			break;
 
-		case 2:
 		case 't':
 			SHOULD_TRACE = true;
 			break;
 
-		case 3:
 		case 'd':
 			SHOULD_PRINT_DIFF = true;
 			break;
@@ -85,27 +81,23 @@ void parse_opts(int argc, char **argv)
 			SHOULD_TRACE_CONDENSED = true;
 			break;
 
-		case '4':
 		case 'U':
 			SHOULD_PRINT_ONLY_UNCLEANS = false;
 			break;
 
 
-		case 5:
+		case 'C':
 			SHOULD_CHECK = false;
 			break;
 
-		case 6:
 		case 'a':
 			COLOUR = false;
 			break;
 
-		case 7:
 		case 'D':
 			DEBUG = true;
 			break;
 
-		case 8:
 		case 'h':
 			print_help_and_quit();
 			break;
