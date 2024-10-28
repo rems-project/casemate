@@ -8,6 +8,9 @@ all: casemate examples
 help:
 	@echo 'usage: make [casemate | casemate-check | casemate-lib | examples | clean | checks]'
 
+config.mk: ./configure
+	@echo 'Make: configuration out-of-date, please re-run ./configure'
+
 # include auto-generated files
 include config.mk
 include tools/run_cmd.mk
@@ -32,7 +35,7 @@ endef
 
 # building
 
-$(subdirs):
+$(subdirs): config.mk
 	$(call build_subdir,BUILD,$@,build)
 
 casemate: casemate-lib casemate-check
