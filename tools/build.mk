@@ -28,3 +28,6 @@ endif
 .PHONY: $(src)/compile_commands.json
 
 $(src)/: $(target)
+
+source-targets := $(wildcard $(src)/**/*.c)
+include $(source-targets:.c=.d)

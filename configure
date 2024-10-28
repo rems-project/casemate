@@ -101,7 +101,7 @@ OBJDUMP = ${objdump}
 OBJCOPY = ${objcopy}
 ARCH = ${arch_name}
 
-CFLAGS = -Wall -g -gdwarf-4 -D__${arch_name}__
+CFLAGS = -Wall -MD -g -gdwarf-4 -D__${arch_name}__
 LDFLAGS =
 
 CLANGD = ${clangd}
