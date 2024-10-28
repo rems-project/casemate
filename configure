@@ -14,19 +14,19 @@ casemate_h="${libdir}/casemate.h"
 lib_includes="${libdir}/include"
 
 arch=`uname -m`
-prefix=
+cross_prefix=
 clangd=1
 
 usage() {
   echo "Usage $0 [OPTIONS]";
   echo
   echo "Options:";
-  echo " -h --help         print this help";
-  echo " --prefix=PREFIX   compilation tool prefix";
-  echo " --cc=CC           compiler";
-  echo " --ld=LD           linker";
-  echo " --arch=ARCH       machine architecture (aarch64 or x86)";
-  echo " --[no-]clangd     force enable/disable clangd targets";
+  echo " -h --help               print this help";
+  echo " --cross-prefix=PREFIX   compilation tool prefix";
+  echo " --cc=CC                 compiler";
+  echo " --ld=LD                 linker";
+  echo " --arch=ARCH             machine architecture (aarch64 or x86)";
+  echo " --[no-]clangd           force enable/disable clangd targets";
 }
 
 # collect all the -arg and --args
@@ -38,8 +38,8 @@ while [[ "$1" = -* ]]; do
       opt="${opt%%=*}";
     fi
     case "$opt" in
-    --prefix)
-        prefix="$arg"
+    --cross-prefix)
+        cross_prefix="$arg"
         ;;
     --arch)
         arch="$arg"
@@ -67,12 +67,12 @@ while [[ "$1" = -* ]]; do
     esac
 done
 
-prefix=${prefix}
+tool_prefix=${cross_prefix}
 
-cc=${prefix}${cc}
-ld=${prefix}${ld}
-objcopy=${prefix}${objcopy}
-objdump=${prefix}${objdump}
+cc=${tool_prefix}${cc}
+ld=${tool_prefix}${ld}
+objcopy=${tool_prefix}${objcopy}
+objdump=${tool_prefix}${objdump}
 
 # normalise arch name
 [ "$arch" = "arm64" ] && arch="aarch64"
