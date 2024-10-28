@@ -123,6 +123,10 @@ static void print_help_and_quit(void)
 
 void common_read_argv(int argc, char **argv)
 {
+	if (!isatty(STDOUT_FILENO)) {
+		COLOUR = false;
+	}
+
 	static struct option long_options[] = {
 		{"print",      no_argument, 0,  0 },
 		{"quiet",      no_argument, 0,  1 },

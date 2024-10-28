@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <casemate-impl.h>
 #include <casemate-check-impl.h>
@@ -44,6 +45,10 @@ static void print_help_and_quit(void)
 
 void parse_opts(int argc, char **argv)
 {
+	if (!isatty(STDOUT_FILENO)) {
+		COLOUR = false;
+	}
+
 	static struct option long_options[] = {
 		{"print",      no_argument, 0,  'p' },
 		{"quiet",      no_argument, 0,  'q' },
