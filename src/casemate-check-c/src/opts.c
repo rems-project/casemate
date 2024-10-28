@@ -10,6 +10,7 @@ bool SHOULD_PRINT_STATE = false;
 bool SHOULD_PRINT_DIFF = false;
 bool SHOULD_PRINT_ONLY_UNCLEANS = true;
 bool SHOULD_CHECK = true;
+bool SHOULD_CHECK_LOCKS = true;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
@@ -26,6 +27,7 @@ static void print_help_and_quit(void)
 		" ./casemate-check TRACE_FILE_NAME [OPTIONS]\n"
 		"\n"
 		"Options:\n"
+		"     --racy      	do not check locks/synchronisation are respected\n"
 		"  -t --trace     	print trace record for each step\n"
 		"  -c             	condensed trace format\n"
 		"  -d --diff      	show diffs of state\n"
@@ -49,6 +51,7 @@ void parse_opts(int argc, char **argv)
 		{"diff",       no_argument, 0,  'd' },
 		{"all",        no_argument, 0,  'U' },
 		{"dry-run",    no_argument, 0,  'C' },
+		{"racy",       no_argument, 0,  'R' },
 		{"no-colour",  no_argument, 0,  'a' },
 		{"debug",      no_argument, 0,  'D' },
 		{"help",       no_argument, 0,  'h' },
@@ -56,7 +59,7 @@ void parse_opts(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptqdhUD", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptqdhUDR", long_options, 0)) != - 1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -88,6 +91,10 @@ void parse_opts(int argc, char **argv)
 
 		case 'C':
 			SHOULD_CHECK = false;
+			break;
+
+		case 'R':
+			SHOULD_CHECK_LOCKS = false;
 			break;
 
 		case 'a':

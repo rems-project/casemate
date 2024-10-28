@@ -9,6 +9,7 @@ extern bool SHOULD_PRINT_STATE;
 extern bool SHOULD_PRINT_DIFF;
 extern bool SHOULD_PRINT_ONLY_UNCLEANS;
 extern bool SHOULD_CHECK;
+extern bool SHOULD_CHECK_LOCKS;
 extern bool SHOULD_TRACE;
 extern bool SHOULD_TRACE_CONDENSED;
 extern bool QUIET;
