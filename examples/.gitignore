@@ -18,3 +18,5 @@
 /bad_no_bbm
 /bad_bbm_missing_tlbi
 /good_bbm
+/bad_no_assoc_lock
+/bad_unlocked_write

@@ -5,6 +5,8 @@ build-objs += good_write
 build-objs += bad_no_bbm
 build-objs += bad_bbm_missing_tlbi
 build-objs += good_bbm
+build-objs += bad_no_assoc_lock
+build-objs += bad_unlocked_write
 
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
