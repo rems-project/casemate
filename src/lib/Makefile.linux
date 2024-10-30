@@ -13,6 +13,7 @@ casemate-objs += src/utilities/diff.o
 casemate-hyp-objs = $(addprefix $(obj)/$(CASEMATELIB)/,$(casemate-objs))
 
 KBUILD_CFLAGS += -D__AARCH64__
+KBUILD_CFLAGS += -I$(src)/$(CASEMATELIB)
 KBUILD_CFLAGS += -I$(src)/$(CASEMATELIB)/include/
 
 hyp-obj-$(CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL) += $(addprefix $(CASEMATELIB)/,$(casemate-objs))
