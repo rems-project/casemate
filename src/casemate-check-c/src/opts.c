@@ -12,6 +12,7 @@ bool SHOULD_PRINT_DIFF = false;
 bool SHOULD_PRINT_ONLY_UNCLEANS = true;
 bool SHOULD_CHECK = true;
 bool SHOULD_CHECK_LOCKS = true;
+bool SHOULD_TRACK_ONLY_WATCHPOINTS = false;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
@@ -38,10 +39,12 @@ static void print_help_and_quit(void)
 		"  -q             	quiet, do not print state, or trace steps, or show error messages\n"
 		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
 		"  -D --debug     	debug mode\n"
+		"  -W<addr>       	watch this address\n"
 	);
 	exit(0);
 }
 
+int hextoi(const char *s, u64 *out);
 
 void parse_opts(int argc, char **argv)
 {
@@ -64,7 +67,7 @@ void parse_opts(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptqdhUDR", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptqdhUDRW:", long_options, 0)) != - 1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -101,6 +104,19 @@ void parse_opts(int argc, char **argv)
 		case 'R':
 			SHOULD_CHECK_LOCKS = false;
 			break;
+
+		case 'W': {
+			u64 val;
+			if (optarg[0] != '0' || optarg[1] != 'x') {
+				fprintf(stderr, "-W expects hex argument in the form 0x... not '%s'\n", optarg);
+				exit(1);
+			}
+			assert(optarg && optarg[0] == '0' && optarg[1] == 'x');
+			assert(!hextoi(optarg+2, &val));
+			casemate_watch_location(val);
+			SHOULD_TRACK_ONLY_WATCHPOINTS = true;
+			break;
+		}
 
 		case 'a':
 			COLOUR = false;
