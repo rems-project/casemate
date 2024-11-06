@@ -1377,8 +1377,9 @@ static void __step_unlock(gsm_lock_addr_t *lock_addr)
 
 static void __step_memset(u64 phys_addr, u64 size, u64 val)
 {
+	/* for now... only support page-granularity memsets  */
 	ghost_assert(IS_PAGE_ALIGNED(phys_addr));
-	ghost_assert((size & ~GENMASK(7,0)) == 0);
+	ghost_assert(IS_PAGE_ALIGNED(size));
 
 	/* Implement MEMSET by repeated WRITE transitions. */
 	for (u64 i = 0; i < size; i += 8) {
