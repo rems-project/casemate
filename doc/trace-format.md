@@ -157,10 +157,16 @@ Hint transitions update purely logical state,
 assocating pagetables with locks and so on.
 
 ```
+HINT_KIND =
+      "set_root_lock"
+    | "set_owner_root"
+    | "release_table"
+    | "set_pte_thread_owner"
+    ;
+
 HINT =
     "hint",
-         "(", "kind", ( "set_root_lock" | "set_owner_root" |
-                        "release_table" | "set_pte_thread_owner" ), ")",
+         "(", "kind", HINT_KIND, ")",
          "(", "location", u64, ")",
          "(", "value", u64, ")";
 ```
