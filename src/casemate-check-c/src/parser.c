@@ -441,7 +441,7 @@ struct enum_map hint_map = {
 	.entries = {
 		{"set_root_lock", GHOST_HINT_SET_ROOT_LOCK},
 		{"set_owner_root", GHOST_HINT_SET_OWNER_ROOT},
-		{"release", GHOST_HINT_RELEASE_TABLE},
+		{"release_table", GHOST_HINT_RELEASE_TABLE},
 		{"set_pte_thread_owner", GHOST_HINT_SET_PTE_THREAD_OWNER},
 	},
 };
