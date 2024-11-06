@@ -1519,6 +1519,9 @@ void step(struct casemate_model_step trans)
 	if (!is_initialised)
 		goto out;
 
+	if (!opts()->enable_checking)
+		goto out;
+
 	if (should_print_diffs())
 		copy_cm_state_into(the_ghost_state_pre);
 
