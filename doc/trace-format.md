@@ -160,7 +160,7 @@ assocating pagetables with locks and so on.
 HINT =
     "hint",
          "(", "kind", ( "set_root_lock" | "set_owner_root" |
-                        "release" | "set_pte_thread_owner" ), ")",
+                        "release_table" | "set_pte_thread_owner" ), ")",
          "(", "location", u64, ")",
          "(", "value", u64, ")";
 ```
