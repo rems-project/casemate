@@ -1396,6 +1396,18 @@ static void __step_unlock(gsm_lock_addr_t *lock_addr)
 	GHOST_MODEL_CATCH_FIRE("Tried to unlock a component that was not held");
 }
 
+static void __do_plain_write(u64 phys_addr, u64 val)
+{
+	struct ghost_hw_step write_step = {
+		.kind = HW_MEM_WRITE,
+		.write_data = (struct trans_write_data){
+			.mo=WMO_plain,
+			.phys_addr=phys_addr,
+			.val=val,
+		},
+	};
+	step_write(&write_step);
+}
 
 static void __step_memset(u64 phys_addr, u64 size, u64 val)
 {
@@ -1404,17 +1416,8 @@ static void __step_memset(u64 phys_addr, u64 size, u64 val)
 	ghost_assert(IS_PAGE_ALIGNED(size));
 
 	/* Implement MEMSET by repeated WRITE transitions. */
-	for (u64 i = 0; i < size; i += 8) {
-		struct ghost_hw_step write_step = {
-			.kind = HW_MEM_WRITE,
-			.write_data = (struct trans_write_data){
-				.mo=WMO_plain,
-				.phys_addr=phys_addr+i*sizeof(u64),
-				.val=val,
-			},
-		};
-		step_write(&write_step);
-	}
+	for (u64 i = 0; i < size; i += 8)
+		__do_plain_write(phys_addr+i*sizeof(u64), val);
 }
 
 static void __step_init(u64 phys_addr, u64 size)
@@ -1424,11 +1427,11 @@ static void __step_init(u64 phys_addr, u64 size)
 		struct sm_location *loc = location(p);
 
 		/* permit re-initialising locations
-		 * so long as they're still zero */
+		 * but in that case just update the state to be zero */
 		if (! loc->initialised)
 			initialise_location(loc, 0);
 		else
-			ghost_assert(loc->val == 0 && !loc->is_pte);
+			__do_plain_write(phys_addr, 0);
 	}
 }
 
