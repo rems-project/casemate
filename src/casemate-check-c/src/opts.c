@@ -28,7 +28,7 @@ static void print_help_and_quit(void)
 		" ./casemate-check TRACE_FILE_NAME [OPTIONS]\n"
 		"\n"
 		"Options:\n"
-		"     --racy      	do not check locks/synchronisation are respected\n"
+		"  -R --racy      	do not check locks/synchronisation are respected\n"
 		"  -t --trace     	print trace record for each step\n"
 		"  -c             	condensed trace format\n"
 		"  -d --diff      	show diffs of state\n"
