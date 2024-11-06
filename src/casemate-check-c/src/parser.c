@@ -385,14 +385,16 @@ void parse_barrier_tail(struct parser *p)
 
 #define TLBI_ENTRY(k) {#k, TLBI_##k}
 struct enum_map tlbi_map = {
-	.count = 6,
+	.count = 8,
 	.name = "tlbi_kind",
 	.entries = {
 		TLBI_ENTRY(vmalls12e1),
 		TLBI_ENTRY(vmalls12e1is),
 		TLBI_ENTRY(vmalle1is),
+		TLBI_ENTRY(vmalle1),
 		TLBI_ENTRY(alle1is),
 		// TLBI_ENTRY(vae2),
+		TLBI_ENTRY(vale2is),
 		TLBI_ENTRY(vae2is),
 		TLBI_ENTRY(ipas2e1is),
 	},
@@ -405,6 +407,7 @@ void parse_tlbi_tail(struct parser *p)
 	case TLBI_vmalls12e1:
 	case TLBI_vmalls12e1is:
 	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
 	case TLBI_alle1is:
 		break;
 
