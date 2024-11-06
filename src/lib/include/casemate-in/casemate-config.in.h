@@ -95,6 +95,11 @@ struct casemate_options {
 	bool enable_checking;
 
 	/**
+	 * @track_watchpoints: Only print/trace on watched locations.
+	 */
+	bool track_watchpoints;
+
+	/**
 	 * @log_opts: Options for logging
 	 */
 	struct casemate_log_options log_opts;
@@ -114,6 +119,7 @@ struct casemate_options {
 	(struct casemate_options){ \
 		.enable_tracing = false, \
 		.enable_checking = false, \
+		.track_watchpoints = false, \
 		.log_opts = CASEMATE_DEFAULT_LOG_OPTS, \
 		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, \
 		.enable_safety_checks = false, \
@@ -171,6 +177,14 @@ struct ghost_driver {
 		.trace = NULL, \
 	}
 
+/**
+ * casemate_watch_location() - Watch for changes to a particular physical address.
+ *
+ * Only has an effect when opts()->track_watchpoints is set.
+ *
+ * Returns -1 on error.
+ */
+int casemate_watch_location(u64 loc);
 
 /**
  * initialise_ghost_cm_driver() - Setup the global ghost driver.

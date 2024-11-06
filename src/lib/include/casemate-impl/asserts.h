@@ -4,6 +4,7 @@
 #ifndef __KVM_NVHE_HYPERVISOR__
 #include <casemate-impl/options.h>
 #include <casemate-impl/printer.h>
+#include <casemate-impl/model.h>
 
 #define ghost_assert(expr) \
 	if (!(expr)) { \
@@ -23,6 +24,7 @@
 } while (0);
 
 #define GHOST_MODEL_CATCH_FIRE(msg) { \
+	ensure_traced_current_transition(true); \
 	side_effect()->abort(msg); \
 }
 
@@ -37,6 +39,7 @@
 #include <nvhe/ghost/ghost_asserts.h>
 
 #define GHOST_MODEL_CATCH_FIRE(msg) { \
+	ensure_traced_current_transition(true); \
 	GHOST_WARN(msg); \
 	ghost_assert(false); \
 }

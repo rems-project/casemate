@@ -5,6 +5,15 @@
 
 extern struct casemate_options sm_options;
 
+#define CASEMATE_MAX_WATCHPOINTS 16
+struct casemate_watchpoints {
+	u64 num_watchpoints;
+	u64 watchpoints[CASEMATE_MAX_WATCHPOINTS];
+};
+
+extern struct casemate_watchpoints sm_watchpoints;
+extern bool touched_watchpoint;
+
 /**
  * opts() - Get model options.
  */
@@ -14,6 +23,11 @@ struct casemate_options *opts(void);
  * side_effect() - Perform a side-effect using the ghost driver.
  */
 struct ghost_driver *side_effect(void);
+
+/**
+ * touch() - Note that the model touched a location, for watchpoint tracking.
+ */
+void touch(u64 location);
 
 /*
  * TODO: BS: make these functions with callbacks into the driver
@@ -27,7 +41,7 @@ static inline bool should_trace(void)
 	);
 }
 
-static inline bool should_print_step(void)
+static inline bool should_print_state(void)
 {
 	return (
 		    opts()->check_opts.enable_printing
@@ -43,13 +57,21 @@ static inline bool should_print_unclean_only(void)
 	);
 }
 
-static inline bool should_print_diff_on_step(void)
+static inline bool should_print_diffs(void)
 {
 	return (
 		    opts()->check_opts.enable_printing
 		&& ((opts()->check_opts.print_opts & CM_PRINT_DIFF_TO_STATE_ON_STEP) != 0)
 	);
 }
+
+static inline bool should_track_only_watchpoints(void)
+{
+	return (
+		    opts()->track_watchpoints
+	);
+}
+
 
 static inline bool should_trace_condensed(void)
 {

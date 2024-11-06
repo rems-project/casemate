@@ -176,6 +176,7 @@ struct sm_location *location(u64 phys)
 {
 	struct casemate_memory_blob *blob = ensure_blob(phys);
 	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
+	touch(phys);
 	return loc;
 }
 

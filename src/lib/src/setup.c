@@ -10,6 +10,9 @@ struct casemate_model_state *the_ghost_state;
 struct casemate_model_state *the_ghost_state_pre;
 bool is_initialised = false;
 
+struct casemate_watchpoints sm_watchpoints;
+bool touched_watchpoint = false;
+
 /**
  * opts() - Get model options.
  */
@@ -52,4 +55,22 @@ void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
 #endif /* CONFIG_NVHE_casemate_model_LOG_ONLY */
+}
+
+int casemate_watch_location(u64 loc)
+{
+	int ret;
+	lock_sm();
+
+	if (sm_watchpoints.num_watchpoints >= CASEMATE_MAX_WATCHPOINTS) {
+		ret = -1;
+		goto out;
+	}
+
+	sm_watchpoints.watchpoints[sm_watchpoints.num_watchpoints++] = loc;
+	ret = 0;
+
+out:
+	unlock_sm();
+	return ret;
 }

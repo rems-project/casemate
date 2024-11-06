@@ -2,6 +2,7 @@
 #define CASEMATE_MODEL_STATE_H
 
 #include <casemate.h>
+#include <casemate-impl/options.h>
 
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
@@ -133,5 +134,10 @@ int dump_state(void *arg, struct casemate_model_state *s);
  * trace_step() - Generate a trace record for a given transition and give it to the driver.
  */
 void trace_step(struct casemate_model_step *trans);
+
+/**
+ * ensure_traced_current_transition() - Trace current transition, if applicable, if not already done so.
+ */
+void ensure_traced_current_transition(bool force);
 
 #endif /* CASEMATE_MODEL_STATE_H */

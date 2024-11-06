@@ -1,5 +1,26 @@
 #include <casemate-impl.h>
 
+
+////////////////////////
+// Watching
+
+static bool is_watched(u64 location)
+{
+	for (int i = 0; i < sm_watchpoints.num_watchpoints; i++) {
+		if (sm_watchpoints.watchpoints[i] == location)
+			return true;
+	}
+
+	return false;
+}
+
+void touch(u64 location)
+{
+	if (is_watched(location))
+		touched_watchpoint = true;
+}
+
+
 ////////////////////
 // Locks
 
@@ -807,6 +828,7 @@ static void step_read(struct ghost_hw_step *step)
 {
 	struct sm_location *loc;
 	ghost_assert(step->kind == HW_MEM_READ);
+
 	loc = location(step->read_data.phys_addr);
 
 	// read doesn't have any real behaviour, except to return the value stored in memory.
@@ -1431,6 +1453,48 @@ static void step_abs(struct ghost_abs_step *step)
 	}
 }
 
+/////////////////
+// Helpers
+
+static inline bool should_print_state_on_step(void)
+{
+	if (!should_print_state())
+		return false;
+
+	if (should_track_only_watchpoints())
+		return touched_watchpoint;
+
+	return true;
+}
+
+static inline bool should_print_diff_on_step(void)
+{
+	if (!should_print_diffs())
+		return false;
+
+	if (should_track_only_watchpoints())
+		return touched_watchpoint;
+
+	return true;
+}
+
+bool traced_current_trans = false;
+
+void ensure_traced_current_transition(bool force)
+{
+	if (traced_current_trans)
+		return;
+
+	if (!should_trace())
+		return;
+
+	if (should_track_only_watchpoints() && !touched_watchpoint && !force)
+		return;
+
+	trace_step(&current_transition);
+
+	traced_current_trans = true;
+}
 
 ///////////////////////////
 /// Generic Step
@@ -1446,14 +1510,13 @@ void step(struct casemate_model_step trans)
 
 	trans.seq_id = transition_id++;
 	current_transition = trans;
-
-	if (should_trace())
-		trace_step(&trans);
+	touched_watchpoint = false;
+	traced_current_trans = false;
 
 	if (!is_initialised)
 		goto out;
 
-	if (should_print_diff_on_step())
+	if (should_print_diffs())
 		copy_cm_state_into(the_ghost_state_pre);
 
 	switch (trans.kind) {
@@ -1470,7 +1533,11 @@ void step(struct casemate_model_step trans)
 		unreachable();
 	};
 
-	if (should_print_step()) {
+	/* do any tracing, printing or diffing */
+
+	ensure_traced_current_transition(false);
+
+	if (should_print_state_on_step()) {
 		ghost_dump_model_state(NULL, the_ghost_state);
 		ghost_printf("\n");
 	}
@@ -1481,6 +1548,7 @@ void step(struct casemate_model_step trans)
 	}
 
 out:
+	ensure_traced_current_transition(false);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
