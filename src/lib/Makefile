@@ -16,7 +16,6 @@ endif
 CFLAGS += -fno-common -nostdlib
 
 LDFLAGS += -r
-LDFLAGS += -T $(src)/model.lds
 
 casemate-obj += src/model.o
 casemate-obj += src/setup.o
