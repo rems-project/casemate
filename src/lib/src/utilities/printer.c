@@ -364,15 +364,11 @@ int gp_print_cm_roots(void *arg, char *name, u64 len, u64 *roots)
 int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 {
 	int ret;
-#ifndef CONFIG_NVHE_casemate_model_LOG_ONLY
 	struct lock_state *state;
-#endif /* CONFIG_NVHE_casemate_model_LOG_ONLY */
 
-#ifndef CONFIG_NVHE_casemate_model_LOG_ONLY
 	if (is_correctly_locked(locks->locks[i], &state))
 		ret = ghost_fprintf(arg, "(%16p,%16p, locked by thread %d, %s)", locks->owner_ids[i], locks->locks[i], state->id, state->write_authorization == AUTHORIZED ? "write authorized" : "write not authorized");
 	else
-#endif /* CONFIG_NVHE_casemate_model_LOG_ONLY */
 		ret = ghost_fprintf(arg, "(%16p,%16p)", locks->owner_ids[i], locks->locks[i]);
 
 	return ret;

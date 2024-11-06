@@ -39,7 +39,6 @@ void initialise_ghost_driver(struct ghost_driver *d)
 void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
 {
 
-#ifndef CONFIG_NVHE_casemate_model_LOG_ONLY
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
 
@@ -54,7 +53,6 @@ void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u
 
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();
-#endif /* CONFIG_NVHE_casemate_model_LOG_ONLY */
 }
 
 int casemate_watch_location(u64 loc)
