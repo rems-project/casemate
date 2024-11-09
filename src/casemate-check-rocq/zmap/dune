@@ -1,9 +1,0 @@
-(library
- (modules zmap)
- (name zmap)
- (libraries zarith))
-
-(coq.theory
- (name Zmap)
- (modules zmap)
- (theories stdpp stdpp.bitvector))

@@ -1,7 +1,10 @@
 opam-version: "2.0"
 name: "casemate"
-maintainer: "Jean Pichon <jean.pichon@cs.au.dk>"
-authors: "Thomas Fourier <thomas.fourier@polytechnique.edu>"
+maintainer: "Jean Pichon <jean.pichon@cs.au.dk>, Yeji Han <yeji.han@sf.snu.ac.kr>"
+authors: [
+  "Thomas Fourier <thomas.fourier@polytechnique.edu>"
+  "Yeji Han <yeji.han@sf.snu.ac.kr"
+]
 license: "BSD-2-Clause"
 homepage: "https://github.com/rems-project/casemate"
 bug-reports: "https://github.com/rems-project/casemate/issues"

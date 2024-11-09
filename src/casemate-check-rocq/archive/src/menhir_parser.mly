@@ -1,6 +1,6 @@
 
 %{
-  open Coq_executable_sm
+  open Coq_executable_cm
 %}
 
 %token AT IN

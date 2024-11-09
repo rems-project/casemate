@@ -1,4 +1,5 @@
-Casemate offline checker in Coq. Ported from C.
+# Casemate offline checker in Coq
+Ported from C.
 
 ## Building
 

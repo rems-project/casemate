@@ -1,7 +1,7 @@
-(lang dune 3.8)
-
-(name simplified)
+(lang dune 3.14)
 
 (using coq 0.8)
 
 (using menhir 2.0)
+
+(name Casemate)
