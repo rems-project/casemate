@@ -1,11 +1,11 @@
 (coq.extraction
  (prelude extraction)
- (theories simplified stdpp stdpp.bitvector RecordUpdate Cmap Zmap)
- (extracted_modules coq_executable_sm))
+ (theories Casemate stdpp stdpp.bitvector RecordUpdate)
+ (extracted_modules coq_executable_cm))
 
 (library
  (name extraction)
- (libraries zarith cmap zmap)
+ (libraries zarith)
  (wrapped false)
  (instrumentation
   (backend bisect_ppx)))

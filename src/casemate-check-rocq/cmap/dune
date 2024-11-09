@@ -1,9 +1,0 @@
-(library
- (modules cmap)
- (name cmap)
- (libraries zarith))
-
-(coq.theory
- (name Cmap)
- (modules cmap)
- (theories stdpp stdpp.bitvector))
