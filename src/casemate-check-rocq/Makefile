@@ -1,5 +1,5 @@
 all :
-	dune build _build/default/casemate.install --display short
+	dune build _build/default/Casemate.install --display short
 
 # cm-test:
 # 	dune exe parser ${trace}

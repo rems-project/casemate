@@ -1,6 +1,6 @@
 opam-version: "2.0"
-name: "casemate"
-maintainer: "Jean Pichon <jean.pichon@cs.au.dk>, Yeji Han <yeji.han@sf.snu.ac.kr>"
+name: "Casemate"
+maintainer: "Jean Pichon <jean.pichon@cs.au.dk>"
 authors: [
   "Thomas Fourier <thomas.fourier@polytechnique.edu>"
   "Yeji Han <yeji.han@sf.snu.ac.kr"
