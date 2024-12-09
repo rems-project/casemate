@@ -512,89 +512,101 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 ///////////////////
 // Pagetable roots
 
-static bool root_exists_in(u64 *root_table, phys_addr_t root)
+struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
 {
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == root)
-			return true;
-	}
-
-	return false;
-}
-
-static bool root_exists(phys_addr_t root)
-{
-	return root_exists_in(the_ghost_state->s1_roots, root) || root_exists_in(the_ghost_state->s2_roots, root);
-}
-
-static void try_insert_root(u64 *root_table, u64 root)
-{
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == 0) {
-			root_table[i] = root;
-			return;
+	for (int i = 0; i < roots->len; i++) {
+		if (roots->roots[i].id == id) {
+			return &roots->roots[i];
 		}
 	}
-
-	GHOST_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+	return NULL;
 }
 
-static void try_remove_root(u64 *root_table, u64 root)
+struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t root)
 {
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == root) {
-			root_table[i] = 0;
-			return;
+	for (int i = 0; i < roots->len; i++) {
+		if (roots->roots[i].baddr == root) {
+			return &roots->roots[i];
 		}
 	}
-
-	GHOST_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+	return NULL;
 }
 
-
-void try_register_root(entry_stage_t stage, phys_addr_t root)
+void free_root(struct roots *roots, struct root *root)
 {
-	u64 *root_table;
+	ghost_assert(root != NULL);
 
+	u64 len = roots->len;
+	for (int i = 0; i < len; i++) {
+		/* remove exactly this root object */
+		if (&roots->roots[i] == root) {
+			len = roots->len--;
+
+			/* last slot: just free it */
+			if (i == len) {
+				return;
+			}
+
+			/* swap old last slot in */
+			roots->roots[i] = roots->roots[len];
+		}
+	}
+}
+
+bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
+{
+	switch (sysreg) {
+	case SYSREG_TTBR_EL2:
+		*out_stage = ENTRY_STAGE1;
+		return true;
+
+	case SYSREG_VTTBR:
+		*out_stage = ENTRY_STAGE2;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id)
+{
+	struct root new_root;
 	GHOST_LOG_CONTEXT_ENTER();
-	if (root_exists(root))
-		GHOST_MODEL_CATCH_FIRE("root already exists");
 
-	root_table = stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
-
-	// TODO: also associate ASID/VMID ?
-	try_insert_root(root_table, root);
-
-	if (stage == ENTRY_STAGE1) {
-		the_ghost_state->nr_s1_roots++;
-	} else {
-		the_ghost_state->nr_s2_roots++;
+	if (roots->len >= MAX_ROOTS) {
+		GHOST_MODEL_CATCH_FIRE("too many roots");
 	}
 
-	traverse_pgtable(root, stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
+	new_root = (struct root){
+		.baddr = baddr,
+		.id = id,
+		.refcount = 0,
+	};
+	roots->roots[roots->len++] = new_root;
+
+	traverse_pgtable(baddr, roots->stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 {
-	u64 *root_table;
-
+	struct roots *roots;
+	struct root *assoc_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	root_table =
-		stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+	roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
+	assoc_root = retrieve_root_for_baddr(roots, root);
 
-	if (! root_exists_in(root_table, root))
-		GHOST_MODEL_CATCH_FIRE("root doesn't exist");
+	if (! assoc_root)
+		GHOST_MODEL_CATCH_FIRE("root does not exist");
 
-	// TODO: also associate ASID/VMID ?
+	if (assoc_root->refcount > 0)
+		GHOST_MODEL_CATCH_FIRE("cannot release table still in use");
+
 	traverse_pgtable(root, stage, unmark_cb, READ_UNLOCKED_LOCATIONS, NULL);
-	try_remove_root(root_table, root);
-	if (stage == ENTRY_STAGE1) {
-		the_ghost_state->nr_s1_roots--;
-	} else {
-		the_ghost_state->nr_s2_roots--;
-	}
+	free_root(roots, assoc_root);
+
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -604,29 +616,72 @@ static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 
 static void step_msr(struct ghost_hw_step *step)
 {
-	u64 root;
+	bool ret;
+	phys_addr_t root;
+	vmid_t id;
+	entry_stage_t stage;
+	struct roots *roots;
+	struct root *assoc_root;
+
+	struct cm_thrd_ctxt *ctxt = &the_ghost_state->thread_context[current_transition.tid];
+
 	// TODO: BS: also remember which is current?
 	switch (step->msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
-		root = extract_s1_root(step->msr_data.val);
-
-		if (! root_exists_in(the_ghost_state->s1_roots, root)) {
-			try_register_root(ENTRY_STAGE1, root);
-		}
-		// TODO: BS: else, at least check ASID/VMID match...
-
-		break;
 	case SYSREG_VTTBR:
-		root = extract_s2_root(step->msr_data.val);
+		ret = stage_from_ttbr(step->msr_data.sysreg, &stage);
+		ghost_assert(ret);
+		root = ttbr_extract_baddr(step->msr_data.val);
+		id = ttbr_extract_id(step->msr_data.val);
+		roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
 
-		if (! root_exists_in(the_ghost_state->s2_roots, root)) {
-			try_register_root(ENTRY_STAGE2, root);
+		/* if that root with that id exists already, were just context switching */
+		assoc_root = retrieve_root_for_baddr(roots, root);
+		if (assoc_root && assoc_root->id == id) {
+			goto context_switch;
 		}
-		// TODO: BS: else, at least check ASID/VMID match...
+		/* see if that root is already associated with a different (VM/AS)ID */
+		else if (assoc_root && assoc_root->id != id) {
+			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+		}
+
+		/* see if VMID is already associated */
+		assoc_root = retrieve_root_for_id(roots, id);
+		if (assoc_root && assoc_root->baddr != root) {
+			GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
+		}
+		/* if that VMID is free, check we have not already associated a different VMID */
+		else if (assoc_root && assoc_root->id != id) {
+			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+		}
+		/* otherwise, that VMID is free and this root has no associated VMID
+		 * so attach this one */
+		else {
+			try_register_root(roots, root, id);
+		}
+
+context_switch:
+		/* decrement refcount on current (if applicable)*/
+		assoc_root = (stage == ENTRY_STAGE1) ? ctxt->current_s1 : ctxt->current_s2;
+		if (assoc_root)
+			assoc_root->refcount--;
+
+		/* and increment refcount on one we just switched to */
+		assoc_root = retrieve_root_for_id(roots, id);
+		ghost_assert(assoc_root);
+		assoc_root->refcount++;
+
+		/* and make it the curent context */
+		if (stage == ENTRY_STAGE1) {
+			ctxt->current_s1 = assoc_root;
+		} else {
+			ctxt->current_s2 = assoc_root;
+		}
 
 		break;
+
 	default:
-		unreachable();
+		GHOST_MODEL_CATCH_FIRE("wrote to unsupported sysreg - only support writes to (V)TTBR");
 	}
 }
 

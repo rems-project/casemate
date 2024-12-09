@@ -425,29 +425,40 @@ static void ghost_diff_sm_mem(struct diff_container *node, struct casemate_model
 	ghost_diff_pop_subfield(node);
 }
 
-static void one_way_diff_roots(struct diff_container *container, u64 len, u64 *lhs, u64 *rhs, bool add)
+static void one_way_diff_roots(struct diff_container *container, struct roots *lhs, struct roots *rhs, bool add)
 {
 	bool found;
-	for (u64 i = 0; i < len; i++) {
-		u64 r = lhs[i];
+	for (u64 i = 0; i < lhs->len; i++) {
+		struct root *lhs_root = &lhs->roots[i];
+		struct root *rhs_root = NULL;
 		found = false;
-		for (u64 j = 0; j < len; j++) {
-			if (rhs[j] == r)
+		for (u64 j = 0; j < rhs->len; j++) {
+			rhs_root = &lhs->roots[i];
+			if (rhs_root->baddr == lhs_root->baddr)
 				found = true;
 		}
 
 		// something was removed
 		if (!found)
-			ghost_diff_attach(container, diff_pm(add, TU64(r)));
+			ghost_diff_attach(container, diff_pm(add, TU64(lhs_root->baddr)));
+
+		// ID was changed
+		if (found && lhs_root->id != rhs_root->id) {
+			ghost_diff_enter_subfield_val(container, TU64(lhs_root->baddr));
+			ghost_diff_enter_subfield(container, "id");
+			ghost_diff_attach(container, diff_pair(TU64(lhs_root->id), TU64(rhs_root->id)));
+			ghost_diff_pop_subfield(container);
+			ghost_diff_pop_subfield(container);
+		}
 	}
 }
 
-static void ghost_diff_sm_roots(struct diff_container *node, const char *name, u64 len, u64 *roots1, u64 *roots2)
+static void ghost_diff_sm_roots(struct diff_container *node, const char *name, struct roots *roots1, struct roots *roots2)
 {
 	ghost_diff_enter_subfield(node, name);
 	// roots are unordered
-	one_way_diff_roots(node, len, roots1, roots2, false);
-	one_way_diff_roots(node, len, roots2, roots1, true);
+	one_way_diff_roots(node, roots1, roots2, false);
+	one_way_diff_roots(node, roots2, roots1, true);
 	ghost_diff_pop_subfield(node);
 }
 
@@ -456,8 +467,8 @@ static void ghost_diff_sm_state(struct diff_container *node, struct casemate_mod
 	ghost_diff_field(node, "base", diff_pair(TU64(s1->base_addr), TU64(s2->base_addr)));
 	ghost_diff_field(node, "size", diff_pair(TU64(s1->size), TU64(s2->size)));
 
-	ghost_diff_sm_roots(node, "s1_roots", s1->nr_s1_roots, s1->s1_roots, s2->s1_roots);
-	ghost_diff_sm_roots(node, "s2_roots", s1->nr_s2_roots, s1->s2_roots, s2->s2_roots);
+	ghost_diff_sm_roots(node, "s1_roots", &s1->roots_s1, &s2->roots_s1);
+	ghost_diff_sm_roots(node, "s2_roots", &s1->roots_s2, &s2->roots_s2);
 
 	ghost_diff_sm_mem(node, &s1->memory, &s2->memory);
 }

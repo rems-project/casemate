@@ -347,15 +347,67 @@ struct lock_state_map {
 gsm_lock_addr_t *owner_lock(sm_owner_t owner_id);
 
 /**
+ * CASEMATE_MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
+ */
+#define CASEMATE_MAX_VMIDS 64
+
+/**
+ * typedef vmid_t - A virtual machine identifier (VMID)
+ */
+typedef u64 vmid_t;
+
+/**
+ * typedef addr_id_t - Generic address space identifier (ASID/VMID).
+ */
+typedef u64 addr_id_t;
+
+/**
+ * struct vmid_map - Map from VMID to Root.
+ */
+struct vmid_map {
+	u64 len;
+	vmid_t vmids[CASEMATE_MAX_VMIDS];
+	sm_owner_t roots[CASEMATE_MAX_VMIDS];
+};
+
+/**
+ * struct root - A single root (base addr + ASID/VMID)
+ * @baddr: the root base (physical) address.
+ * @id: the associated ASID/VMID.
+ * @refcount: the number of CPUs that have this root currently active.
+ */
+struct root {
+	sm_owner_t baddr;
+	addr_id_t id;
+	u64 refcount;
+};
+
+/**
+ * struct roots - Pool of currently known roots
+ */
+struct roots {
+	u64 len;
+	entry_stage_t stage;
+	struct root roots[MAX_ROOTS];
+};
+
+/**
+ * struct cm_thrd_ctxt - Per thread context ghost copy
+ */
+struct cm_thrd_ctxt {
+	struct root *current_s1;
+	struct root *current_s2;
+};
+
+/**
  * struct casemate_model_state - Top-level ghost model state.
  * @base_addr: the physical address of the start of the (ghost) memory.
  * @size: the number of bytes in the ghost memory to track.
  * @memory: the actual ghost model memory.
  * @unclean_locations: set of all the unclean locations
- * @nr_s1_roots: number of EL2 stage1 pagetable roots being tracked.
- * @s1_roots: set of known EL2 stage1 pagetable roots.
- * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
- * @s2_roots: set of known EL2 stage2 pagetable roots.
+ * @roots_s1: set of known EL2 stage1 pagetable roots.
+ * @roots_s2: set of known EL2 stage2 pagetable roots.
+ * @thread_context: per-CPU thread-local context.
  * @locks: map from root physical address to lock physical address.
  * @lock_state: map from lock physical address to thread which owns the lock.
  */
@@ -369,8 +421,10 @@ struct casemate_model_state {
 	u64 nr_s1_roots;
 	u64 s1_roots[MAX_ROOTS];
 
-	u64 nr_s2_roots;
-	u64 s2_roots[MAX_ROOTS];
+	struct roots roots_s1;
+	struct roots roots_s2;
+
+	struct cm_thrd_ctxt thread_context[MAX_CPU];
 
 	struct lock_owner_map locks;
 	struct lock_state_map lock_state;
