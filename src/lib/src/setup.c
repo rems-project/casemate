@@ -50,6 +50,8 @@ void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u
 	 * so we don't have a reference to some unstable state */
 	*opts() = *cfg;
 	initialise_ghost_ptes_memory(phys, size);
+	the_ghost_state->roots_s1.stage = ENTRY_STAGE1;
+	the_ghost_state->roots_s2.stage = ENTRY_STAGE2;
 
 	GHOST_LOG_CONTEXT_EXIT();
 	unlock_sm();

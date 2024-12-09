@@ -53,7 +53,14 @@ bool blob_unclean(struct casemate_memory_blob *blob);
  */
 struct sm_location *location(u64 phys);
 
-void try_register_root(entry_stage_t stage, phys_addr_t root);
+/**
+ * stage_from_ttbr() - Get stage from name of TTBR.
+ *
+ * Returns false if given sysreg name is not a valid TTBR.
+ */
+bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage);
+
+void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id);
 
 /**
  * current_transition - The step currently being executed.
@@ -97,6 +104,13 @@ bool is_location_locked(struct sm_location *loc);
  */
 bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state);
 
+/// VMIDs
+
+bool retrieve_root_for_vmid(vmid_t vmid, phys_addr_t *out_root);
+bool retrieve_vmid_for_root(phys_addr_t root, vmid_t *out_vmid);
+// bool vmid_already_exists(vmid_t vmid);
+int associate_vmid(vmid_t vmid, sm_owner_t root);
+void free_vmid(vmid_t vmid);
 
 /// Equality and printing
 
