@@ -13,6 +13,9 @@ build-objs += bad_free_page_without_clean
 build-objs += good_free_page
 build-objs += good_free_tree
 build-objs += good_write_child
+build-objs += bad_switch_wrong_vmid
+build-objs += good_bbm_by_VMID
+build-objs += bad_bbm_by_wrong_VMID
 
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 

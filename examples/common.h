@@ -16,6 +16,9 @@ void join(void);
 void send(tid_t to, int v);
 int recv(void);
 
+#define MAKE_TTBR(BADDR,ID) \
+	((BADDR) | ((ID) << 48ULL))
+
 #define WRITE_ONCE(VAR, VAL) \
 	({	\
 		casemate_model_step_write(WMO_plain, (u64)&VAR, (VAL)); \
