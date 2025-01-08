@@ -26,3 +26,6 @@
 /good_free_page
 /good_free_tree
 /good_write_child
+/bad_switch_wrong_vmid
+/good_bbm_by_VMID
+/bad_bbm_by_wrong_VMID
