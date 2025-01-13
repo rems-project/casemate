@@ -44,6 +44,9 @@ struct sm_tlbi_op_method {
 			bool has_level_hint;
 			u8 level_hint;
 
+			bool has_asid;
+			u8 asid;
+
 			bool affects_last_level_only;
 		} by_address_data;
 

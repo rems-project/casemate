@@ -180,6 +180,10 @@ static inline u64 ttbr_extract_id(u64 ttb)
 	return ttb & TTBR_ID_MASK;
 }
 
+#define TLBI_PAGE_MASK	GENMASK(43, 0)
+#define TLBI_ASID_MASK	GENMASK(63, 48)
+#define TLBI_TTL_MASK	GENMASK(47, 44)
+
 bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage);
 bool is_desc_valid(u64 descriptor);
 u64 extract_output_address(u64 desc, u64 level);

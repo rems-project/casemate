@@ -89,7 +89,6 @@ static inline thread_identifier cpu_id(void)
 	return current_transition.tid;
 }
 
-
 /**
  * is_location_locked() - Returns true if the lock for a given location is currently marked as owned.
  */
