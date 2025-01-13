@@ -1,0 +1,7 @@
+(mem-init (id 0) (tid 0) (address 0xaaaab3b24000) (size 0x1000) (src "examples/tests/bad_switch_wrong_vmid.c:23"))
+(hint (id 1) (tid 0) (kind set_root_lock) (location 0xaaaab3b24000) (value 0xaaaab3b25000) (src "examples/tests/bad_switch_wrong_vmid.c:24"))
+(sysreg-write (id 2) (tid 0) (sysreg vttbr_el2) (value 0xaaaab3b24000) (src "examples/tests/bad_switch_wrong_vmid.c:27"))
+(barrier (id 3) (tid 0) dsb (kind ish) (src "examples/tests/bad_switch_wrong_vmid.c:28"))
+(barrier (id 4) (tid 0) isb (src "examples/tests/bad_switch_wrong_vmid.c:29"))
+(sysreg-write (id 5) (tid 0) (sysreg vttbr_el2) (value 0x1aaaab3b24000) (src "examples/tests/bad_switch_wrong_vmid.c:32"))
+! root already associated with an (VM/AS)ID
