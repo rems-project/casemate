@@ -256,6 +256,27 @@ enum sm_tlbi_op_regime_kind decode_tlbi_regime_kind(enum tlbi_kind k)
 	}
 }
 
+static bool __decoded_tlbi_has_asid(struct trans_tlbi_data data, u8 *out_asid)
+{
+	switch (data.tlbi_kind) {
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+		*out_asid = data.value & TLBI_ASID_MASK;
+		return true;
+
+	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
+	case TLBI_ipas2e1is:
+	case TLBI_vmalls12e1:
+	case TLBI_vmalls12e1is:
+	case TLBI_alle1is:
+		return false;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
 struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data data)
 {
 	struct tlbi_op_method_by_address_data decoded_data = {0};
@@ -280,6 +301,8 @@ struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data
 		decoded_data.level_hint = data.level & 0b11;
 	}
 
+	decoded_data.has_asid = __decoded_tlbi_has_asid(data, &decoded_data.asid);
+
 	return decoded_data;
 }
 
@@ -289,7 +312,6 @@ struct tlbi_op_method_by_address_space_id_data decode_tlbi_by_space_id(struct tr
 	decoded_data.asid_or_vmid = 0;
 	return decoded_data;
 }
-
 
 struct sm_tlbi_op decode_tlbi(struct trans_tlbi_data data)
 {
@@ -512,6 +534,21 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 ///////////////////
 // Pagetable roots
 
+static inline struct cm_thrd_ctxt *current_thread_context(void)
+{
+	return &the_ghost_state->thread_context[cpu_id()];
+}
+
+struct root *get_current_ttbr(void)
+{
+	return current_thread_context()->current_s1;
+}
+
+struct root *get_current_vttbr(void)
+{
+	return current_thread_context()->current_s2;
+}
+
 struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
 {
 	for (int i = 0; i < roots->len; i++) {
@@ -623,7 +660,7 @@ static void step_msr(struct ghost_hw_step *step)
 	struct roots *roots;
 	struct root *assoc_root;
 
-	struct cm_thrd_ctxt *ctxt = &the_ghost_state->thread_context[current_transition.tid];
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
 
 	// TODO: BS: also remember which is current?
 	switch (step->msr_data.sysreg) {
@@ -1175,12 +1212,90 @@ static bool all_children_invalid(struct sm_location *loc)
 	return true;
 }
 
-static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
+static bool __get_tlbi_asid(struct sm_tlbi_op *tlbi, u64 *out_id)
 {
-	struct sm_tlbi_op *tlbi;
+	switch (tlbi->method.kind) {
+	case TLBI_OP_BY_INPUT_ADDR:
+		if (tlbi->method.by_address_data.has_asid) {
+			*out_id = tlbi->method.by_address_data.asid;
+			return true;
+		}
+		break;
+
+	case TLBI_OP_BY_ADDR_SPACE:
+		if (tlbi->stage == TLBI_OP_STAGE1) {
+			*out_id = tlbi->method.by_id_data.asid_or_vmid;
+			return true;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return false;
+}
+
+/**
+ * __should_perform_tlbi_matches_id() - Check that the identifier associated with the TLBI matches the pte
+ */
+static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
+	/* for VMID checks, we read the VTTBR
+	 * and check the VTTBR VMID annotation matches the one associated with this root
+	 */
+	if (tlbi->regime == TLBI_REGIME_EL10 && ctxt->exploded_descriptor.stage == ENTRY_STAGE2) {
+		struct root *pte_root = retrieve_root_for_baddr(&the_ghost_state->roots_s2, ctxt->root);
+		if (get_current_vttbr()->id != pte_root->id)
+			return false;
+		else
+			return true;
+	}
+
+	/* for TLBI that affects an ASID, it is supplied as an argument to the TLBI */
+	if (tlbi->regime == TLBI_REGIME_EL2 && ctxt->exploded_descriptor.stage == ENTRY_STAGE1) {
+		struct root *pte_root = retrieve_root_for_baddr(&the_ghost_state->roots_s1, ctxt->root);
+		u64 asid;
+
+		if (__get_tlbi_asid(tlbi, &asid))
+			if (asid != pte_root->id)
+				return false;
+	}
+
+	return true;
+}
+
+/**
+ * __should_perform_tlbi_matches_level() - Check that the level of the pte matches the TLBI level hint
+ */
+static bool __should_perform_tlbi_matches_level(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
+	if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only)
+		return false;
+	else
+		return true;
+}
+
+/**
+ * __should_perform_tlbi_matches_level() - Check that the level of the pte matches the TLBI level hint
+ */
+static bool __should_perform_tlbi_matches_addr(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
 	u64 tlbi_addr;
 	u64 ia_start;
 	u64 ia_end;
+
+	// input-address range of the PTE we're visiting
+	ia_start = ctxt->exploded_descriptor.ia_region.range_start;
+	ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
+	tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
+
+	return (ia_start <= tlbi_addr) && (tlbi_addr < ia_end);
+}
+
+static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_tlbi_op *tlbi;
 
 	// If the location is not locked then do not apply the TLBI
 	if (!is_location_locked(ctxt->loc))
@@ -1202,19 +1317,11 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	if (tlbi->method.kind == TLBI_OP_BY_ADDR_SPACE) {
 		if (opts()->check_opts.promote_TLBI_by_id) {
 			tlbi->method.kind = TLBI_OP_BY_ALL;
-		} else {
-			GHOST_MODEL_CATCH_FIRE("Unsupported TLBI-by-(AS/VM)ID");
 		}
 	}
 
 	switch (tlbi->method.kind) {
 	case TLBI_OP_BY_INPUT_ADDR:
-		// input-address range of the PTE we're visiting
-		ia_start = ctxt->exploded_descriptor.ia_region.range_start;
-		ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
-		tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
-
-
 
 		// If the PTE has valid children, the TLBI by VA is not enough
 		if (! ctxt->leaf) {
@@ -1224,22 +1331,34 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		}
 
 		// Test if the VA address of the PTE is the same as the VA of the TLBI
-		if (! ((ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
+		if (! __should_perform_tlbi_matches_addr(ctxt, tlbi))
 			return false;
-		}
+
 
 		/*
 		 * if it is a leaf, but not at the last level, and we asked for last-level-only invalidation,
 		 * then nothing happens
 		 */
-		if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only) {
+		if (! __should_perform_tlbi_matches_level(ctxt, tlbi))
 			return false;
-		}
+
+
+		/*
+		 * check whether the address space identifier (if any) associated with this TLBI
+		 * matches the id of the pte
+		 */
+		if (! __should_perform_tlbi_matches_id(ctxt, tlbi))
+			return false;
 
 		break;
 
 	case TLBI_OP_BY_ADDR_SPACE:
-		BUG(); // TODO: BS: by-VMID and by-ASID
+		/*
+		 * check whether the address space identifier (if any) associated with this TLBI
+		 * matches the id of the pte
+		 */
+		if (! __should_perform_tlbi_matches_id(ctxt, tlbi))
+			return false;
 
 	case TLBI_OP_BY_ALL:
 		return true;
