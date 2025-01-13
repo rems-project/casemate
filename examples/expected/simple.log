@@ -1,6 +1,6 @@
-(mem-write (id 0) (tid 0) (mem-order plain) (address 0xaaaacb813000) (value 0x0) (src "examples/tests/simple.c:20"))
+(mem-write (id 0) (tid 0) (mem-order plain) (address 0xaaaabcf54000) (value 0x0) (src "examples/tests/simple.c:20"))
 (barrier (id 1) (tid 0) dsb (kind ish) (src "examples/tests/simple.c:21"))
-(mem-write (id 2) (tid 0) (mem-order plain) (address 0xaaaacb814000) (value 0x0) (src "examples/tests/simple.c:22"))
+(mem-write (id 2) (tid 0) (mem-order plain) (address 0xaaaabcf55000) (value 0x0) (src "examples/tests/simple.c:22"))
 (barrier (id 3) (tid 0) dsb (kind ish) (src "examples/tests/simple.c:23"))
 (tlbi (id 4) (tid 0) vmalle1is (src "examples/tests/simple.c:24"))
 (barrier (id 5) (tid 0) dsb (kind nsh) (src "examples/tests/simple.c:25"))

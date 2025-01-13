@@ -1,4 +1,4 @@
-.PHONY: build clean logs
+.PHONY: build clean logs list-build-objs
 
 build-objs += simple
 build-objs += good_write
@@ -16,6 +16,9 @@ build-objs += good_write_child
 build-objs += bad_switch_wrong_vmid
 build-objs += good_bbm_by_VMID
 build-objs += bad_bbm_by_wrong_VMID
+
+list-build-objs:
+	@echo $(build-objs)
 
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
