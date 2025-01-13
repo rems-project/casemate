@@ -146,8 +146,7 @@ struct ghost_hw_step {
 
 		struct trans_tlbi_data {
 			enum tlbi_kind tlbi_kind;
-			u64 page;
-			u64 level;
+			u64 value;
 		} tlbi_data;
 
 		struct trans_msr_data {

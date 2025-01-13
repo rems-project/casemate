@@ -281,7 +281,7 @@ struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data
 {
 	struct tlbi_op_method_by_address_data decoded_data = {0};
 
-	decoded_data.page = data.page;
+	decoded_data.page = data.value & TLBI_PAGE_MASK;
 
 	switch (data.tlbi_kind) {
 	case TLBI_vale2is:
@@ -292,13 +292,13 @@ struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data
 		break;
 	}
 
-	decoded_data.page = data.page;
+	u64 level = data.value & TLBI_TTL_MASK;
 
-	if (data.level < 0b0100) {
+	if (level < 0b0100) {
 		decoded_data.has_level_hint = false;
 	} else {
 		decoded_data.has_level_hint = true;
-		decoded_data.level_hint = data.level & 0b11;
+		decoded_data.level_hint = level & 0b11;
 	}
 
 	decoded_data.has_asid = __decoded_tlbi_has_asid(data, &decoded_data.asid);

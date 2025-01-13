@@ -414,8 +414,7 @@ void parse_tlbi_tail(struct parser *p)
 	case TLBI_ipas2e1is:
 	case TLBI_vale2is:
 	case TLBI_vae2is:
-		p->out->hw_step.tlbi_data.page = PARSE_KV_HEX(p, "addr");
-		p->out->hw_step.tlbi_data.level = PARSE_KV_DECIMAL(p, "level");
+		p->out->hw_step.tlbi_data.value = PARSE_KV_HEX(p, "value");
 		break;
 
 	default:

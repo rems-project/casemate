@@ -90,9 +90,7 @@ static int record_cm_tlbi_fields(struct string_builder *buf, struct trans_tlbi_d
 	case TLBI_vae2is:
 	case TLBI_ipas2e1is:
 		TRY_PUT(' ');
-		TRY_PUT_KV("addr", sb_putxn(buf, data->page, 64));
-		TRY_PUT(' ');
-		TRY_PUT_KV("level", sb_putxn(buf, data->level, 64));
+		TRY_PUT_KV("value", sb_putxn(buf, data->value, 64));
 		return 0;
 
 	default:

@@ -135,8 +135,7 @@ TLBI-OP-ADDR-KIND =
 
 TLBI-OP-ADDR =
     TLBI-OP-ADDR-KIND,
-      "(", "addr", u64, ")",
-      "(", "level", u64, ")"
+      "(", "value", u64, ")"
   ;
 ----
 
