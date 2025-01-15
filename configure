@@ -17,6 +17,9 @@ arch=`uname -m`
 cross_prefix=
 clangd=1
 
+force=0
+warned=0
+
 usage() {
   echo "Usage $0 [OPTIONS]";
   echo
@@ -27,6 +30,17 @@ usage() {
   echo " --ld=LD                 linker";
   echo " --arch=ARCH             machine architecture (aarch64 or x86)";
   echo " --[no-]clangd           force enable/disable clangd targets";
+  echo " --force                 overrule checks";
+}
+
+warning() {
+  if [ ${force} -eq 0 ]; then
+    echo "configure: $1. use --force to force generation of config anyway"
+    exit 1
+  else
+    echo "configure: $1"
+    warned=$((warned + 1))
+  fi
 }
 
 # collect all the -arg and --args
@@ -56,6 +70,9 @@ while [[ "$1" = -* ]]; do
     --no-clangd)
         clangd=
         ;;
+    --force)
+      force=1
+      ;;
     -h|--help)
         usage
         exit 0
@@ -74,6 +91,18 @@ ld=${tool_prefix}${ld}
 objcopy=${tool_prefix}${objcopy}
 objdump=${tool_prefix}${objdump}
 
+# check for existence of tools
+check_tool () {
+  if ! which $2 >/dev/null; then
+    warning "--$1: cannot find '$2'"
+  fi
+}
+
+check_tool "cc" ${cc}
+check_tool "ld" ${ld}
+check_tool "objcopy" ${objcopy}
+check_tool "objdump" ${objdump}
+
 # normalise arch name
 [ "$arch" = "arm64" ] && arch="aarch64"
 [ "$arch" = "i386" ] && arch="x86"
@@ -88,6 +117,12 @@ elif [ "$arch" = "x86" ]; then
 else
   echo "unknown architecture '${arch}'"
   exit 1
+fi
+
+if [ ${warned} -eq 1 ]; then
+  echo "configure: warning suppressed, writing config anyway"
+elif [ ${warned} -gt 1 ]; then
+  echo "configure: multiple warnings suppressed, writing config anyway"
 fi
 
 cat <<EOF > config.mk
