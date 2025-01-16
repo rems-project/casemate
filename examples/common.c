@@ -24,7 +24,7 @@ bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
 
-bool COLOUR = true;
+bool COLOUR = false;
 
 u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 {
@@ -116,6 +116,7 @@ static void print_help_and_quit(void)
 		"  -p --print    	print state out at each step\n"
 		"  --dry-run     	do not run checks\n"
 		"  -q            	quiet, do not print state, or trace steps, or show error messages\n"
+		"  --colour      	print with ANSI escape colour codes\n"
 		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
 	);
 	exit(0);
@@ -135,7 +136,8 @@ void common_read_argv(int argc, char **argv)
 		{"clean",      no_argument, 0,  4 },
 		{"dry-run",    no_argument, 0,  5 },
 		{"no-colour",  no_argument, 0,  6 },
-		{"help",       no_argument, 0,  7 },
+		{"colour",     no_argument, 0,  7 },
+		{"help",       no_argument, 0,  8 },
 		{0,            0,           0,  0 }
 	};
 
@@ -184,6 +186,10 @@ void common_read_argv(int argc, char **argv)
 			break;
 
 		case 7:
+			COLOUR = true;
+			break;
+
+		case 8:
 		case 'h':
 			print_help_and_quit();
 			break;
