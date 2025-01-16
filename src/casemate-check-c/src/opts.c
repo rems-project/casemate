@@ -16,7 +16,7 @@ bool SHOULD_TRACK_ONLY_WATCHPOINTS = false;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
-bool COLOUR = true;
+bool COLOUR = false;
 
 bool DEBUG = false;
 
@@ -38,6 +38,7 @@ static void print_help_and_quit(void)
 		"  -p --print     	print state out at each step\n"
 		"  -C --dry-run   	do not run checks\n"
 		"  -q             	quiet, do not print state, or trace steps, or show error messages\n"
+		"  --colour       	print with ANSI escape colour codes\n"
 		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
 		"  -D --debug     	debug mode\n"
 		"  -W<addr>       	watch this address\n"
@@ -63,6 +64,7 @@ void parse_opts(int argc, char **argv)
 		{"dry-run",    no_argument, 0,  'C' },
 		{"racy",       no_argument, 0,  'R' },
 		{"no-colour",  no_argument, 0,  'a' },
+		{"colour",     no_argument, 0,  'G' },
 		{"debug",      no_argument, 0,  'D' },
 		{"help",       no_argument, 0,  'h' },
 		{0,            0,           0,  0 }
@@ -123,6 +125,10 @@ void parse_opts(int argc, char **argv)
 			SHOULD_TRACK_ONLY_WATCHPOINTS = true;
 			break;
 		}
+
+		case 'G':
+			COLOUR = true;
+			break;
 
 		case 'a':
 			COLOUR = false;
