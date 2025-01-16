@@ -16,7 +16,7 @@ bool SHOULD_TRACK_ONLY_WATCHPOINTS = false;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
-bool COLOUR = false;
+bool COLOR = false;
 
 bool DEBUG = false;
 
@@ -38,8 +38,8 @@ static void print_help_and_quit(void)
 		"  -p --print     	print state out at each step\n"
 		"  -C --dry-run   	do not run checks\n"
 		"  -q             	quiet, do not print state, or trace steps, or show error messages\n"
-		"  --colour       	print with ANSI escape colour codes\n"
-		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
+		"  --color        	print with ANSI escape color codes\n"
+		"  -a --no-color  	ascii-only, no ANSI escape color codes\n"
 		"  -D --debug     	debug mode\n"
 		"  -W<addr>       	watch this address\n"
 	);
@@ -51,7 +51,7 @@ int hextoi(const char *s, u64 *out);
 void parse_opts(int argc, char **argv)
 {
 	if (!isatty(STDOUT_FILENO)) {
-		COLOUR = false;
+		COLOR = false;
 	}
 
 	static struct option long_options[] = {
@@ -63,8 +63,8 @@ void parse_opts(int argc, char **argv)
 		{"all",        no_argument, 0,  'U' },
 		{"dry-run",    no_argument, 0,  'C' },
 		{"racy",       no_argument, 0,  'R' },
-		{"no-colour",  no_argument, 0,  'a' },
-		{"colour",     no_argument, 0,  'G' },
+		{"no-color",  no_argument, 0,  'a' },
+		{"color",     no_argument, 0,  'G' },
 		{"debug",      no_argument, 0,  'D' },
 		{"help",       no_argument, 0,  'h' },
 		{0,            0,           0,  0 }
@@ -127,11 +127,11 @@ void parse_opts(int argc, char **argv)
 		}
 
 		case 'G':
-			COLOUR = true;
+			COLOR = true;
 			break;
 
 		case 'a':
-			COLOUR = false;
+			COLOR = false;
 			break;
 
 		case 'D':

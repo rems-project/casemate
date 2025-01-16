@@ -24,7 +24,7 @@ bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
 
-bool COLOUR = false;
+bool COLOR = false;
 
 u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 {
@@ -48,10 +48,10 @@ u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 void ghost_cm_abort(const char *msg)
 {
 	if (!QUIET) {
-		if (COLOUR)
+		if (COLOR)
 			printf(GHOST_WHITE_ON_RED);
 		printf("! %s", msg);
-		if (COLOUR)
+		if (COLOR)
 			printf(GHOST_NORMAL);
 		printf("\n");
 	}
@@ -97,10 +97,10 @@ void ghost_cm_free_buffer(void *buf)
 
 void ghost_cm_trace(const char *record)
 {
-	if (COLOUR)
+	if (COLOR)
 		printf(GHOST_WHITE_ON_CYAN);
 	printf("%s", record);
-	if (COLOUR)
+	if (COLOR)
 		printf(GHOST_NORMAL);
 	printf("\n");
 }
@@ -116,8 +116,8 @@ static void print_help_and_quit(void)
 		"  -p --print    	print state out at each step\n"
 		"  --dry-run     	do not run checks\n"
 		"  -q            	quiet, do not print state, or trace steps, or show error messages\n"
-		"  --colour      	print with ANSI escape colour codes\n"
-		"  -a --no-colour 	ascii-only, no ANSI escape colour codes\n"
+		"  --color      	print with ANSI escape color codes\n"
+		"  -a --no-color 	ascii-only, no ANSI escape color codes\n"
 	);
 	exit(0);
 }
@@ -125,7 +125,7 @@ static void print_help_and_quit(void)
 void common_read_argv(int argc, char **argv)
 {
 	if (!isatty(STDOUT_FILENO)) {
-		COLOUR = false;
+		COLOR = false;
 	}
 
 	static struct option long_options[] = {
@@ -135,8 +135,8 @@ void common_read_argv(int argc, char **argv)
 		{"diff",       no_argument, 0,  3 },
 		{"clean",      no_argument, 0,  4 },
 		{"dry-run",    no_argument, 0,  5 },
-		{"no-colour",  no_argument, 0,  6 },
-		{"colour",     no_argument, 0,  7 },
+		{"no-color",   no_argument, 0,  6 },
+		{"color",      no_argument, 0,  7 },
 		{"help",       no_argument, 0,  8 },
 		{0,            0,           0,  0 }
 	};
@@ -182,11 +182,11 @@ void common_read_argv(int argc, char **argv)
 
 		case 6:
 		case 'a':
-			COLOUR = false;
+			COLOR = false;
 			break;
 
 		case 7:
-			COLOUR = true;
+			COLOR = true;
 			break;
 
 		case 8:

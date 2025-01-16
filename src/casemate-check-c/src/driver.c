@@ -34,10 +34,10 @@ u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 void ghost_cm_abort(const char *msg)
 {
 	if (!QUIET) {
-		if (COLOUR)
+		if (COLOR)
 			printf(GHOST_WHITE_ON_RED);
 		printf("! %s", msg);
-		if (COLOUR)
+		if (COLOR)
 			printf(GHOST_NORMAL);
 		printf("\n");
 	}
@@ -83,10 +83,10 @@ void ghost_cm_free_buffer(void *buf)
 
 void ghost_cm_trace(const char *record)
 {
-	if (COLOUR)
+	if (COLOR)
 		printf(GHOST_WHITE_ON_CYAN);
 	printf("%s", record);
-	if (COLOUR)
+	if (COLOR)
 		printf(GHOST_NORMAL);
 	printf("\n");
 }

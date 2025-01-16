@@ -14,7 +14,7 @@ extern bool SHOULD_TRACK_ONLY_WATCHPOINTS;
 extern bool SHOULD_TRACE;
 extern bool SHOULD_TRACE_CONDENSED;
 extern bool QUIET;
-extern bool COLOUR;
+extern bool COLOR;
 extern bool DEBUG;
 
 extern const char *trace_file_name;
