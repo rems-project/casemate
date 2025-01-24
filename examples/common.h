@@ -10,6 +10,9 @@ extern u64 TCR_EL2;
 extern u64 VTCR_EL2;
 extern u64 MAIR_EL2;
 
+void spawn_thread(int fn(void*));
+void join(void);
+
 #define WRITE_ONCE(VAR, VAL) \
 	({	\
 		casemate_model_step_write(WMO_plain, (u64)&VAR, (VAL)); \

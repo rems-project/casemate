@@ -6,6 +6,7 @@
 #include <getopt.h>
 
 #include <assert.h>
+#include <threads.h>
 
 #include "common.h"
 #include <casemate-impl.h>
@@ -20,6 +21,7 @@ bool SHOULD_PRINT_STATE = false;
 bool SHOULD_PRINT_DIFF = false;
 bool SHOULD_PRINT_ONLY_UNCLEANS = true;
 bool SHOULD_CHECK = true;
+bool SHOULD_CHECK_LOCKS = true;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
@@ -109,6 +111,7 @@ static void print_help_and_quit(void)
 {
 	printf(
 		"Usage: \n"
+		"  -R --racy      	do not check locks/synchronisation are respected\n"
 		"  -t --trace    	print trace record for each step\n"
 		"  -c            	condensed trace format\n"
 		"  -d --diff     	show diffs of state\n"
@@ -138,11 +141,12 @@ void common_read_argv(int argc, char **argv)
 		{"no-color",   no_argument, 0,  6 },
 		{"color",      no_argument, 0,  7 },
 		{"help",       no_argument, 0,  8 },
+		{"racy",       no_argument, 0,  'R' },
 		{0,            0,           0,  0 }
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptqdhU", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptqdhUR", long_options, 0)) != - 1) {
 		switch (c) {
 		case 0:
 		case 'p':
@@ -180,6 +184,10 @@ void common_read_argv(int argc, char **argv)
 			SHOULD_CHECK = false;
 			break;
 
+		case 'R':
+			SHOULD_CHECK_LOCKS = false;
+			break;
+
 		case 6:
 		case 'a':
 			COLOR = false;
@@ -200,8 +208,34 @@ void common_read_argv(int argc, char **argv)
 	}
 }
 
+
+int no_spawned_threads;
+thrd_t threads[4];
+
+void spawn_thread(thrd_start_t fn)
+{
+	int err;
+
+	assert(no_spawned_threads < 4);
+	err = thrd_create(&threads[no_spawned_threads++], fn, NULL);
+	assert(err == thrd_success);
+}
+
+void join(void)
+{
+	for (int i = 0; i < no_spawned_threads; i++) {
+		int err = thrd_join(threads[i], NULL);
+		assert(err == thrd_success);
+	}
+}
+
 u64 casemate_cpu_id(void)
 {
+	thrd_t cur = thrd_current();
+	for (int i = 0; i < no_spawned_threads; i++) {
+		if (thrd_equal(cur, threads[i]))
+			return (u64)(i+1);
+	}
 	return 0;
 }
 
@@ -223,6 +257,7 @@ void common_init(int argc, char **argv)
 	opts.enable_checking = SHOULD_CHECK;
 
 	opts.check_opts.enable_printing = SHOULD_PRINT_DIFF | SHOULD_PRINT_STATE;
+	opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
 	opts.check_opts.print_opts = CM_PRINT_NONE;
 	if (SHOULD_PRINT_ONLY_UNCLEANS)
 		opts.check_opts.print_opts |= CM_PRINT_ONLY_UNCLEAN;
