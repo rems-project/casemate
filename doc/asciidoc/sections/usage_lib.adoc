@@ -1,0 +1,179 @@
+Casemate can be compiled as a standalone library, which can be linked into systems software, in order to:
+
+* Generate `casemate-check`-compatible logs.
+
+* Simulate the Casemate model and report violations at runtime.
+
+[#casemate-model-init]
+=== Compiling, linking, and the Ghost driver
+
+Running `make` at the top-level should produce a `src/lib/casemate.o` object file and `src/lib/casemate.h` header.
+These are what `casemate-check` use to drive the model, but could be used by a third-party build process to link casemate into a pre-existing system.
+Alternatively, one can build casemate directly in that toolchain, for example see `src/lib/Makefile.linux` for a Makefile which can be included from the Linux build system to include Casemate in the Linux kernel.
+
+Once Casemate is available, the user needs call two initialisation functions:
+
+* `initialise_casemate_model` passing some memory for Casemate to use to store the model state, and the initial model configuration options; and
+
+* `initialise_ghost_driver` which provides Casemate a set of callbacks for performing side-effects in the system.
+
+----
+/* An example Casemate initialisation procedure */
+void initialise_casemate(u64 phys_memory_start, u64 phys_memory_size)
+{
+	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
+	void *state_addr = malloc(sizeof(struct casemate_model_state)); // or 2x that if enabling diffing.
+	initialise_casemate_model(&opts, phys_memory_start, phys_memory_size, state_addr, sizeof(struct casemate_model_state));
+
+	struct ghost_driver sm_driver = {
+		.read_physmem = NULL,
+		.read_sysreg = read_sysreg_callback,
+		...
+	};
+	initialise_ghost_driver(&sm_driver);
+
+	u64 pgtable_root = EXTRACT_ROOT(read_sysreg(ttbr0_el2));
+
+	/* Initialise the currently loaded pagetable's memory */
+	FOREACH_PGTABLE_NODE(table, pgtable_root) {
+		casemate_model_step_init(table, 4096);
+		FOREACH_ENTRY(entry, table) {
+			casemate_model_step_write(WMO_plain, virt_to_phys(entry), *entry);
+		}
+	}
+
+	/* tell the model it's owned by this lock and currently loaded */
+	casemate_model_step_hint(GHOST_HINT_SET_ROOT_LOCK, pgtable_root, virt_to_phys(pgtable_lock));
+	casemate_model_step_msr(SYSREG_TTBR_EL2, pgtable_root);
+}
+----
+
+[#casemate-model-cfg]
+==== Casemate Model initialisation and configuration
+
+An example configuration
+
+----
+(struct casemate_options){
+  .enable_tracing = true,
+  .enable_checking = true,
+  .track_watchpoints = false,
+  .log_opts = (struct casemate_log_options){
+		.log_format_version = 1,
+		.condensed_format = false,
+	},
+  .check_opts = (struct casemate_checker_options){
+		.promote_DSB_nsh = false,
+		.promote_TLBI_nsh = false,
+		.promote_TLBI_by_id = false,
+		.check_synchronisation = true,
+		.enable_printing = false,
+		.print_opts = CM_PRINT_DIFF_TO_STATE_ON_STEP | CM_PRINT_ONLY_UNCLEAN,
+	},
+  .enable_safety_checks = false,
+}
+----
+
+****
+See the full configuration datatype definition at https://github.com/rems-project/casemate/blob/main/src/lib/include/casemate-in/casemate-config.in.h.
+****
+
+The options should be passed to `initialise_casemate_model`, which takes a snapshot.
+Options cannot currently be changed after initialisation.
+
+[#casemate-model-driver]
+==== Ghost driver
+
+Whenever the Casemate model needs to perform an operation with or as a side-effect,
+e.g. reading physical memory, printing a log record, or reporting a violation,
+it does so through a generic _ghost driver_ that the user initialises as a struct-of-function-pointers.
+
+`casemate-check`'s driver is given below/.
+
+----
+u64 __read_sysreg_cb(enum ghost_sysreg_kind sysreg)
+{
+	/* perform side-effect of reading system register */
+}
+
+void __abort_cb(const char *msg)
+{
+	exit(1);
+}
+
+/* callbacks for printing to string buffers
+ * since Casemate cannot use printf/malloc it is all driven by the driver */
+struct _string_buffer {
+	char *buf;
+	int n;
+};
+
+int __sprintf_cb(void* arg, const char *format, va_list ap)
+{
+	int ret;
+	if (arg != NULL) {
+		struct _string_buffer *buf = arg;
+		ret = vsnprintf(buf->buf, buf->n, format, ap);
+		if (ret < 0)
+			return ret;
+		buf->buf += ret;
+		buf->n -= ret;
+		return 0;
+	} else {
+		ret = vprintf(format, ap);
+		if (ret < 0)
+			return ret;
+		return 0;
+	}
+}
+
+void *__malloc_stringbuf_cb(char* arg, u64 n)
+{
+	struct _string_buffer *buf = malloc(sizeof(struct _string_buffer));
+	buf->buf = arg;
+	buf->n = n;
+	return buf;
+}
+
+void __free_stringbuf_cb(void *buf)
+{
+	free(buf);
+}
+
+/* logs a transition record */
+void __trace_cb(const char *record)
+{
+	printf("%s\n", record);
+}
+
+/* casemate-check driver */
+struct ghost_driver sm_driver = {
+  .read_physmem = NULL,  /* casemate-check never reads real memory */
+  .read_sysreg = __read_sysreg_cb,
+  .abort = __abort_cb,
+  .print = __sprintf_cb,
+  .sprint_create_buffer = __malloc_stringbuf_cb,
+  .sprint_destroy_buffer = __free_stringbuf_cb,
+  .trace = __trace_cb,
+};
+----
+
+****
+See the full `casemate-check` driver definition at https://github.com/rems-project/casemate/blob/main/src/casemate-check-c/src/driver.c.
+****
+
+=== Generating logs
+
+Ensure `enable_tracing` is true in <<casemate-model-cfg,the configuration>>, and an appropriate `trace` callback is defined in <<casemate-model-driver,the driver>>,
+then <<_stepping_the_model, stepping the model>> will output <<transitions,properly formatted trace records>>.
+
+=== Configuring for runtime checks
+
+Ensure `enable_checking` is true in <<casemate-model-cfg,the configuration>>, then <<_stepping_the_model>> will perform checks,
+and report violations via the `abort` callback in <<casemate-model-driver,the driver>>.
+
+=== Stepping the model
+
+Once <<casemate-model-init,initialised>> the Casemate model is ready to begin taking steps immediately.
+
+include::_lib_steps.adoc[]

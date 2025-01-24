@@ -1,0 +1,36 @@
+:doctype: book
+:bibtex-file: manual.bib
+:hide-uri-scheme:
+:source-highlighter: rouge
+
+= Casemate
+Ben Simner; Thomas Fourier; Yeji Han; David Kaloper Meršinjak; Thibaut Pérami; Peter Sewell; Jean Pichon-Pharabod
+:toc: left
+:toclevels: 4
+:imagesdir: media/
+:title-logo-image: image:../logo/casemate_logo.png
+:docinfo: shared
+
+== Intro
+
+include::sections/intro.adoc[]
+
+== The Casemate model
+
+include::sections/model.adoc[]
+
+== Casemate-Check: CLI and Usage
+
+include::sections/usage_check.adoc[]
+
+== Casemate-Lib: Usage
+
+include::sections/usage_lib.adoc[]
+
+== Casemate trace format
+
+include::sections/trace-format.adoc[]
+
+== References
+
+bibliography::[]

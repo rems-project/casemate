@@ -130,8 +130,7 @@ See the [examples](./examples/) directory.
 Documentation
 ---
 
-See [doc/overview.md](./doc/overview.md) for explanation of how the checker works.
-See [doc/trace-format.md](./doc/trace-format.md) for information about the format the offline checker accepts.
+An asciidoc manual at [doc/manual.html](doc/manual.html), with [version hosted online here](https://www.cl.cam.ac.uk/~bs630/rems-project/casemate/manual.html).
 
 Acknowledgements
 ---

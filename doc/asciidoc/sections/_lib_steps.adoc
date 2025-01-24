@@ -1,0 +1,55 @@
+
+The model transitions are broadly separated into three categories:
+
+* hardware steps, for individual accesses and instructions.
+
+* abstract steps, for C-level abstract actions (e.g. variable initialisation and memset).
+
+* hints, for providing out-of-band ownership information.
+
+****
+See the full transition interface at https://github.com/rems-project/casemate/blob/main/src/lib/include/casemate-in/casemate-helpers.in.h.
+****
+
+==== Hardware steps
+
+* `casemate_model_step_write(MEMORY_ORDER, LOC, VAL)`
+
+* `casemate_model_step_read(LOC, VAL)`
+
+****
+Reads do not transition the state, but check the value is consistent with the current state.
+In this way, they behave as a sanity check.
+****
+
+* `casemate_model_step_dsb(DxB_KIND)`
+
+* `casemate_model_step_isb()`
+
+* `casemate_model_step_tlbi1(TLBI_KIND)`
+
+* `casemate_model_step_tlbi3(TLBI_KIND, PAGE_NUMBER, LEVEL_HINT)`
+
+* `casemate_model_step_msr(SYSREG_KIND, VAL)`
+
+==== Abstract steps
+
+* `casemate_model_step_init(LOC, SIZE)` - Zero initialise a region.
+
+* `casemate_model_step_memset(LOC, VAL, SIZE)`
+
+* `casemate_model_step_lock(LOC)` and `casemate_model_step_unlock(LOC)` for acquiring/releasing a lock.
+
+==== Hint steps
+
+There is only one hint transition:
+
+* `casemate_model_step_hint(HINT_KIND, LOC, VAL)`, where `HINT_KIND` is one of:
+** `GHOST_HINT_SET_ROOT_LOCK` to associate a pagetable root with a particular lock.
+** `GHOST_HINT_SET_OWNER_ROOT` to associate a pagetable location with a particular tree.
+** `GHOST_HINT_RELEASE_TABLE` to remove association of a page table and its children with its parents.
+** `GHOST_HINT_SET_PTE_THREAD_OWNER` to mark a particular location as thread-local.
+
+****
+See the full transition datatype definitions at https://github.com/rems-project/casemate/blob/main/src/lib/include/casemate-in/casemate-transitions.in.h.
+****
