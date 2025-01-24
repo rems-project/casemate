@@ -1,30 +1,30 @@
-The Casemate model tracks, for each location, a finite state machine
-which encodes the protocol that location should be following, e.g. _break-before-make_.
-The automata takes steps on each operation:
+The Casemate model tracks each location with a finite state machine
+which encodes the protocol that the location should be following, e.g. _break-before-make_.
+This automaton takes steps on each operation:
 page table write, TLB maintenace, system register update, and barrier.
-An operation happening which the current state of that location does not support
-indicates a violation of the protocol,
-and an error is reported to the user.
+When an operation that is not supported by the current state of that location takes place,
+the Casemate model indicates a violation of the protocol,
+and Casemate reports an error to the user.
 
 ****
-The Casemate top-level automaton tracks for each potential page table location
+The Casemate top-level automaton tracks, for each potential page table location,
 whether it is _clean_. Unclean locations then require the proper TLB maintenance.
 
 image::toplevelautomaton.png[]
 ****
 
-The protocol is hierarchical,
-we track globally whether each page table location has been cleaned enough from TLBs to now be writeable,
-but each individual thread must follow a sub-protocol to perform the necessary cleaning to transition the global state from unclean to clean.
+The protocol is hierarchical:
+globally, we track whether each page table location has been cleaned enough since previous TLBs to now be writeable;
+individually, each thread must follow a sub-protocol to perform the necessary cleaning to transition the global state from unclean to clean.
 
 ****
-The Casemate cleaning sub-protocol requires a single thread to perform all the necessary cleaning with correct barriers,
+The Casemate cleaning sub-protocol requires a single thread to perform all the necessary cleaning with the correct barriers,
 to ensure that the location is seen as clean globally.
 
 image::subautomaton.png[]
 ****
 
-To ensure the transitions do not miss transitions due to racy concurrent accesses,
-the Casemate model can, optionally, enforce data race freedom over the page tables
+To ensure that the automata do not miss transitions due to racy concurrent accesses,
+the Casemate model can, optionally, check data race freedom over the page tables
 (at a per-tree granularity),
-reporting a violation if two threads try access the same page table tree at the same time.
+reporting a violation if two threads try to access the same page table tree at the same time.
