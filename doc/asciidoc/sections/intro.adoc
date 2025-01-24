@@ -1,0 +1,31 @@
+Casemate is a tool for testing systems software use of low-level hardware primitives.
+
+Systems software must often perform low-level operations
+which interact with specific hardware mechanisms,
+such as cache and TLB maintenance, updating page tables,
+updates to the system configuration, and so on.
+Software must ensure that particular protocols are observed when doing such an operation,
+and failure to do so can result in loss of service or security guarantees.
+
+On Arm, updates to page tables must follow a particular _break-before-make_ protocol.
+Failure to do so leads to an unpredictable state which invalidates many of the security guarantees
+a hypervisor or operating system, or other such isolation kernel, seek to provide.
+The Casemate model encodes a number of such protocols to monitor and validate
+that systems software is correctly following the protocols and to call out violations where they exist.
+
+There are two modes of operation:
+
+* Online: built as a library (`casemate-lib`), casemate can run with the code monitoring accesses and reporting failures at runtime.
+
+* Offline: as an external tool (`casemate-check`), which checks a log file for violations.
+
+The Casemate model currently supports Arm-A, and the following page table protocols:
+
+* Updating page tables with break-before-make.
+  (For both Stage 1 and Stage 2).
+
+* Allocation, zeroing, freeing, and re-use of page tables.
+
+* Context switching between different page tables.
+
+* Thread-local address spaces.
