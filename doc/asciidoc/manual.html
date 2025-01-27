@@ -554,24 +554,24 @@ and failure to do so can result in loss of service or security guarantees.</p>
 <p>On Arm, updates to page tables must follow a particular <em>break-before-make</em> protocol.
 Failure to do so leads to an unpredictable state which invalidates many of the security guarantees
 a hypervisor or operating system, or other such isolation kernel, seek to provide.
-The Casemate model encodes a number of such protocols to monitor and validate
-that systems software is correctly following the protocols and to call out violations where they exist.</p>
+Casemate is powered by the Casemate model, which encodes a number of such protocols to monitor and validate
+that systems software is correctly following the protocols and to call out violations when they occur.</p>
 </div>
 <div class="paragraph">
-<p>There are two modes of operation:</p>
+<p>Casemate has two modes of operation:</p>
 </div>
 <div class="ulist">
 <ul>
 <li>
-<p>Online: built as a library (<code>casemate-lib</code>), casemate can run with the code monitoring accesses and reporting failures at runtime.</p>
+<p>Online: as a library (<code>casemate-lib</code>), Casemate can run with the code monitoring accesses and reporting failures at runtime.</p>
 </li>
 <li>
-<p>Offline: as an external tool (<code>casemate-check</code>), which checks a log file for violations.</p>
+<p>Offline: as an external tool (<code>casemate-check</code>), Casemate can check a log file for violations.</p>
 </li>
 </ul>
 </div>
 <div class="paragraph">
-<p>The Casemate model currently supports Arm-A, and the following page table protocols:</p>
+<p>Casemate currently supports Arm-A, and the following page table protocols:</p>
 </div>
 <div class="ulist">
 <ul>
@@ -596,18 +596,18 @@ that systems software is correctly following the protocols and to call out viola
 <h2 id="_the_casemate_model">The Casemate model</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The Casemate model tracks, for each location, a finite state machine
-which encodes the protocol that location should be following, e.g. <em>break-before-make</em>.
-The automata takes steps on each operation:
+<p>The Casemate model tracks each location with a finite state machine
+which encodes the protocol that the location should be following, e.g. <em>break-before-make</em>.
+This automaton takes steps on each operation:
 page table write, TLB maintenace, system register update, and barrier.
-An operation happening which the current state of that location does not support
-indicates a violation of the protocol,
-and an error is reported to the user.</p>
+When an operation that is not supported by the current state of that location takes place,
+the Casemate model indicates a violation of the protocol,
+and Casemate reports an error to the user.</p>
 </div>
 <div class="sidebarblock">
 <div class="content">
 <div class="paragraph">
-<p>The Casemate top-level automaton tracks for each potential page table location
+<p>The Casemate top-level automaton tracks, for each potential page table location,
 whether it is <em>clean</em>. Unclean locations then require the proper TLB maintenance.</p>
 </div>
 <div class="imageblock">
@@ -618,14 +618,14 @@ whether it is <em>clean</em>. Unclean locations then require the proper TLB main
 </div>
 </div>
 <div class="paragraph">
-<p>The protocol is hierarchical,
-we track globally whether each page table location has been cleaned enough from TLBs to now be writeable,
-but each individual thread must follow a sub-protocol to perform the necessary cleaning to transition the global state from unclean to clean.</p>
+<p>The protocol is hierarchical:
+globally, we track whether each page table location has been cleaned enough since previous TLBs to now be writeable;
+individually, each thread must follow a sub-protocol to perform the necessary cleaning to transition the global state from unclean to clean.</p>
 </div>
 <div class="sidebarblock">
 <div class="content">
 <div class="paragraph">
-<p>The Casemate cleaning sub-protocol requires a single thread to perform all the necessary cleaning with correct barriers,
+<p>The Casemate cleaning sub-protocol requires a single thread to perform all the necessary cleaning with the correct barriers,
 to ensure that the location is seen as clean globally.</p>
 </div>
 <div class="imageblock">
@@ -636,10 +636,10 @@ to ensure that the location is seen as clean globally.</p>
 </div>
 </div>
 <div class="paragraph">
-<p>To ensure the transitions do not miss transitions due to racy concurrent accesses,
-the Casemate model can, optionally, enforce data race freedom over the page tables
+<p>To ensure that the automata do not miss transitions due to racy concurrent accesses,
+the Casemate model can, optionally, check data race freedom over the page tables
 (at a per-tree granularity),
-reporting a violation if two threads try access the same page table tree at the same time.</p>
+reporting a violation if two threads try to access the same page table tree at the same time.</p>
 </div>
 </div>
 </div>
@@ -666,7 +666,7 @@ reporting a violation if two threads try access the same page table tree at the 
 <p><code>-q</code> makes the tool quiet, with no output.</p>
 </li>
 <li>
-<p><code>--color</code>   enabl ANSI escape color codes</p>
+<p><code>--color</code>   enable ANSI escape color codes</p>
 </li>
 <li>
 <p><code>-a | --no-color</code>   force ascii-only, no ANSI escape color codes</p>
@@ -1096,7 +1096,7 @@ e.g. reading physical memory, printing a log record, or reporting a violation,
 it does so through a generic <em>ghost driver</em> that the user initialises as a struct-of-function-pointers.</p>
 </div>
 <div class="paragraph">
-<p>`casemate-check&#8217;s driver is given below/.</p>
+<p>An exmple driver from <code>casemate-check</code> is given below:</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -1498,7 +1498,7 @@ TLBI-OP-ADDR =
 <h4 id="_hints">HINTs</h4>
 <div class="paragraph">
 <p>Hint transitions update purely logical state,
-assocating pagetables with locks and so on.</p>
+associating pagetables with locks and so on.</p>
 </div>
 <div class="listingblock">
 <div class="content">
@@ -1636,7 +1636,7 @@ HINT =
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2025-01-24 14:37:32 UTC
+Last updated 2025-01-24 14:54:55 UTC
 </div>
 </div>
 </body>
