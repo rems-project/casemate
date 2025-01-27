@@ -11,7 +11,7 @@ General options:
 
 * `-q` makes the tool quiet, with no output.
 
-* `--color`   enabl ANSI escape color codes
+* `--color`   enable ANSI escape color codes
 
 * `-a | --no-color`   force ascii-only, no ANSI escape color codes
 
