@@ -29,7 +29,7 @@ There are two ways to use casemate:
 2. At runtime, with a library version of the checker linked into the program to test.
 
 The offline checker takes log files containing traces,
-in a format described in [doc/trace-format.md](./doc/trace-format.md),
+in a format described in [trace-format.adoc](./doc/asciidoc/sections/trace-format.adoc),
 and checks that the trace does not violate the protocols being checked.
 
 One can also bake the checker into the kernel using the library directly, linking the generated object file into the build.
