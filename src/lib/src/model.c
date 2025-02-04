@@ -670,6 +670,14 @@ static void step_msr(struct ghost_hw_step *step)
 		ghost_assert(ret);
 		root = ttbr_extract_baddr(step->msr_data.val);
 		id = ttbr_extract_id(step->msr_data.val);
+
+		/* TTBR0_EL2 in non-VHE mode has a Res0 ASID */
+		if (step->msr_data.sysreg == SYSREG_TTBR_EL2) {
+			if (id != 0) {
+				GHOST_MODEL_CATCH_FIRE("TTBR0_EL2 ASID is reserved 0");
+			}
+		}
+
 		roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
 
 		/* if that root with that id exists already, were just context switching */
