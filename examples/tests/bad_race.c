@@ -19,8 +19,16 @@ __attribute__((aligned(4096)))
 u64 table[512];
 u64 l;
 
-int write_pte(void *arg)
+int write_pte1(void *arg)
 {
+	WRITE_RELEASE(table[1], 1);
+	send((tid_t)2, 1);
+	return 0;
+}
+
+int write_pte2(void *arg)
+{
+	recv();
 	WRITE_RELEASE(table[1], 1);
 	return 0;
 }
@@ -36,8 +44,8 @@ int main(int argc, char **argv)
 
 	/* track table as the root of a tree */
 	MSR(SYSREG_VTTBR, (u64)table);
-	spawn_thread(write_pte);
-	spawn_thread(write_pte);
+	spawn_thread(write_pte1);
+	spawn_thread(write_pte2);
 	join();
 
 	return 0;

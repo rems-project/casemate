@@ -212,6 +212,14 @@ void common_read_argv(int argc, char **argv)
 int no_spawned_threads;
 thrd_t threads[4];
 
+struct channel {
+	int full;
+	int content;
+};
+
+struct channel channel[4];
+mtx_t m;
+
 void spawn_thread(thrd_start_t fn)
 {
 	int err;
@@ -226,6 +234,37 @@ void join(void)
 	for (int i = 0; i < no_spawned_threads; i++) {
 		int err = thrd_join(threads[i], NULL);
 		assert(err == thrd_success);
+	}
+}
+
+void send(tid_t to, int v) {
+	while (1) {
+		mtx_lock(&m);
+		if (channel[to].full) {
+			mtx_unlock(&m);
+			continue;
+		}
+
+		channel[to].content = v;
+		channel[to].full = 1;
+		mtx_unlock(&m);
+	}
+}
+
+int recv(void) {
+	int v;
+	tid_t tid = casemate_cpu_id();
+	while (1) {
+		mtx_lock(&m);
+		if (!channel[tid].full) {
+			mtx_unlock(&m);
+			continue;
+		}
+
+		v = channel[tid].content;
+		channel[tid].full = 0;
+		mtx_unlock(&m);
+		return v;
 	}
 }
 
@@ -275,4 +314,6 @@ void common_init(int argc, char **argv)
 	st = malloc(sm_size);
 	initialise_casemate_model(&opts, 0, 0, (u64)st, sm_size);
 	initialise_ghost_driver(&sm_driver);
+
+	mtx_init(&m, mtx_plain);
 }
