@@ -30,7 +30,7 @@ int main(int argc, char **argv)
 	MSR(SYSREG_VTTBR, (u64)root);
 
 	/* switch away and free the whole root */
-	MSR(SYSREG_VTTBR, (u64)new_root);
+	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)new_root, ID1));
 	HINT(GHOST_HINT_RELEASE_TABLE, (u64)root, 0);
 
 	/* can now re-use child in new_root */

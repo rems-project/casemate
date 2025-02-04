@@ -1,5 +1,5 @@
-(mem-init (id 0) (tid 0) (address 0xaaaae4e94000) (size 0x1000) (src "examples/tests/bad_unlocked_write.c:18"))
-(hint (id 1) (tid 0) (kind set_root_lock) (location 0xaaaae4e94000) (value 0xaaaae4e95000) (src "examples/tests/bad_unlocked_write.c:19"))
-(sysreg-write (id 2) (tid 0) (sysreg vttbr_el2) (value 0xaaaae4e94000) (src "examples/tests/bad_unlocked_write.c:20"))
-(mem-write (id 3) (tid 0) (mem-order plain) (address 0xaaaae4e94000) (value 0x0) (src "examples/tests/bad_unlocked_write.c:21"))
+(mem-init (id 0) (tid 0) (address 0xaaaad2224000) (size 0x1000) (src "examples/tests/bad_unlocked_write.c:18"))
+(hint (id 1) (tid 0) (kind set_root_lock) (location 0xaaaad2224000) (value 0xaaaad2225000) (src "examples/tests/bad_unlocked_write.c:19"))
+(sysreg-write (id 2) (tid 0) (sysreg vttbr_el2) (value 0xaaaad2224000) (src "examples/tests/bad_unlocked_write.c:20"))
+(mem-write (id 3) (tid 0) (mem-order plain) (address 0xaaaad2224000) (value 0x0) (src "examples/tests/bad_unlocked_write.c:21"))
 ! must write to pte while holding owner lock

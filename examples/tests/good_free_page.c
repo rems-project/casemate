@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 	UNLOCK(l1);
 
 	/* can now re-use it in another tree */
-	MSR(SYSREG_VTTBR, (u64)new_root);
+	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)new_root, ID1));
 	LOCK(l2);
 	WRITE_ONCE(new_root[0], (u64)child | 0b11);
 	UNLOCK(l2);

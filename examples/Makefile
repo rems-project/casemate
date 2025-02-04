@@ -16,6 +16,11 @@ build-objs += good_write_child
 build-objs += bad_switch_wrong_vmid
 build-objs += good_bbm_by_VMID
 build-objs += bad_bbm_by_wrong_VMID
+build-objs += bad_overlap_VMID
+build-objs += good_bbm_stage1
+build-objs += bad_no_bbm_stage1
+build-objs += bad_overlap_ASID
+build-objs += bad_EL2_ASID
 
 list-build-objs:
 	@echo $(build-objs)
