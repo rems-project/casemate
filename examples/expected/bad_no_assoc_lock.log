@@ -1,4 +1,4 @@
-(mem-init (id 0) (tid 0) (address 0xaaaab0104000) (size 0x1000) (src "examples/tests/bad_no_assoc_lock.c:17"))
-(sysreg-write (id 1) (tid 0) (sysreg vttbr_el2) (value 0xaaaab0104000) (src "examples/tests/bad_no_assoc_lock.c:18"))
-(mem-write (id 2) (tid 0) (mem-order plain) (address 0xaaaab0104000) (value 0x0) (src "examples/tests/bad_no_assoc_lock.c:19"))
+(mem-init (id 0) (tid 0) (address 0xaaaacbf54000) (size 0x1000) (src "examples/tests/bad_no_assoc_lock.c:17"))
+(sysreg-write (id 1) (tid 0) (sysreg vttbr_el2) (value 0xaaaacbf54000) (src "examples/tests/bad_no_assoc_lock.c:18"))
+(mem-write (id 2) (tid 0) (mem-order plain) (address 0xaaaacbf54000) (value 0x0) (src "examples/tests/bad_no_assoc_lock.c:19"))
 ! must have associated owner with a root

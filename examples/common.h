@@ -27,6 +27,10 @@ int recv(void);
 #define MAKE_TTBR(BADDR,ID) \
 	((BADDR) | ((ID) << 48ULL))
 
+#define ID0 0ULL
+#define ID1 1ULL
+#define ID2 2ULL
+
 #define WRITE_ONCE(VAR, VAL) \
 	({	\
 		casemate_model_step_write(WMO_plain, (u64)&VAR, (VAL)); \
