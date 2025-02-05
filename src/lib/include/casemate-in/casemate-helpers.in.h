@@ -112,6 +112,12 @@ static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, e
 	});
 }
 
+#define casemate_model_step_tlbi_va(TLBI_KIND, ADDR, TTL, ASID) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL) | ((ASID) << 48ULL))
+
+#define casemate_model_step_tlbi_ipa(TLBI_KIND, ADDR, TTL) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
+
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
 static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
 {
