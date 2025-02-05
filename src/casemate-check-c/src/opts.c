@@ -42,7 +42,15 @@ static void print_help_and_quit(void)
 		"  -a --no-color  	ascii-only, no ANSI escape color codes\n"
 		"  -D --debug     	debug mode\n"
 		"  -W<addr>       	watch this address\n"
+		"  -h             	print this usage and exit\n"
+		"  -V --version   	print casemate and casemate-chck versions\n"
 	);
+	exit(0);
+}
+
+static void print_version_and_quit(void)
+{
+	printf("casemate %s\n", CASEMATE_VERSION);
 	exit(0);
 }
 
@@ -67,11 +75,12 @@ void parse_opts(int argc, char **argv)
 		{"color",     no_argument, 0,  'G' },
 		{"debug",      no_argument, 0,  'D' },
 		{"help",       no_argument, 0,  'h' },
+		{"version",    no_argument, 0,  'V' },
 		{0,            0,           0,  0 }
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptTqdhUDRW:", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptTqdhUDRVW:", long_options, 0)) != - 1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -140,6 +149,10 @@ void parse_opts(int argc, char **argv)
 
 		case 'h':
 			print_help_and_quit();
+			break;
+
+		case 'V':
+			print_version_and_quit();
 			break;
 
 		default:
