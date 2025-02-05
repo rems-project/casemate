@@ -6,6 +6,8 @@
  * Casemate public interface
  */
 
+#define CASEMATE_VERSION "1.0.0"
+
 /* auto-included by Makefile */
 /* Types also defined by UoC's pKVM ghost code headers
  * so do not try to include them in the top-level casemate.h if they are already defined
