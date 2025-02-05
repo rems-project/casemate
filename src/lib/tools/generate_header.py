@@ -17,6 +17,7 @@ ghost = (INCLUDE / "casemate-in" / "casemate-ghost-types.in.h").read_text()
 state = (INCLUDE / "casemate-in" / "casemate-state.in.h").read_text()
 transitions = (INCLUDE / "casemate-in" / "casemate-transitions.in.h").read_text()
 config = (INCLUDE / "casemate-in" / "casemate-config.in.h").read_text()
+version = (INCLUDE / "casemate-in" / "casemate-version.in.h").read_text().strip()
 
 def make_header(template):
   return (
@@ -38,6 +39,9 @@ def make_header(template):
       ).replace(
           "CASEMATE_GHOST_H",
           ghost
+      ).replace(
+          "CASEMATE_VERSION_H",
+          version
       )
     )
   )

@@ -5,6 +5,8 @@
  * Casemate public interface
  */
 
+#define CASEMATE_VERSION "CASEMATE_VERSION_H"
+
 /* auto-included by Makefile */
 CASEMATE_GHOST_H
 
