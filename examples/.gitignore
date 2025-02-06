@@ -25,3 +25,4 @@
 /bad_free_page_without_clean
 /good_free_page
 /good_free_tree
+/good_write_child

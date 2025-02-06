@@ -12,6 +12,7 @@ build-objs += bad_reuse_page
 build-objs += bad_free_page_without_clean
 build-objs += good_free_page
 build-objs += good_free_tree
+build-objs += good_write_child
 
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
