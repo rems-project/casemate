@@ -1,0 +1,12 @@
+(mem-init (id 0) (tid 0) (address 0xaaaacc9b4000) (size 0x1000) (src "examples/tests/bad_free_page_without_clean.c:23"))
+(mem-init (id 1) (tid 0) (address 0xaaaacc9b5000) (size 0x1000) (src "examples/tests/bad_free_page_without_clean.c:24"))
+(mem-init (id 2) (tid 0) (address 0xaaaacc9b6000) (size 0x1000) (src "examples/tests/bad_free_page_without_clean.c:25"))
+(hint (id 3) (tid 0) (kind set_root_lock) (location 0xaaaacc9b4000) (value 0xaaaacc9b7000) (src "examples/tests/bad_free_page_without_clean.c:26"))
+(hint (id 4) (tid 0) (kind set_root_lock) (location 0xaaaacc9b6000) (value 0xaaaacc9b7008) (src "examples/tests/bad_free_page_without_clean.c:27"))
+(hint (id 5) (tid 0) (kind set_owner_root) (location 0xaaaacc9b5000) (value 0xaaaacc9b4000) (src "examples/tests/bad_free_page_without_clean.c:28"))
+(mem-write (id 6) (tid 0) (mem-order plain) (address 0xaaaacc9b4000) (value 0xaaaacc9b5003) (src "examples/tests/bad_free_page_without_clean.c:29"))
+(sysreg-write (id 7) (tid 0) (sysreg vttbr_el2) (value 0xaaaacc9b4000) (src "examples/tests/bad_free_page_without_clean.c:31"))
+(lock (id 8) (tid 0) (address 0xaaaacc9b7000) (src "examples/tests/bad_free_page_without_clean.c:33"))
+(mem-write (id 9) (tid 0) (mem-order plain) (address 0xaaaacc9b4000) (value 0x0) (src "examples/tests/bad_free_page_without_clean.c:34"))
+(hint (id 10) (tid 0) (kind release_table) (location 0xaaaacc9b5000) (value 0x0) (src "examples/tests/bad_free_page_without_clean.c:37"))
+! cannot release table where children are still unclean
