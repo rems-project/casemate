@@ -1260,6 +1260,17 @@ static void step_hw(struct ghost_hw_step *step)
 //////////////////////
 // HINT
 
+void check_release_cb(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_location *loc = ctxt->loc;
+
+	ghost_assert(loc->initialised);
+	ghost_assert(loc->is_pte);
+
+	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
+		GHOST_MODEL_CATCH_FIRE("cannot release table where children are still unclean");
+}
+
 static void step_hint_set_root_lock(u64 root, gsm_lock_addr_t *lock)
 {
 	// TODO: BS: on teardown a VM's lock might get disassociated,
@@ -1277,23 +1288,25 @@ static void step_hint_set_owner_root(u64 phys, u64 root)
 	for (u64 p = PAGE_ALIGN_DOWN(phys); p < PAGE_ALIGN(phys); p += 8) {
 		struct sm_location *loc = location(p);
 
-		// TODO: BS: before letting us disassociate a pte with a given VM/tree,
+		if (loc->is_pte)
+			GHOST_MODEL_CATCH_FIRE("cannot change owned root if already in a tree");
+
+		// before letting us disassociate a pte with a given VM/tree,
 		// first we need to check that it's clean enough to forget about
 		// the association with the old VM
+		traverse_pgtable_from(
+			root,
+			loc->owner,
+			loc->descriptor.ia_region.range_size,
+			loc->descriptor.level,
+			loc->descriptor.stage,
+			check_release_cb,
+			READ_UNLOCKED_LOCATIONS,
+			NULL
+		);
 
 		loc->owner = root;
 	}
-}
-
-void check_release_cb(struct pgtable_traverse_context *ctxt)
-{
-	struct sm_location *loc = ctxt->loc;
-
-	ghost_assert(loc->initialised);
-	ghost_assert(loc->is_pte);
-
-	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
-		GHOST_MODEL_CATCH_FIRE("cannot release table where children are still unclean");
 }
 
 static void step_hint_release_table(u64 root)
@@ -1311,7 +1324,8 @@ static void step_hint_release_table(u64 root)
 		loc->descriptor.stage,
 		check_release_cb,
 		READ_UNLOCKED_LOCATIONS,
-		NULL);
+		NULL
+	);
 	try_unregister_root(loc->descriptor.stage, root);
 
 	// remove the mapping from the root to the lock of the page-table
