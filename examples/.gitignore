@@ -21,3 +21,7 @@
 /bad_no_assoc_lock
 /bad_unlocked_write
 /bad_race
+/bad_reuse_page
+/bad_free_page_without_clean
+/good_free_page
+/good_free_tree
