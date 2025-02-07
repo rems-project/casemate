@@ -6,7 +6,7 @@
  * Casemate public interface
  */
 
-#define CASEMATE_VERSION "2.0.0"
+#define CASEMATE_VERSION "2.0.1-wip"
 
 /* auto-included by Makefile */
 /* Types also defined by UoC's pKVM ghost code headers
