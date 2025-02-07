@@ -28,4 +28,6 @@ Casemate currently supports Arm-A, and the following page table protocols:
 
 * Context switching between different page tables.
 
+* Invalidation-by-VMID and re-use of VMIDs.
+
 * Thread-local address spaces.
