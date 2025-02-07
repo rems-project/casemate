@@ -248,6 +248,7 @@ void send(tid_t to, int v) {
 		channel[to].content = v;
 		channel[to].full = 1;
 		mtx_unlock(&m);
+		return;
 	}
 }
 
