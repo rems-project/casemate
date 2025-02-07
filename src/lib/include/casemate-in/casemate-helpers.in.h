@@ -79,8 +79,8 @@ static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 	});
 }
 
-#define casemate_model_step_tlbi3(...) __casemate_model_step_tlbi3(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi3(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 page, int level)
+#define casemate_model_step_tlbi_reg(...) __casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -90,15 +90,14 @@ static inline void __casemate_model_step_tlbi3(u64 tid, struct src_loc src_loc, 
 			.kind = HW_TLBI,
 			.tlbi_data = (struct trans_tlbi_data){
 				.tlbi_kind = kind,
-				.page = page,
-				.level = level,
+				.value = value,
 			},
 		},
 	});
 }
 
-#define casemate_model_step_tlbi1(...) __casemate_model_step_tlbi1(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi1(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
+#define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -112,6 +111,12 @@ static inline void __casemate_model_step_tlbi1(u64 tid, struct src_loc src_loc, 
 		},
 	});
 }
+
+#define casemate_model_step_tlbi_va(TLBI_KIND, ADDR, TTL, ASID) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL) | ((ASID) << 48ULL))
+
+#define casemate_model_step_tlbi_ipa(TLBI_KIND, ADDR, TTL) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
 static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)

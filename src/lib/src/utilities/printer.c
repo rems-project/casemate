@@ -236,7 +236,13 @@ int gp_print_cm_loc(void *arg, struct sm_location *loc)
 		u64 start = loc->descriptor.ia_region.range_start;
 		u64 end = loc->descriptor.ia_region.range_size + start;
 
-		TRY(ghost_fprintf(arg, "%s[%16p]=%16lx (pte_st:", init, loc->phys_addr, loc->val));
+		char stage = (
+			loc->descriptor.stage == ENTRY_STAGE1 ? '1' :
+			loc->descriptor.stage == ENTRY_STAGE2 ? '2' :
+			'?'
+		);
+
+		TRY(ghost_fprintf(arg, "%s[%16p]=%16lx (S%c pte_st:", init, loc->phys_addr, loc->val, stage));
 		TRY(gp_print_cm_pte_state(arg, &loc->state));
 		TRY(ghost_fprintf(arg, " root:%16p, range:%16lx-%16lx)", loc->owner, start, end));
 		return 0;
@@ -338,7 +344,17 @@ int gp_print_cm_mem(void *arg, struct casemate_model_memory *mem)
 	return 0;
 }
 
-int gp_print_cm_roots(void *arg, char *name, u64 len, u64 *roots)
+int gp_print_cm_root(void *arg, struct root *root)
+{
+	int ret;
+	ret = ghost_fprintf(arg, "%16p", root->baddr);
+	if (ret)
+		return ret;
+
+	return ghost_fprintf(arg, "/%d", root->id);
+}
+
+int gp_print_cm_roots(void *arg, char *name, struct roots *roots)
 {
 	int ret;
 
@@ -346,13 +362,19 @@ int gp_print_cm_roots(void *arg, char *name, u64 len, u64 *roots)
 	if (ret)
 		return ret;
 
-	if (len > 0) {
-		ret = ghost_fprintf(arg, "%16p", roots[0]);
+	if (roots->len > 0) {
+		struct root *root = &roots->roots[0];
+		ret = gp_print_cm_root(arg, root);
 		if (ret)
 			return ret;
 
-		for (u64 i = 1; i < len; i++) {
-			ret = ghost_fprintf(arg, ", %16p", roots[i]);
+		for (u64 i = 1; i < roots->len; i++) {
+			struct root *root = &roots->roots[i];
+			ret = ghost_fprintf(arg, ", ");
+			if (ret)
+				return ret;
+
+			ret = gp_print_cm_root(arg, root);
 			if (ret)
 				return ret;
 		}
@@ -403,12 +425,12 @@ int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 		"nr_s2_roots:.....%16lx\n",
 		s->base_addr,
 		s->size,
-		s->nr_s1_roots,
-		s->nr_s2_roots
+		s->roots_s1.len,
+		s->roots_s2.len
 	));
-	TRY(gp_print_cm_roots(arg, "s1", s->nr_s1_roots, s->s1_roots));
+	TRY(gp_print_cm_roots(arg, "s1", &s->roots_s1));
 	TRY(ghost_fprintf(arg, "\n"));
-	TRY(gp_print_cm_roots(arg, "s2", s->nr_s2_roots, s->s2_roots));
+	TRY(gp_print_cm_roots(arg, "s2", &s->roots_s2));
 	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_locks(arg, &s->locks));
 	TRY(ghost_fprintf(arg, "\n"));

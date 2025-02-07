@@ -44,6 +44,9 @@ struct sm_tlbi_op_method {
 			bool has_level_hint;
 			u8 level_hint;
 
+			bool has_asid;
+			u8 asid;
+
 			bool affects_last_level_only;
 		} by_address_data;
 
@@ -143,8 +146,7 @@ struct ghost_hw_step {
 
 		struct trans_tlbi_data {
 			enum tlbi_kind tlbi_kind;
-			u64 page;
-			u64 level;
+			u64 value;
 		} tlbi_data;
 
 		struct trans_msr_data {

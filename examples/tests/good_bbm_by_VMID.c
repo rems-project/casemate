@@ -13,37 +13,41 @@
 __attribute__((aligned(4096)))
 u64 root[512];
 u64 child[512];
-u64 new_root[512];
-u64 l1,l2;
+u64 new_child[512];
+u64 l;
 
 int main(int argc, char **argv)
 {
 	common_init(argc, argv);
 
+	/* tell the modle pud and pgd tables exist,
+	 * and logically associate them with the lock. */
 	TRANS_MEM_INIT((u64)root, 4096);
 	TRANS_MEM_INIT((u64)child, 4096);
-	TRANS_MEM_INIT((u64)new_root, 4096);
-	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)root, (u64)&l1);
-	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)new_root, (u64)&l2);
+	TRANS_MEM_INIT((u64)new_child, 4096);
+	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)root, (u64)&l);
 	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)child, (u64)root);
+	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)new_child, (u64)root);
+
+	/* make root[0] point to child */
 	WRITE_ONCE(root[0], (u64)child | 0b11);
 
-	MSR(SYSREG_VTTBR, (u64)root);
+	/* track pud as the root */
+	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)root, 0ULL));
 
-	/* remove child from the tree */
-	LOCK(l1);
+	LOCK(l);
 	WRITE_ONCE(root[0], 0);
 	DSB(ish);
 	TLBI_ADDR(ipas2e1is,0,3);
 	DSB(ish);
 	TLBI_ALL(vmalle1is);
 	DSB(ish);
-	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)child, (u64)NULL);
-	UNLOCK(l1);
 
-	/* can now re-use it in another tree */
-	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)new_root, ID1));
-	LOCK(l2);
-	WRITE_ONCE(new_root[0], (u64)child | 0b11);
-	UNLOCK(l2);
+	DSB(ish);
+	/* reset back, not strictly necessary but for completeness */
+	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)root, 0ULL));
+	DSB(ish);
+
+	WRITE_ONCE(root[0], (u64)new_child | 0b11);
+	UNLOCK(l);
 }

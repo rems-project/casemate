@@ -256,11 +256,32 @@ enum sm_tlbi_op_regime_kind decode_tlbi_regime_kind(enum tlbi_kind k)
 	}
 }
 
+static bool __decoded_tlbi_has_asid(struct trans_tlbi_data data, u8 *out_asid)
+{
+	switch (data.tlbi_kind) {
+	case TLBI_vale2is:
+	case TLBI_vae2is:
+		*out_asid = data.value & TLBI_ASID_MASK;
+		return true;
+
+	case TLBI_vmalle1is:
+	case TLBI_vmalle1:
+	case TLBI_ipas2e1is:
+	case TLBI_vmalls12e1:
+	case TLBI_vmalls12e1is:
+	case TLBI_alle1is:
+		return false;
+
+	default:
+		BUG();  // TODO: missing kind
+	}
+}
+
 struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data data)
 {
 	struct tlbi_op_method_by_address_data decoded_data = {0};
 
-	decoded_data.page = data.page;
+	decoded_data.page = data.value & TLBI_PAGE_MASK;
 
 	switch (data.tlbi_kind) {
 	case TLBI_vale2is:
@@ -271,14 +292,16 @@ struct tlbi_op_method_by_address_data decode_tlbi_by_addr(struct trans_tlbi_data
 		break;
 	}
 
-	decoded_data.page = data.page;
+	u64 level = data.value & TLBI_TTL_MASK;
 
-	if (data.level < 0b0100) {
+	if (level < 0b0100) {
 		decoded_data.has_level_hint = false;
 	} else {
 		decoded_data.has_level_hint = true;
-		decoded_data.level_hint = data.level & 0b11;
+		decoded_data.level_hint = level & 0b11;
 	}
+
+	decoded_data.has_asid = __decoded_tlbi_has_asid(data, &decoded_data.asid);
 
 	return decoded_data;
 }
@@ -289,7 +312,6 @@ struct tlbi_op_method_by_address_space_id_data decode_tlbi_by_space_id(struct tr
 	decoded_data.asid_or_vmid = 0;
 	return decoded_data;
 }
-
 
 struct sm_tlbi_op decode_tlbi(struct trans_tlbi_data data)
 {
@@ -512,89 +534,116 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 ///////////////////
 // Pagetable roots
 
-static bool root_exists_in(u64 *root_table, phys_addr_t root)
+static inline struct cm_thrd_ctxt *current_thread_context(void)
 {
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == root)
-			return true;
-	}
-
-	return false;
+	return &the_ghost_state->thread_context[cpu_id()];
 }
 
-static bool root_exists(phys_addr_t root)
+struct root *get_current_ttbr(void)
 {
-	return root_exists_in(the_ghost_state->s1_roots, root) || root_exists_in(the_ghost_state->s2_roots, root);
+	return current_thread_context()->current_s1;
 }
 
-static void try_insert_root(u64 *root_table, u64 root)
+struct root *get_current_vttbr(void)
 {
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == 0) {
-			root_table[i] = root;
-			return;
+	return current_thread_context()->current_s2;
+}
+
+struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
+{
+	for (int i = 0; i < roots->len; i++) {
+		if (roots->roots[i].id == id) {
+			return &roots->roots[i];
 		}
 	}
-
-	GHOST_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+	return NULL;
 }
 
-static void try_remove_root(u64 *root_table, u64 root)
+struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t root)
 {
-	for (int i = 0; i < MAX_ROOTS; i++) {
-		if (root_table[i] == root) {
-			root_table[i] = 0;
-			return;
+	for (int i = 0; i < roots->len; i++) {
+		if (roots->roots[i].baddr == root) {
+			return &roots->roots[i];
 		}
 	}
-
-	GHOST_MODEL_CATCH_FIRE("cannot insert more than MAX_ROOT roots");
+	return NULL;
 }
 
-
-void try_register_root(entry_stage_t stage, phys_addr_t root)
+void free_root(struct roots *roots, struct root *root)
 {
-	u64 *root_table;
+	ghost_assert(root != NULL);
 
+	u64 len = roots->len;
+	for (int i = 0; i < len; i++) {
+		/* remove exactly this root object */
+		if (&roots->roots[i] == root) {
+			len = roots->len--;
+
+			/* last slot: just free it */
+			if (i == len) {
+				return;
+			}
+
+			/* swap old last slot in */
+			roots->roots[i] = roots->roots[len];
+		}
+	}
+}
+
+bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
+{
+	switch (sysreg) {
+	case SYSREG_TTBR_EL2:
+		*out_stage = ENTRY_STAGE1;
+		return true;
+
+	case SYSREG_VTTBR:
+		*out_stage = ENTRY_STAGE2;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id)
+{
+	struct root new_root;
 	GHOST_LOG_CONTEXT_ENTER();
-	if (root_exists(root))
-		GHOST_MODEL_CATCH_FIRE("root already exists");
 
-	root_table = stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
-
-	// TODO: also associate ASID/VMID ?
-	try_insert_root(root_table, root);
-
-	if (stage == ENTRY_STAGE1) {
-		the_ghost_state->nr_s1_roots++;
-	} else {
-		the_ghost_state->nr_s2_roots++;
+	if (roots->len >= MAX_ROOTS) {
+		GHOST_MODEL_CATCH_FIRE("too many roots");
 	}
 
-	traverse_pgtable(root, stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
+	new_root = (struct root){
+		.baddr = baddr,
+		.id = id,
+		.refcount = 0,
+	};
+	roots->roots[roots->len++] = new_root;
+
+	traverse_pgtable(baddr, roots->stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 {
-	u64 *root_table;
-
+	struct roots *roots;
+	struct root *assoc_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	root_table =
-		stage == ENTRY_STAGE2 ? the_ghost_state->s2_roots : the_ghost_state->s1_roots;
+	roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
+	assoc_root = retrieve_root_for_baddr(roots, root);
 
-	if (! root_exists_in(root_table, root))
-		GHOST_MODEL_CATCH_FIRE("root doesn't exist");
+	if (! assoc_root)
+		GHOST_MODEL_CATCH_FIRE("root does not exist");
 
-	// TODO: also associate ASID/VMID ?
+	if (assoc_root->refcount > 0)
+		GHOST_MODEL_CATCH_FIRE("cannot release table still in use");
+
 	traverse_pgtable(root, stage, unmark_cb, READ_UNLOCKED_LOCATIONS, NULL);
-	try_remove_root(root_table, root);
-	if (stage == ENTRY_STAGE1) {
-		the_ghost_state->nr_s1_roots--;
-	} else {
-		the_ghost_state->nr_s2_roots--;
-	}
+	free_root(roots, assoc_root);
+
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -604,29 +653,80 @@ static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 
 static void step_msr(struct ghost_hw_step *step)
 {
-	u64 root;
+	bool ret;
+	phys_addr_t root;
+	vmid_t id;
+	entry_stage_t stage;
+	struct roots *roots;
+	struct root *assoc_root;
+
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+
 	// TODO: BS: also remember which is current?
 	switch (step->msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
-		root = extract_s1_root(step->msr_data.val);
-
-		if (! root_exists_in(the_ghost_state->s1_roots, root)) {
-			try_register_root(ENTRY_STAGE1, root);
-		}
-		// TODO: BS: else, at least check ASID/VMID match...
-
-		break;
 	case SYSREG_VTTBR:
-		root = extract_s2_root(step->msr_data.val);
+		ret = stage_from_ttbr(step->msr_data.sysreg, &stage);
+		ghost_assert(ret);
+		root = ttbr_extract_baddr(step->msr_data.val);
+		id = ttbr_extract_id(step->msr_data.val);
 
-		if (! root_exists_in(the_ghost_state->s2_roots, root)) {
-			try_register_root(ENTRY_STAGE2, root);
+		/* TTBR0_EL2 in non-VHE mode has a Res0 ASID */
+		if (step->msr_data.sysreg == SYSREG_TTBR_EL2) {
+			if (id != 0) {
+				GHOST_MODEL_CATCH_FIRE("TTBR0_EL2 ASID is reserved 0");
+			}
 		}
-		// TODO: BS: else, at least check ASID/VMID match...
+
+		roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
+
+		/* if that root with that id exists already, were just context switching */
+		assoc_root = retrieve_root_for_baddr(roots, root);
+		if (assoc_root && assoc_root->id == id) {
+			goto context_switch;
+		}
+		/* see if that root is already associated with a different (VM/AS)ID */
+		else if (assoc_root && assoc_root->id != id) {
+			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+		}
+
+		/* see if VMID is already associated */
+		assoc_root = retrieve_root_for_id(roots, id);
+		if (assoc_root && assoc_root->baddr != root) {
+			GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
+		}
+		/* if that VMID is free, check we have not already associated a different VMID */
+		else if (assoc_root && assoc_root->id != id) {
+			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+		}
+		/* otherwise, that VMID is free and this root has no associated VMID
+		 * so attach this one */
+		else {
+			try_register_root(roots, root, id);
+		}
+
+context_switch:
+		/* decrement refcount on current (if applicable)*/
+		assoc_root = (stage == ENTRY_STAGE1) ? ctxt->current_s1 : ctxt->current_s2;
+		if (assoc_root)
+			assoc_root->refcount--;
+
+		/* and increment refcount on one we just switched to */
+		assoc_root = retrieve_root_for_id(roots, id);
+		ghost_assert(assoc_root);
+		assoc_root->refcount++;
+
+		/* and make it the curent context */
+		if (stage == ENTRY_STAGE1) {
+			ctxt->current_s1 = assoc_root;
+		} else {
+			ctxt->current_s2 = assoc_root;
+		}
 
 		break;
+
 	default:
-		unreachable();
+		GHOST_MODEL_CATCH_FIRE("wrote to unsupported sysreg - only support writes to (V)TTBR");
 	}
 }
 
@@ -1120,12 +1220,90 @@ static bool all_children_invalid(struct sm_location *loc)
 	return true;
 }
 
-static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
+static bool __get_tlbi_asid(struct sm_tlbi_op *tlbi, u64 *out_id)
 {
-	struct sm_tlbi_op *tlbi;
+	switch (tlbi->method.kind) {
+	case TLBI_OP_BY_INPUT_ADDR:
+		if (tlbi->method.by_address_data.has_asid) {
+			*out_id = tlbi->method.by_address_data.asid;
+			return true;
+		}
+		break;
+
+	case TLBI_OP_BY_ADDR_SPACE:
+		if (tlbi->stage == TLBI_OP_STAGE1) {
+			*out_id = tlbi->method.by_id_data.asid_or_vmid;
+			return true;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return false;
+}
+
+/**
+ * __should_perform_tlbi_matches_id() - Check that the identifier associated with the TLBI matches the pte
+ */
+static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
+	/* for VMID checks, we read the VTTBR
+	 * and check the VTTBR VMID annotation matches the one associated with this root
+	 */
+	if (tlbi->regime == TLBI_REGIME_EL10 && ctxt->exploded_descriptor.stage == ENTRY_STAGE2) {
+		struct root *pte_root = retrieve_root_for_baddr(&the_ghost_state->roots_s2, ctxt->root);
+		if (get_current_vttbr()->id != pte_root->id)
+			return false;
+		else
+			return true;
+	}
+
+	/* for TLBI that affects an ASID, it is supplied as an argument to the TLBI */
+	if (tlbi->regime == TLBI_REGIME_EL2 && ctxt->exploded_descriptor.stage == ENTRY_STAGE1) {
+		struct root *pte_root = retrieve_root_for_baddr(&the_ghost_state->roots_s1, ctxt->root);
+		u64 asid;
+
+		if (__get_tlbi_asid(tlbi, &asid))
+			if (asid != pte_root->id)
+				return false;
+	}
+
+	return true;
+}
+
+/**
+ * __should_perform_tlbi_matches_level() - Check that the level of the pte matches the TLBI level hint
+ */
+static bool __should_perform_tlbi_matches_level(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
+	if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only)
+		return false;
+	else
+		return true;
+}
+
+/**
+ * __should_perform_tlbi_matches_level() - Check that the level of the pte matches the TLBI level hint
+ */
+static bool __should_perform_tlbi_matches_addr(struct pgtable_traverse_context *ctxt, struct sm_tlbi_op *tlbi)
+{
 	u64 tlbi_addr;
 	u64 ia_start;
 	u64 ia_end;
+
+	// input-address range of the PTE we're visiting
+	ia_start = ctxt->exploded_descriptor.ia_region.range_start;
+	ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
+	tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
+
+	return (ia_start <= tlbi_addr) && (tlbi_addr < ia_end);
+}
+
+static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
+{
+	struct sm_tlbi_op *tlbi;
 
 	// If the location is not locked then do not apply the TLBI
 	if (!is_location_locked(ctxt->loc))
@@ -1147,19 +1325,11 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	if (tlbi->method.kind == TLBI_OP_BY_ADDR_SPACE) {
 		if (opts()->check_opts.promote_TLBI_by_id) {
 			tlbi->method.kind = TLBI_OP_BY_ALL;
-		} else {
-			GHOST_MODEL_CATCH_FIRE("Unsupported TLBI-by-(AS/VM)ID");
 		}
 	}
 
 	switch (tlbi->method.kind) {
 	case TLBI_OP_BY_INPUT_ADDR:
-		// input-address range of the PTE we're visiting
-		ia_start = ctxt->exploded_descriptor.ia_region.range_start;
-		ia_end = ia_start + ctxt->exploded_descriptor.ia_region.range_size;
-		tlbi_addr = tlbi->method.by_address_data.page << PAGE_SHIFT;
-
-
 
 		// If the PTE has valid children, the TLBI by VA is not enough
 		if (! ctxt->leaf) {
@@ -1169,22 +1339,34 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		}
 
 		// Test if the VA address of the PTE is the same as the VA of the TLBI
-		if (! ((ia_start <= tlbi_addr) && (tlbi_addr < ia_end))) {
+		if (! __should_perform_tlbi_matches_addr(ctxt, tlbi))
 			return false;
-		}
+
 
 		/*
 		 * if it is a leaf, but not at the last level, and we asked for last-level-only invalidation,
 		 * then nothing happens
 		 */
-		if (ctxt->level != 3 && tlbi->method.by_address_data.affects_last_level_only) {
+		if (! __should_perform_tlbi_matches_level(ctxt, tlbi))
 			return false;
-		}
+
+
+		/*
+		 * check whether the address space identifier (if any) associated with this TLBI
+		 * matches the id of the pte
+		 */
+		if (! __should_perform_tlbi_matches_id(ctxt, tlbi))
+			return false;
 
 		break;
 
 	case TLBI_OP_BY_ADDR_SPACE:
-		BUG(); // TODO: BS: by-VMID and by-ASID
+		/*
+		 * check whether the address space identifier (if any) associated with this TLBI
+		 * matches the id of the pte
+		 */
+		if (! __should_perform_tlbi_matches_id(ctxt, tlbi))
+			return false;
 
 	case TLBI_OP_BY_ALL:
 		return true;

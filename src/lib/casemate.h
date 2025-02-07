@@ -6,7 +6,7 @@
  * Casemate public interface
  */
 
-#define CASEMATE_VERSION "1.0.1-wip"
+#define CASEMATE_VERSION "2.0.0"
 
 /* auto-included by Makefile */
 /* Types also defined by UoC's pKVM ghost code headers
@@ -580,15 +580,67 @@ struct lock_state_map {
 gsm_lock_addr_t *owner_lock(sm_owner_t owner_id);
 
 /**
+ * CASEMATE_MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
+ */
+#define CASEMATE_MAX_VMIDS 64
+
+/**
+ * typedef vmid_t - A virtual machine identifier (VMID)
+ */
+typedef u64 vmid_t;
+
+/**
+ * typedef addr_id_t - Generic address space identifier (ASID/VMID).
+ */
+typedef u64 addr_id_t;
+
+/**
+ * struct vmid_map - Map from VMID to Root.
+ */
+struct vmid_map {
+	u64 len;
+	vmid_t vmids[CASEMATE_MAX_VMIDS];
+	sm_owner_t roots[CASEMATE_MAX_VMIDS];
+};
+
+/**
+ * struct root - A single root (base addr + ASID/VMID)
+ * @baddr: the root base (physical) address.
+ * @id: the associated ASID/VMID.
+ * @refcount: the number of CPUs that have this root currently active.
+ */
+struct root {
+	sm_owner_t baddr;
+	addr_id_t id;
+	u64 refcount;
+};
+
+/**
+ * struct roots - Pool of currently known roots
+ */
+struct roots {
+	u64 len;
+	entry_stage_t stage;
+	struct root roots[MAX_ROOTS];
+};
+
+/**
+ * struct cm_thrd_ctxt - Per thread context ghost copy
+ */
+struct cm_thrd_ctxt {
+	struct root *current_s1;
+	struct root *current_s2;
+};
+
+/**
  * struct casemate_model_state - Top-level ghost model state.
  * @base_addr: the physical address of the start of the (ghost) memory.
  * @size: the number of bytes in the ghost memory to track.
  * @memory: the actual ghost model memory.
  * @unclean_locations: set of all the unclean locations
- * @nr_s1_roots: number of EL2 stage1 pagetable roots being tracked.
- * @s1_roots: set of known EL2 stage1 pagetable roots.
- * @nr_s2_roots: number of EL2 stage2 pagetable roots being tracked.
- * @s2_roots: set of known EL2 stage2 pagetable roots.
+ * @roots_s1: set of known EL2 stage1 pagetable roots.
+ * @roots_s2: set of known EL2 stage2 pagetable roots.
+ * @thread_context: per-CPU thread-local context.
  * @locks: map from root physical address to lock physical address.
  * @lock_state: map from lock physical address to thread which owns the lock.
  */
@@ -602,8 +654,10 @@ struct casemate_model_state {
 	u64 nr_s1_roots;
 	u64 s1_roots[MAX_ROOTS];
 
-	u64 nr_s2_roots;
-	u64 s2_roots[MAX_ROOTS];
+	struct roots roots_s1;
+	struct roots roots_s2;
+
+	struct cm_thrd_ctxt thread_context[MAX_CPU];
 
 	struct lock_owner_map locks;
 	struct lock_state_map lock_state;
@@ -657,6 +711,9 @@ struct sm_tlbi_op_method {
 
 			bool has_level_hint;
 			u8 level_hint;
+
+			bool has_asid;
+			u8 asid;
 
 			bool affects_last_level_only;
 		} by_address_data;
@@ -757,8 +814,7 @@ struct ghost_hw_step {
 
 		struct trans_tlbi_data {
 			enum tlbi_kind tlbi_kind;
-			u64 page;
-			u64 level;
+			u64 value;
 		} tlbi_data;
 
 		struct trans_msr_data {
@@ -975,8 +1031,8 @@ static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 	});
 }
 
-#define casemate_model_step_tlbi3(...) __casemate_model_step_tlbi3(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi3(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 page, int level)
+#define casemate_model_step_tlbi_reg(...) __casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -986,15 +1042,14 @@ static inline void __casemate_model_step_tlbi3(u64 tid, struct src_loc src_loc, 
 			.kind = HW_TLBI,
 			.tlbi_data = (struct trans_tlbi_data){
 				.tlbi_kind = kind,
-				.page = page,
-				.level = level,
+				.value = value,
 			},
 		},
 	});
 }
 
-#define casemate_model_step_tlbi1(...) __casemate_model_step_tlbi1(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi1(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
+#define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1008,6 +1063,12 @@ static inline void __casemate_model_step_tlbi1(u64 tid, struct src_loc src_loc, 
 		},
 	});
 }
+
+#define casemate_model_step_tlbi_va(TLBI_KIND, ADDR, TTL, ASID) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL) | ((ASID) << 48ULL))
+
+#define casemate_model_step_tlbi_ipa(TLBI_KIND, ADDR, TTL) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
 static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)

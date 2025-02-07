@@ -167,19 +167,22 @@ struct aal {
 
 #define DUMMY_AAL ((struct aal){.attr_at_level={0}})
 
-#define VTTBR_EL2_BADDR_MASK	GENMASK(47, 1)
+#define TTBR_BADDR_MASK	GENMASK(47, 1)
+#define TTBR_ID_MASK GENMASK(63, 48)
 
-static inline phys_addr_t extract_s2_root(u64 vttb)
+static inline phys_addr_t ttbr_extract_baddr(u64 vttb)
 {
-	return vttb & VTTBR_EL2_BADDR_MASK;
+	return vttb & TTBR_BADDR_MASK;
 }
 
-#define TTBR0_EL2_BADDR_MASK	GENMASK(47, 1)
-
-static inline phys_addr_t extract_s1_root(u64 ttb)
+static inline u64 ttbr_extract_id(u64 ttb)
 {
-	return ttb & TTBR0_EL2_BADDR_MASK;
+	return ttb & TTBR_ID_MASK;
 }
+
+#define TLBI_PAGE_MASK	GENMASK(43, 0)
+#define TLBI_ASID_MASK	GENMASK(63, 48)
+#define TLBI_TTL_MASK	GENMASK(47, 44)
 
 bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage);
 bool is_desc_valid(u64 descriptor);

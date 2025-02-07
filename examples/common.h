@@ -16,6 +16,21 @@ void join(void);
 void send(tid_t to, int v);
 int recv(void);
 
+/*
+ * Macros that require input of a maximum size
+ *
+ * TODO: make compiler check
+ */
+#define REQ_U8_AS_U64(X) ((u64)(X))
+#define REQ_U64(X) ((u64)(X))
+
+#define MAKE_TTBR(BADDR,ID) \
+	((BADDR) | ((ID) << 48ULL))
+
+#define ID0 0ULL
+#define ID1 1ULL
+#define ID2 2ULL
+
 #define WRITE_ONCE(VAR, VAL) \
 	({	\
 		casemate_model_step_write(WMO_plain, (u64)&VAR, (VAL)); \
@@ -42,10 +57,10 @@ int recv(void);
 	casemate_model_step_isb()
 
 #define TLBI_ALL(OP) \
-	casemate_model_step_tlbi1(TLBI_##OP)
+	casemate_model_step_tlbi(TLBI_##OP)
 
 #define TLBI_ADDR(OP, ADDR, LEVEL) \
-	casemate_model_step_tlbi3(TLBI_##OP, ADDR, LEVEL)
+	casemate_model_step_tlbi_reg(TLBI_##OP, REQ_U64(ADDR) | (REQ_U8_AS_U64(LEVEL) << 44ULL))
 
 #define LOCK(L) \
 	casemate_model_step_lock((u64)&(L))

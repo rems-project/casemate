@@ -26,3 +26,11 @@
 /good_free_page
 /good_free_tree
 /good_write_child
+/bad_switch_wrong_vmid
+/good_bbm_by_VMID
+/bad_bbm_by_wrong_VMID
+/good_bbm_stage1
+/bad_no_bbm_stage1
+/bad_overlap_ASID
+/bad_overlap_VMID
+/bad_EL2_ASID
