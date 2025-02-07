@@ -5,6 +5,7 @@
 
 = Casemate
 Ben Simner; Thomas Fourier; Yeji Han; David Kaloper Meršinjak; Thibaut Pérami; Peter Sewell; Jean Pichon-Pharabod
+{cmversion}, {cmreleasedate}
 :toc: left
 :toclevels: 4
 :imagesdir: media/
