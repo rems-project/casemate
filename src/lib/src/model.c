@@ -1431,7 +1431,7 @@ static void __step_memset(u64 phys_addr, u64 size, u64 val)
 
 	/* Implement MEMSET by repeated WRITE transitions. */
 	for (u64 i = 0; i < size; i += 8)
-		__do_plain_write(phys_addr+i*sizeof(u64), val);
+		__do_plain_write(phys_addr+i, val);
 }
 
 static void __step_init(u64 phys_addr, u64 size)
