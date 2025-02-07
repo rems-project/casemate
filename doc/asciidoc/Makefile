@@ -1,12 +1,16 @@
 CASEMATE_LOGO = ../logo/casemate_logo.png
 
+cm_version = $(shell ../../tools/print_version.py)
+cm_release_date = $(shell ../../tools/print_version.py --release-date)
+
+
 all: docinfo.html manual.html
 
-docinfo.html: docinfo.template
-	python -c 'import pathlib, base64; print(pathlib.Path("$<").read_text().replace("LOGO_B64_SRC", base64.b64encode(pathlib.Path("../logo/casemate_logo.png").read_bytes()).decode()))' > $@
+docinfo.html: docinfo.template generate_docinfo.py
+	python generate_docinfo.py > $@
 
 manual.html: sections/*.adoc manual.adoc docinfo.html
-	asciidoctor manual.adoc -r asciidoctor-bibtex -a data-uri
+	asciidoctor manual.adoc -r asciidoctor-bibtex -a data-uri -a 'cmversion=$(cm_version)' -a 'cmreleasedate=$(cm_release_date)'
 
 .PHONY: clean
 clean:
