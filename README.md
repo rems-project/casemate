@@ -5,6 +5,8 @@ Casemate: Concurrent Architectural System-level <br/> Monitoring and Testing
 
 Casemate is a dynamic monitoring tool for checking architecture-level protocols in systems code.
 
+Documentation is in [doc/manual.html](doc/manual.html), with [version hosted online here](https://www.cl.cam.ac.uk/~bs630/rems-project/casemate/manual.html).
+
 Description
 ---
 
