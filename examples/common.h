@@ -2,7 +2,10 @@
 #define COMMON_H
 
 #include <casemate.h>
-#include <casemate-impl/types.h>
+#include <stdint.h>
+
+typedef uint64_t u64;
+typedef uint8_t u8;
 
 void common_init(int argc, char **argv);
 
@@ -10,6 +13,9 @@ void common_init(int argc, char **argv);
 extern u64 TCR_EL2;
 extern u64 VTCR_EL2;
 extern u64 MAIR_EL2;
+
+#define SYSREG_VTTBR "vttbr_el2"
+#define SYSREG_TTBR_EL2 "ttbr0_el2"
 
 typedef u64 tid_t;
 void spawn_thread(int fn(void*));

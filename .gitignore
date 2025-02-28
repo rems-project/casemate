@@ -3,3 +3,6 @@
 
 # top-level files
 /casemate-check
+
+# cargo-generated files
+/target

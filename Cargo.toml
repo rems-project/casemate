@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "src/casemate-lib",
+    "src/casemate-check",
+]
+resolver = "2"

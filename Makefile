@@ -17,17 +17,19 @@ config.mk: ./configure
 include config.mk
 include tools/run_cmd.mk
 
-subdirs += src/lib
+subdirs += src/casemate-lib
+subdirs += src/casemate-check
 subdirs += examples
-subdirs += src/casemate-check-c
 
 build: $(subdirs)
 
 .PHONY: $(subdirs)
 
+target-dir := $(abspath ./target)
+
 define build_subdir
   $(call run_cmd,$1,$2,\
-  	$(MAKE) --no-print-directory -f $(root)/tools/build.mk Q=$(Q) root=$(root) src=$2 target=$3 $2/ \
+  	$(MAKE) --no-print-directory -f $(root)/tools/build.mk Q=$(Q) root=$(root) src=$2 obj=$(target-dir) target=$3 $2/ \
   )
 endef
 
@@ -55,8 +57,12 @@ casemate-lib: src/lib lib-headers
 lib-headers:
 	$(call build_subdir,GENHEADER,src/lib,headers)
 
+lib-bindgen:
+	$(call build_subdir,GENHEADER,src/lib-rs,headers)
+
 clean:
 	$(call clean_subdir,src/lib)
+	$(call clean_subdir,src/lib-rs)
 	$(call clean_subdir,examples)
 	$(call clean_subdir,src/casemate-check-c)
 
@@ -82,6 +88,7 @@ lint:
 
 fmt:
 	$(call fmt_subdir,src/lib)
+	$(call fmt_subdir,src/lib-rs)
 	$(call fmt_subdir,src/casemate-check-c)
 
 

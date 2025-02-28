@@ -1,0 +1,20 @@
+[package]
+name = "casemate"
+version = "2.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+log = { version = "0.4", features = ["kv"] }
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+#diffable = { git = "https://github.com/rems-project/diffable-rs.git", version = "0.1", default-features = false }
+diffable = { path = "/home/vscode/scratch/diffable-rs/diffable", version = "0.1", default-features = false, features = ["alloc"] }
+
+[features]
+
+std = []
+
+alloc = []

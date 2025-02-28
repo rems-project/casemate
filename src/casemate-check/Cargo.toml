@@ -1,0 +1,11 @@
+[package]
+name = "casemate-check"
+version = "0.1.0"
+edition = "2021"
+
+crate-type = ["bin"]
+
+[dependencies]
+casemate  = { path = "../casemate-lib", features = ["std"] }
+log = "0.4"
+getopts = "0.2.21"

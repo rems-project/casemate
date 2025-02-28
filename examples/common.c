@@ -9,9 +9,11 @@
 #include <threads.h>
 
 #include "common.h"
-#include <casemate-impl.h>
 
-struct casemate_model_state *st;
+#include <casemate.h>
+
+#define TCR_TG0_LO 14
+#define TCR_EL2_T0SZ_LO 0
 
 u64 TCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
 u64 VTCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
@@ -27,25 +29,14 @@ bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
 
 bool COLOR = false;
-
-u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
-{
-	switch (sysreg) {
-	case SYSREG_VTCR_EL2:
-		return VTCR_EL2;
-	case SYSREG_TCR_EL2:
-		return TCR_EL2;
-	case SYSREG_MAIR_EL2:
-		return MAIR_EL2;
-
-	case SYSREG_VTTBR:
-	case SYSREG_TTBR_EL2:
-		assert(false);
-
-	default:
-		assert(false);
-	}
-}
+#define GHOST_WHITE_ON_BLACK "\033[40;37;1m"
+#define GHOST_WHITE_ON_RED "\033[41;37;1m"
+#define GHOST_WHITE_ON_GREEN "\033[42;37;1m"
+#define GHOST_WHITE_ON_YELLOW "\033[43;37;1m"
+#define GHOST_WHITE_ON_BLUE "\033[44;37;1m"
+#define GHOST_WHITE_ON_MAGENTA "\033[45;37;1m"
+#define GHOST_WHITE_ON_CYAN "\033[46;37;1m"
+#define GHOST_NORMAL "\033[0m"
 
 void ghost_cm_abort(const char *msg)
 {
@@ -60,43 +51,6 @@ void ghost_cm_abort(const char *msg)
 	exit(1);
 }
 
-struct _string_buffer {
-	char *buf;
-	int n;
-};
-
-int ghost_cm_print(void* arg, const char *format, va_list ap)
-{
-	int ret;
-	if (arg != NULL) {
-		struct _string_buffer *buf = arg;
-		ret = vsnprintf(buf->buf, buf->n, format, ap);
-		if (ret < 0)
-			return ret;
-		buf->buf += ret;
-		buf->n -= ret;
-		return 0;
-	} else {
-		ret =vprintf(format, ap);
-		if (ret < 0)
-			return ret;
-		return 0;
-	}
-}
-
-void *ghost_cm_make_buffer(char* arg, u64 n)
-{
-	struct _string_buffer *buf = malloc(sizeof(struct _string_buffer));
-	buf->buf = arg;
-	buf->n = n;
-	return buf;
-}
-
-void ghost_cm_free_buffer(void *buf)
-{
-	free(buf);
-}
-
 void ghost_cm_trace(const char *record)
 {
 	if (COLOR)
@@ -105,6 +59,11 @@ void ghost_cm_trace(const char *record)
 	if (COLOR)
 		printf(GHOST_NORMAL);
 	printf("\n");
+}
+
+int ghost_writeb(uint8_t c)
+{
+	return printf("%c", c);
 }
 
 static void print_help_and_quit(void)
@@ -281,40 +240,37 @@ u64 casemate_cpu_id(void)
 
 void common_init(int argc, char **argv)
 {
-	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
-	u64 sm_size = 2 * sizeof(struct casemate_model_state);
+	u64 sm_size = 1024 * 1024 * 500;
+	void *st = malloc(sm_size);
+
 	struct ghost_driver sm_driver = {
-		.read_physmem = NULL,
-		.read_sysreg = ghost_cm_read_sysreg,
-		.abort = ghost_cm_abort,
-		.print = ghost_cm_print,
-		.sprint_create_buffer = ghost_cm_make_buffer,
-		.sprint_destroy_buffer = ghost_cm_free_buffer,
-		.trace = ghost_cm_trace,
+		.writeb=ghost_writeb,
+		.abort=ghost_cm_abort,
+		.trace=ghost_cm_trace,
 	};
 
 	common_read_argv(argc, argv);
-	opts.enable_checking = SHOULD_CHECK;
+	// opts.enable_checking = SHOULD_CHECK;
+	// opts.check_opts.enable_printing = SHOULD_PRINT_DIFF | SHOULD_PRINT_STATE;
+	// opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
+	// opts.check_opts.print_opts = CM_PRINT_NONE;
+	// if (SHOULD_PRINT_ONLY_UNCLEANS)
+	// 	opts.check_opts.print_opts |= CM_PRINT_ONLY_UNCLEAN;
+	// if (SHOULD_PRINT_DIFF)
+	// 	opts.check_opts.print_opts |= CM_PRINT_DIFF_TO_STATE_ON_STEP;
+	// if (SHOULD_PRINT_STATE)
+	// 	opts.check_opts.print_opts |= CM_PRINT_WHOLE_STATE_ON_STEP;
+	// opts.log_opts.condensed_format = SHOULD_TRACE_CONDENSED;
 
-	opts.check_opts.enable_printing = SHOULD_PRINT_DIFF | SHOULD_PRINT_STATE;
-	opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
-	opts.check_opts.print_opts = CM_PRINT_NONE;
-	if (SHOULD_PRINT_ONLY_UNCLEANS)
-		opts.check_opts.print_opts |= CM_PRINT_ONLY_UNCLEAN;
-	if (SHOULD_PRINT_DIFF)
-		opts.check_opts.print_opts |= CM_PRINT_DIFF_TO_STATE_ON_STEP;
-	if (SHOULD_PRINT_STATE)
-		opts.check_opts.print_opts |= CM_PRINT_WHOLE_STATE_ON_STEP;
-	opts.log_opts.condensed_format = SHOULD_TRACE_CONDENSED;
+	// /* TODO: for now ... */
+	// opts.check_opts.promote_TLBI_by_id = true;
 
-	/* TODO: for now ... */
-	opts.check_opts.promote_TLBI_by_id = true;
+	// opts.enable_tracing = SHOULD_TRACE;
 
-	opts.enable_tracing = SHOULD_TRACE;
+	casemate_initialize_model(0, 0, st, sm_size);
+	casemate_initialize_driver(&sm_driver);
 
-	st = malloc(sm_size);
-	initialise_casemate_model(&opts, 0, 0, st, sm_size);
-	initialise_ghost_driver(&sm_driver);
+	// casemate_model_step_msr("tcr_el2", TCR_EL2);
 
 	mtx_init(&m, mtx_plain);
 }

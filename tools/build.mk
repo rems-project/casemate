@@ -1,4 +1,4 @@
-# Usage: make -f tools/build.mk root=/path/to/casemate src=path/to/src/dir target=obj
+# Usage: make -f tools/build.mk root=/path/to/casemate src=path/to/src/dir obj=path/to/build target=obj
 
 include $(root)/config.mk
 include $(root)/tools/run_cmd.mk
