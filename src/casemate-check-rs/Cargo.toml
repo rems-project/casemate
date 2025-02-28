@@ -1,0 +1,10 @@
+[package]
+name = "casemate-check-rust"
+version = "0.1.0"
+edition = "2021"
+
+crate-type = ["bin"]
+
+[dependencies]
+casemate   = { path = "../lib-rs", features = ["std"] }
+log = "0.4"

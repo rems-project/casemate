@@ -1,0 +1,13 @@
+/target
+/vendor
+*~
+
+# This is a 
+Cargo.lock
+
+# Makefile-generated deps and commands
+*.d
+*.cmd
+
+# top-level files
+/libcasemate.a
