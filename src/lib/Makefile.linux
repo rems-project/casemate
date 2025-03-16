@@ -16,4 +16,8 @@ KBUILD_CFLAGS += -D__AARCH64__
 KBUILD_CFLAGS += -I$(src)/$(CASEMATELIB)
 KBUILD_CFLAGS += -I$(src)/$(CASEMATELIB)/include/
 
+ifneq ($(GHOST_USES_SERIAL),)
+KBUILD_CFLAGS += -DGHOST_USES_SERIAL
+endif
+
 hyp-obj-$(CONFIG_NVHE_GHOST_SIMPLIFIED_MODEL) += $(addprefix $(CASEMATELIB)/,$(casemate-objs))
