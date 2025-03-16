@@ -18,7 +18,11 @@ int ghost_printf(const char *fmt, ...);
 
 #else  /* __KVM_NVHE_HYPERVISOR__ */
 
+#ifdef GHOST_USES_SERIAL
+#include <nvhe/ghost/ghost_serial.h>
+#else
 #include <nvhe/ghost/ghost_extra_debug-pl011.h>
+#endif /* GHOST_USES_SERIAL */
 #include <nvhe/ghost/ghost_printer.h>
 
 #endif /* __KVM_NVHE_HYPERVISOR__ */
