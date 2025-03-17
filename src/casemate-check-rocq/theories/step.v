@@ -3,7 +3,6 @@ Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
 Require Import Zmap.zmap.
-(* uses https://github.com/tchajed/coq-record-update *)
 From RecordUpdate Require Import RecordSet.
 Import RecordSetNotations.
 Require Import stdpp.gmap.
@@ -13,9 +12,8 @@ Require Export state.
 Require Export genericWalk.
 Require Export transition.
 
-(******************************************************************************************)
-(*                             Code for write                                             *)
-(******************************************************************************************)
+(** Write *)
+
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
 Definition clean_reachable_cb (ctx : page_table_context) : ghost_simplified_model_result :=
   match ctx.(ptc_loc) with
@@ -64,8 +62,8 @@ Definition step_write_table_mark_children
         let st := clean_reachable map descriptor gsm in
         let st := Mlog
           (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
-        Mupdate_state (traverse_pgt_from 
-                          descriptor.(ged_owner) 
+        Mupdate_state (traverse_pgt_from
+                          descriptor.(ged_owner)
                           map.(next_level_table_addr)
                           descriptor.(ged_ia_region).(range_start)
                           (next_level descriptor.(ged_level))
@@ -91,11 +89,11 @@ Definition step_write_on_invalid
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror (GSME_internal_error IET_unexpected_none)
     | Some descriptor =>
-      let descriptor := deconstruct_pte 
-          tid 
-          descriptor.(ged_ia_region).(range_start) 
-          val descriptor.(ged_level) 
-          descriptor.(ged_owner) 
+      let descriptor := deconstruct_pte
+          tid
+          descriptor.(ged_ia_region).(range_start)
+          val descriptor.(ged_level)
+          descriptor.(ged_owner)
           descriptor.(ged_stage) in
       let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
       let new_gsm := gsm <| gsm_memory := <[ loc.(sl_phys_addr) := new_loc ]> gsm.(gsm_memory) |> in
@@ -258,7 +256,7 @@ Definition drop_write_authorisation
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
-    then Merror GSME_unaligned_write 
+    then Merror GSME_unaligned_write
   else
     match gsm !! addr with
     | None => Mreturn gsm
@@ -361,9 +359,7 @@ Definition step_write
 .
 
 
-(******************************************************************************************)
-(*                             Code for zalloc                                            *)
-(******************************************************************************************)
+(** Zalloc *)
 
 Definition step_zalloc_aux
   (addr : phys_addr_t)
@@ -397,9 +393,7 @@ Definition step_zalloc
 .
 
 
-(******************************************************************************************)
-(*                             Code for read                                              *)
-(******************************************************************************************)
+(** Read *)
 
 Definition step_read
   (tid : thread_identifier)
@@ -426,9 +420,8 @@ Definition step_read
   end
 .
 
-(******************************************************************************************)
-(*                                      DSB                                               *)
-(******************************************************************************************)
+(** DSB *)
+
 Definition dsb_invalid_unclean_unmark_children
   (cpu_id : thread_identifier)
   (loc : sm_location)
@@ -540,7 +533,7 @@ Fixpoint reset_write_authorizations_aux
         | None => gsm
         | Some thread =>
           if bool_decide (thread = tid) then
-            (gsm <| gsm_lock_authorization := 
+            (gsm <| gsm_lock_authorization :=
                 insert lock_addr write_authorized gsm.(gsm_lock_authorization) |>)
           else
             gsm
@@ -566,9 +559,7 @@ Definition step_dsb (tid : thread_identifier) (dk : DxB) (gsm : ghost_simplified
   traverse_all_pgt (Some tid) st (dsb_visitor dk tid)
 .
 
-(******************************************************************************************)
-(*                                     TLBI                                               *)
-(******************************************************************************************)
+(** TLBI *)
 
 Definition is_leaf (kind : pte_rec) : bool :=
   match kind with
@@ -639,7 +630,7 @@ Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS 
 Definition tlbi_visitor
   (cpu_id : thread_identifier)
   (td : TLBI_intermediate)
-  (ptc : page_table_context) : 
+  (ptc : page_table_context) :
   ghost_simplified_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
@@ -713,10 +704,7 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (gsm : ghost_simplifi
   end
 .
 
-
-(******************************************************************************************)
-(*                                  Step MSR                                              *)
-(******************************************************************************************)
+(** MSR *)
 
 Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
   match roots with
@@ -733,9 +721,9 @@ Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
 
 Definition register_si_root
   (tid : thread_identifier)
-  (gsm : ghost_simplified_model) 
+  (gsm : ghost_simplified_model)
   (root : owner_t)
-  (stage : stage_t) : 
+  (stage : stage_t) :
   ghost_simplified_model_result :=
   let other_root_list :=
     match stage with
@@ -743,7 +731,7 @@ Definition register_si_root
       | S2 => pr_s1
     end gsm.(gsm_roots) in
   (* Check that the root does not already exist in the other root list*)
-  if si_root_exists root other_root_list then Merror GSME_root_already_exists  
+  if si_root_exists root other_root_list then Merror GSME_root_already_exists
   else
     (* Add the root to the list of roots*)
     let new_roots :=
@@ -781,9 +769,7 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (gsm : ghost
     register_si_root tid gsm root stage
 .
 
-(******************************************************************************************)
-(*                                  Step hint                                             *)
-(******************************************************************************************)
+(** Hint *)
 
 Definition step_hint_set_root_lock
   (root : owner_t)
@@ -798,8 +784,8 @@ Function set_owner_root
   (root : owner_t)
   (gsm : ghost_simplified_model)
   (logs : list log_element)
-  (offs : Z) 
-  {measure Z.abs_nat offs} : 
+  (offs : Z)
+  {measure Z.abs_nat offs} :
   ghost_simplified_model_result :=
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |}
@@ -879,7 +865,7 @@ Definition try_unregister_root
 Definition step_release_table
   (cpu : thread_identifier)
   (addr : owner_t)
-  (gsm : ghost_simplified_model) : 
+  (gsm : ghost_simplified_model) :
   ghost_simplified_model_result :=
   match gsm !! root_val addr with
     | None => Merror (GSME_uninitialised "release"%string (root_val addr))
@@ -904,7 +890,7 @@ Definition step_hint_set_pte_thread_owner
   (phys : phys_addr_t)
   (val : owner_t)
   (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result := 
+  ghost_simplified_model_result :=
   match gsm !! phys with
     | None => Merror (GSME_uninitialised "set_pte_thread_owner"%string phys)
     | Some location =>
@@ -941,10 +927,6 @@ Definition step_hint
   end
 .
 
-
-(******************************************************************************************)
-(*                                  Step lock                                             *)
-(******************************************************************************************)
 
 Definition step_lock
   (cpu : thread_identifier)

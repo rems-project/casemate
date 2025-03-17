@@ -130,6 +130,15 @@ Inductive stage_t :=
   | S2
 .
 
+Inductive vmid_t :=
+  | U64 : u64 -> vmid_t
+.
+
+Inductive addr_id_t :=
+  | ASID : u64 -> addr_id_t
+  | VMID : u64 -> addr_id_t
+.
+
 Inductive result (A B: Type): Type :=
   | Ok (a: A)
   | Error (b: B)

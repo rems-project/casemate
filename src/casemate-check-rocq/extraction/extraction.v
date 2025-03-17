@@ -24,7 +24,7 @@ Extract Inlined Constant cmap_lookup => "Cmap.lookup".
 Extract Inlined Constant cmap_insert => "Cmap.insert".
 
 
-Extract Constant zmap "'x" => "'x Zmap.t". 
+Extract Constant zmap "'x" => "'x Zmap.t".
 Extract Inlined Constant zmap_empty => "Zmap.empty".
 Extract Inlined Constant zmap_lookup => "Zmap.find_opt".
 Extract Inlined Constant zmap_insert => "Zmap.add".
@@ -44,4 +44,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Set Warnings "-extraction-opaque-accessed -extraction-axiom-to-realize".
-Extraction "coq_executable_sm.ml" all_steps memory_init take_step.
+Extraction "coq_executable_sm.ml" steps memory_init take_step.

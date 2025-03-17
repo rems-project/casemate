@@ -1,4 +1,4 @@
-(** Simplified model *)
+(** Casemate *)
 Require Import String.
 Require stdpp.bitvector.bitvector.
 Require Import Cmap.cmap.
@@ -10,14 +10,9 @@ Require Import Recdef.
 
 Require Export step.
 
-
-(******************************************************************************************)
-(*                             Toplevel function                                          *)
-(******************************************************************************************)
-
 Definition take_step
-  (trans : ghost_simplified_model_transition) 
-  (gsm : ghost_simplified_model) : 
+  (trans : ghost_simplified_model_transition)
+  (gsm : ghost_simplified_model) :
   ghost_simplified_model_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
@@ -49,7 +44,7 @@ Definition memory_init := {|
   gsm_lock_authorization := ∅;
 |}.
 
-Fixpoint all_steps_aux
+Fixpoint steps_aux
   (transitions : list ghost_simplified_model_transition)
   (logs : list log_element)
   (gsm : ghost_simplified_model) :
@@ -59,17 +54,17 @@ Fixpoint all_steps_aux
     | h :: t =>
       match take_step h gsm with
         | {| gsmsr_log := logs_next; gsmsr_data := Ok _ _ st_next |} =>
-            all_steps_aux t (logs_next ++ logs) st_next
+            steps_aux t (logs_next ++ logs) st_next
         | {| gsmsr_log := logs_next; gsmsr_data := Error _ _ f |} =>
             {| gsmsr_log := logs_next ++ logs; gsmsr_data := Error _ _ f |}
       end
   end
 .
 
-Definition all_steps 
+Definition steps
   (transitions : list ghost_simplified_model_transition) :
   ghost_simplified_model_result :=
-  let res := all_steps_aux transitions [] memory_init in
+  let res := steps_aux transitions [] memory_init in
   res <| gsmsr_log := rev res.(gsmsr_log) |>
 .
 

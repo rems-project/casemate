@@ -1,6 +1,6 @@
 Casemate offline checker in Coq. Ported from C.
 
-## Building
+## Dependencies
 
 First, register additional repositories with your Opam switch:
 
@@ -22,3 +22,10 @@ Or install just the dependencies (e.g. for development) by running:
 ```bash
 opam install --deps-only .
 ```
+
+## Build & Run
+
+```bash
+make run-all
+```
+
