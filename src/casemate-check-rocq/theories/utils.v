@@ -20,7 +20,7 @@ Module bv64.
 
   #[local] Definition _64 := 64%N.
 
-  Definition BV64 (n : Z) {p : BvWf 64 n} : bv 64 := BV 64 n.
+  Definition BV64 (z : Z) {p : BvWf 64 z} : bv 64 := BV 64 z.
 
   #[global] Instance bv_64_eq_dec : EqDecision (bv 64) := @bv_eq_dec _64.
   #[global] Instance bv_64_countable : Countable (bv 64) := @bv_countable _64.
@@ -34,7 +34,8 @@ Module bv64.
   Definition bv_not_64 := @bv_not _64.
   Definition bv_sub_64 := @bv_sub _64.
 
-  Definition to_nat (n: bv 64) := Z.to_nat (bv_unsigned n).
+  Definition to_nat (n : bv 64) := Z.to_nat (bv_unsigned n).
+  Definition to_Z (n : bv 64) := bv_unsigned n.
 
   Definition u64_eqb (x y : bv 64) : bool :=
     (bv_unsigned x =? bv_unsigned y)%Z .
@@ -85,13 +86,14 @@ Definition b1023 := BV64 1023.
 (** Addresses **)
 
 Inductive thread_identifier :=
-| Thread_identifier : nat -> thread_identifier
+  | Thread_identifier : nat -> thread_identifier
 .
+
 Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
 
 Inductive phys_addr_t :=
-| Phys_addr : u64 -> phys_addr_t
+  | Phys_addr : u64 -> phys_addr_t
 .
 
 Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
@@ -114,8 +116,9 @@ Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (a
 Definition pa0 := Phys_addr b0.
 
 Inductive owner_t :=
-| Root : phys_addr_t -> owner_t
+  | Root : phys_addr_t -> owner_t
 .
+
 Global Instance owner_t_eq_decision : EqDecision owner_t.
   Proof. solve_decision. Qed.
 

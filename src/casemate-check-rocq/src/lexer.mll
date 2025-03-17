@@ -2,50 +2,52 @@
   open Menhir_parser
 
   let keywords = [
-  "at" , AT;
-  "in", IN;
-  "ID", ID;
-  "CPU", CPU;
-  (* Writes *)
-  "W", W;
-  "Wrel", Wrel;
-  "Wpage", Wpage;
-  (* Read *)
-  "R", READ;
-  (* DSB *)
-  "DSB_ish", DSB_ish;
-  "DSB_ishst", DSB_ishst;
-  "DSB_nsh", DSB_nsh;
-  (* ISB *)
-  "ISB", ISB;
-  "size", SIZE;
-  (* MSR *)
-  "MSR", MSR;
-  "SYSREG_VTTBR", SYSREG_VTTBR;
-  "SYSREG_TTBR_EL2", SYSREG_TTBR_EL2;
-  (* HINT *)
-  "HINT", HINT;
-  "GHOST_HINT_SET_ROOT_LOCK", GHOST_HINT_SET_ROOT_LOCK;
-  "GHOST_HINT_SET_OWNER_ROOT", GHOST_HINT_SET_OWNER_ROOT;
-  "GHOST_HINT_RELEASE_TABLE", GHOST_HINT_RELEASE_TABLE;
-  "GHOST_HINT_SET_PTE_THREAD_OWNER", GHOST_HINT_SET_PTE_THREAD_OWNER;
-  (* ZALLOC *)
-  "ZALLOC", ZALLOC;
-  (* LOCK *)
-  "LOCK", LOCK;
-  "UNLOCK", UNLOCK;
-]
+    "at" , AT;
+    "in", IN;
+    "ID", ID;
+    "CPU", CPU;
+    (* Writes *)
+    "W", W;
+    "Wrel", Wrel;
+    "Wpage", Wpage;
+    (* Read *)
+    "R", READ;
+    (* DSB *)
+    "DSB_ish", DSB_ish;
+    "DSB_ishst", DSB_ishst;
+    "DSB_nsh", DSB_nsh;
+    (* ISB *)
+    "ISB", ISB;
+    "size", SIZE;
+    (* MSR *)
+    "MSR", MSR;
+    "SYSREG_VTTBR", SYSREG_VTTBR;
+    "SYSREG_TTBR_EL2", SYSREG_TTBR_EL2;
+    (* HINT *)
+    "HINT", HINT;
+    "GHOST_HINT_SET_ROOT_LOCK", GHOST_HINT_SET_ROOT_LOCK;
+    "GHOST_HINT_SET_OWNER_ROOT", GHOST_HINT_SET_OWNER_ROOT;
+    "GHOST_HINT_RELEASE_TABLE", GHOST_HINT_RELEASE_TABLE;
+    "GHOST_HINT_SET_PTE_THREAD_OWNER", GHOST_HINT_SET_PTE_THREAD_OWNER;
+    (* Mem Init *)
+    "MEM_INIT", MEM_INIT;
+    (* Memset *)
+    "MEMSET", MEMSET;
+    (* LOCK *)
+    "LOCK", LOCK;
+    "UNLOCK", UNLOCK;
+  ]
 
-let lexicon: (string, token) Hashtbl.t =
-  let lexicon = Hashtbl.create 0 in
-  let add (key, builder) = Hashtbl.add lexicon key builder in
-  List.iter add keywords; lexicon
+  let lexicon: (string, token) Hashtbl.t =
+    let lexicon = Hashtbl.create 0 in
+    let add (key, builder) = Hashtbl.add lexicon key builder in
+    List.iter add keywords; lexicon
 
-let purify_str = 
-  Str.global_replace (Str.regexp "\\.\\|(=\\|)\\|pfn\\=\\|level\\=") ""
+  let purify_str = 
+    Str.global_replace (Str.regexp "\\.\\|(=\\|)\\|pfn\\=\\|level\\=") ""
 
-let value i =
-  VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))
+  let value i =
+    VAL (Scanf.sscanf (Str.global_replace (Str.regexp "\\.") "" i) "%Li" (fun v -> Big_int_Z.big_int_of_int64 v))
 }
 
 let id = ['0'-'9']*+
