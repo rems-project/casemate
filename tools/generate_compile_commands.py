@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Generates a clangd suitable compile_commands.json file
 # Usage: ./generate_compile_commands.py PATH_TO_SRCROOT_DIR
 

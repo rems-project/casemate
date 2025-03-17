@@ -7,7 +7,7 @@ cm_release_date = $(shell ../../tools/print_version.py --release-date)
 all: docinfo.html manual.html
 
 docinfo.html: docinfo.template generate_docinfo.py
-	python generate_docinfo.py > $@
+	python3 generate_docinfo.py > $@
 
 manual.html: sections/*.adoc manual.adoc docinfo.html
 	asciidoctor manual.adoc -r asciidoctor-bibtex -a data-uri -a 'cmversion=$(cm_version)' -a 'cmreleasedate=$(cm_release_date)'

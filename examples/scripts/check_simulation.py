@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Guesses and checks a simulation between two log files, and checks the final condition.
 #
 # Usage:
