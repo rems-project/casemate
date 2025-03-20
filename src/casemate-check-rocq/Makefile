@@ -1,5 +1,14 @@
-all :
-	dune build _build/default/simplified.install --display short
+EXAMPLES_DIR=../../examples/expected
+LOG_DIR=./logs
+
+all:
+	dune build
+
+run-all:
+	for log_file in $(EXAMPLES_DIR)/*.log; do \
+	    echo "Processing '$$log_file'..."; \
+	    dune exec casemate -- --dump-state=true --dump-roots=true --dump-trans=true "$$log_file"; \
+	done
 
 sm-test:
 	dune exe parser ${trace}
