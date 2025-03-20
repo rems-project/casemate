@@ -19,7 +19,8 @@
 %token SYSREG_VTTBR SYSREG_TTBR_EL2
 %token HINT
 %token GHOST_HINT_SET_ROOT_LOCK GHOST_HINT_SET_OWNER_ROOT GHOST_HINT_RELEASE_TABLE GHOST_HINT_SET_PTE_THREAD_OWNER
-%token MEM_INIT SIZE MEMSET
+%token MEM_INIT SIZE
+%token MEMSET
 %token LOCK UNLOCK
 
 %start trans
@@ -113,7 +114,7 @@ trans_data:
   | MEM_INIT addr = VAL SIZE COL size = int { CMSD_TRANS_ABS_MEM_INIT {tid_addr = addr; tid_size = Big_int_Z.big_int_of_int64 size } }
   | MEMSET addr = VAL SIZE COL size = int value = VAL { CMSD_TRANS_ABS_MEMSET {tmd_addr = addr; tmd_size = Big_int_Z.big_int_of_int64 size; tmd_value = value}}
   | LOCK addr = VAL { CMSD_TRANS_ABS_LOCK addr }
-  | UNLOCK addr = VAL { CMSD_TRANS_ABS_LOCK addr }
+  | UNLOCK addr = VAL { CMSD_TRANS_ABS_UNLOCK addr }
 
 write_types:
   | W {WMO_plain}

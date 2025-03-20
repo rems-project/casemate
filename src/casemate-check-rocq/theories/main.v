@@ -17,7 +17,7 @@ Require Export step.
 
 Definition take_step
   (trans : casemate_model_step)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match trans.(cms_data) with
   | CMSD_TRANS_HW_MEM_WRITE wd =>
@@ -48,6 +48,7 @@ Definition memory_init := {|
   cm_roots := {| pr_s1 := []; pr_s2 := []; |};
   cm_memory := ∅;
   cm_initialised := ∅;
+  cm_thrd_ctxt := [];
   cm_lock_addr := ∅;
   cm_lock_state := ∅;
   cm_lock_authorization := ∅;
@@ -56,7 +57,7 @@ Definition memory_init := {|
 Fixpoint steps
   (transitions : list casemate_model_step)
   (logs : list log_element)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match transitions with
   | [] => {| cmr_log := logs; cmr_data := Ok _ _ cm; |}

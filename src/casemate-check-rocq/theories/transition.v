@@ -6,7 +6,7 @@ Import RecordSetNotations.
 Require Import stdpp.gmap.
 Require Import Recdef.
 
-Require Import state.
+Require Import model.
 
 Import bv64.
 
@@ -131,8 +131,7 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
 .
 
 
-(***************************************)
-(* Barrier *)
+(** Barrier *)
 Inductive MBReqDomain :=
   | MBReqDomain_Nonshareable
   | MBReqDomain_InnerShareable
@@ -221,7 +220,7 @@ Record trans_msr_data := {
 Record trans_hint_data := {
   thd_hint_kind : ghost_hint_kind;
   thd_location : phys_addr_t;
-  thd_value : owner_t;
+  thd_value : sm_owner_t;
 }.
 
 Record trans_lock_data := {
