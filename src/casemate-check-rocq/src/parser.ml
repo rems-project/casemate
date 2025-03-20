@@ -1,7 +1,7 @@
 module Z0 = Z
 open Sexplib0.Sexp
 open Sexplib0.Sexp_conv
-open Coq_executable_sm
+open Rocq_casemate
 
 let (~$) = Z0.(~$)
 

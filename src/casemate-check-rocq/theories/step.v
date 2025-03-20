@@ -928,7 +928,7 @@ Definition step_hint
     | GHOST_HINT_SET_ROOT_LOCK =>
       (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
       step_hint_set_root_lock (Root hd.(thd_location)) (root_val hd.(thd_value)) gsm
-      (* AFAIK, this only affects the internal locking discipline of the C simplified model and does nothing on the Coq version *)
+      (* AFAIK, this only affects the internal locking discipline of the C casemate model and does nothing on the Coq version *)
     | GHOST_HINT_SET_OWNER_ROOT =>
       (* When ownership is transferred *)
       (* Not sure about the size of the iteration *)

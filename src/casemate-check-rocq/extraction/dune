@@ -1,7 +1,7 @@
 (coq.extraction
  (prelude extraction)
- (theories simplified stdpp stdpp.bitvector RecordUpdate Cmap Zmap)
- (extracted_modules coq_executable_sm))
+ (theories casemate stdpp stdpp.bitvector RecordUpdate Cmap Zmap)
+ (extracted_modules rocq_casemate))
 
 (library
  (name extraction)

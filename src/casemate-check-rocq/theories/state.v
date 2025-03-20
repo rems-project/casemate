@@ -124,7 +124,7 @@ Record owner_locks := {
   ol_locks : unit;
 }.
 
-(* The memory state is a map from address to simplified model location *)
+(* The memory state is a map from address to casemate model location *)
 Definition ghost_simplified_model_state := cmap sm_location.
 
 (* The zalloc'd memory is stored here *)
