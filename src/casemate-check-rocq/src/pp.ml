@@ -1,15 +1,15 @@
-open Coq_executable_sm
+open Rocq_casemate
 
 let p0xZ ppf z = Fmt.pf ppf "0x%Lx" (Big_int_Z.int64_of_big_int z)
 let pp_u64 = p0xZ
 let pp_phys_addr_t = p0xZ
 
-type tLBIOp = [%import: Coq_executable_sm.tLBIOp] [@@deriving show]
-type regime = [%import: Coq_executable_sm.regime] [@@deriving show]
-type tLBILevel = [%import: Coq_executable_sm.tLBILevel] [@@deriving show]
-type tLBIRecord = [%import: Coq_executable_sm.tLBIRecord] [@@deriving show]
-type shareability = [%import: Coq_executable_sm.shareability] [@@deriving show]
-type tLBI = [%import: Coq_executable_sm.tLBI] [@@deriving show]
+type tLBIOp = [%import: Rocq_casemate.tLBIOp] [@@deriving show]
+type regime = [%import: Rocq_casemate.regime] [@@deriving show]
+type tLBILevel = [%import: Rocq_casemate.tLBILevel] [@@deriving show]
+type tLBIRecord = [%import: Rocq_casemate.tLBIRecord] [@@deriving show]
+type shareability = [%import: Rocq_casemate.shareability] [@@deriving show]
+type tLBI = [%import: Rocq_casemate.tLBI] [@@deriving show]
 
 let pp_transition_data ppf = function
   | GSMDT_TRANS_MEM_WRITE
@@ -107,8 +107,8 @@ let pp_log ppf = function
 let pp_logs ppf log = (Fmt.list ~sep:Fmt.comma pp_log) ppf log
 
 let pp_step_result :
-    ( Coq_executable_sm.ghost_simplified_model,
-      Coq_executable_sm.ghost_simplified_model_error )
+    ( Rocq_casemate.ghost_simplified_model,
+      Rocq_casemate.ghost_simplified_model_error )
     result
     Fmt.t =
   Fmt.(
@@ -126,7 +126,7 @@ let pp_step_result :
    the printers by hand.
 *)
 
-type owner_t = [%import: Coq_executable_sm.owner_t] [@@deriving show]
+type owner_t = [%import: Rocq_casemate.owner_t] [@@deriving show]
 
 let pp_sm_pte_state ppf state =
   Fmt.pf ppf
@@ -177,7 +177,7 @@ let pp_sm_location ppf sl =
       | _ -> ())
     sl.sl_pte
 
-type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
+type pte_roots = [%import: Rocq_casemate.pte_roots] [@@deriving show]
 
 let pp_ghost_simplified_model_state ppf m =
   let pp_k_v =

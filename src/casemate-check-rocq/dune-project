@@ -1,5 +1,5 @@
 (lang dune 3.8)
 
-(name simplified)
+(name casemate)
 
 (using coq 0.8)
