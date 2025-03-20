@@ -146,16 +146,17 @@ Inductive MBReqDomain :=
   | MBReqTypes_All
 . *)
 
-Record DxB  := {
+Record DxB := {
   DxB_domain : MBReqDomain;
   (* DxB_types : MBReqTypes; *)
   (* DxB_nXS : bool; *)
 }.
 
-Inductive Barrier  :=
+Inductive Barrier :=
   | Barrier_DSB : DxB -> Barrier
   | Barrier_DMB : DxB -> Barrier
   | Barrier_ISB : unit -> Barrier
+  (* Speculative barriers *)
   | Barrier_SSBB : unit -> Barrier
   | Barrier_PSSBB : unit -> Barrier
   | Barrier_SB : unit -> Barrier
@@ -167,11 +168,6 @@ Inductive write_memory_order :=
   | WMO_page
   | WMO_release
 .
-
-Record trans_zalloc_data := {
-    tzd_addr : phys_addr_t;
-    tzd_size : u64;
-}.
 
 Record tlbi_op_method_by_address_space_id_data := {
   tombas_asid_or_vmid : u64;
@@ -185,7 +181,7 @@ Inductive ghost_sysreg_kind :=
 Inductive ghost_hint_kind :=
   | GHOST_HINT_SET_ROOT_LOCK
   | GHOST_HINT_SET_OWNER_ROOT
-  | GHOST_HINT_RELEASE
+  | GHOST_HINT_RELEASE_TABLE
   | GHOST_HINT_SET_PTE_THREAD_OWNER
 .
 
@@ -206,6 +202,17 @@ Record trans_read_data := {
   trd_val : u64;
 }.
 
+Record trans_init_data := {
+    tid_addr : phys_addr_t;
+    tid_size : u64;
+}.
+
+Record trans_memset_data := {
+  tmd_addr : phys_addr_t;
+  tmd_size : u64;
+  tmd_value : u64;
+}.
+
 Record trans_msr_data := {
   tmd_sysreg : ghost_sysreg_kind;
   tmd_val : u64;
@@ -217,31 +224,30 @@ Record trans_hint_data := {
   thd_value : owner_t;
 }.
 
-Inductive lock_kind :=
-  | LOCK
-  | UNLOCK
-.
-
 Record trans_lock_data := {
-  tld_kind : lock_kind;
   tld_addr : phys_addr_t;
 }.
 
-Inductive casemate_model_transition_data :=
-  | GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
-  | GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
-  | GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
-  | GSMDT_TRANS_BARRIER (dsb_data : Barrier)
-  | GSMDT_TRANS_TLBI (tlbi_data : TLBI)
-  | GSMDT_TRANS_MSR (msr_data : trans_msr_data)
-  | GSMDT_TRANS_HINT (hint_data : trans_hint_data)
-  | GSMDT_TRANS_LOCK (lock_data : trans_lock_data)
+Inductive casemate_model_step_data :=
+  (* HW_step *)
+  | CMSD_TRANS_HW_MEM_WRITE (write_data : trans_write_data)
+  | CMSD_TRANS_HW_MEM_READ (read_data : trans_read_data)
+  | CMSD_TRANS_HW_BARRIER (dsb_data : Barrier)
+  | CMSD_TRANS_HW_TLBI (tlbi_data : TLBI)
+  | CMSD_TRANS_HW_MSR (msr_data : trans_msr_data)
+  (* ABS_step *)
+  | CMSD_TRANS_ABS_MEM_INIT (init_data : trans_init_data)
+  | CMSD_TRANS_ABS_MEMSET (memset_data : trans_memset_data)
+  | CMSD_TRANS_ABS_LOCK (lock_data : trans_lock_data)
+  | CMSD_TRANS_ABS_UNLOCK (unlock_data : trans_lock_data)
+  (* HINT_step *)
+  | CMSD_TRANS_HINT (hint_data : trans_hint_data)
 .
 
 Record casemate_model_step := {
-  gsmt_src_loc : option src_loc;
-  gsmt_thread_identifier : thread_identifier;
-  gsmt_data : casemate_model_transition_data;
-  gsmt_id : nat;
+  cms_src_loc : option src_loc;
+  cms_thread_identifier : thread_identifier;
+  cms_data : casemate_model_step_data;
+  cms_id : nat;
 }.
 

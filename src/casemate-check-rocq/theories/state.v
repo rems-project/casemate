@@ -127,8 +127,8 @@ Record owner_locks := {
 (* The memory state is a map from address to simplified model location *)
 Definition casemate_model_state := cmap sm_location.
 
-(* The zalloc'd memory is stored here *)
-Definition casemate_model_zallocd := zmap unit.
+(* The memory initialised is stored here *)
+Definition casemate_model_initialised := zmap unit.
 
 (* the map from root to lock address *)
 Definition casemate_model_lock_addr := zmap u64.
@@ -151,19 +151,19 @@ Record pte_roots := mk_pte_roots {
 #[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
 
 Record casemate_model := mk_casemate_model {
-  gsm_roots : pte_roots;
-  gsm_memory : casemate_model_state;
-  gsm_zalloc : casemate_model_zallocd;
-  gsm_lock_addr : casemate_model_lock_addr;
-  gsm_lock_state : casemate_model_lock_state;
-  gsm_lock_authorization : casemate_model_lock_write_authorization
+  cm_roots : pte_roots;
+  cm_memory : casemate_model_state;
+  cm_initialised : casemate_model_initialised;
+  cm_lock_addr : casemate_model_lock_addr;
+  cm_lock_state : casemate_model_lock_state;
+  cm_lock_authorization : casemate_model_lock_write_authorization
 }.
 #[export] Instance eta_casemate_model : Settable _ :=
   settable! mk_casemate_model
-    <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
+    <cm_roots; cm_memory; cm_initialised; cm_lock_addr; cm_lock_state; cm_lock_authorization>.
 
-Definition is_zallocd (st : casemate_model) (addr : phys_addr_t) : bool :=
-  match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
+Definition is_initialised (st : casemate_model) (addr : phys_addr_t) : bool :=
+  match st.(cm_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
     | Some _ => true
     | None => false
   end
@@ -172,10 +172,10 @@ Definition is_zallocd (st : casemate_model) (addr : phys_addr_t) : bool :=
 Definition get_location
   (st : casemate_model)
   (addr : phys_addr_t) : option sm_location :=
-  match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
+  match st.(cm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
   | Some loc => Some loc
   | None =>
-    match is_zallocd st addr with
+    match is_initialised st addr with
     | true => Some {| sl_phys_addr := addr; sl_val := b0; sl_pte := None; sl_thread_owner := None |}
     | false => None
     end
@@ -184,8 +184,8 @@ Definition get_location
 
 Definition get_lock_of_owner
   (owner : owner_t)
-  (gsm : casemate_model) : option u64 :=
-  lookup (phys_addr_val (root_val owner)) gsm.(gsm_lock_addr).
+  (cm : casemate_model) : option u64 :=
+  lookup (phys_addr_val (root_val owner)) cm.(cm_lock_addr).
 
 
 Infix "!!" := get_location (at level 20).
@@ -193,7 +193,7 @@ Infix "!!" := get_location (at level 20).
 Definition is_loc_thread_owned
   (cpu : thread_identifier)
   (location : sm_location)
-  (gsm : casemate_model) : bool :=
+  (cm : casemate_model) : bool :=
   match location.(sl_pte), location.(sl_thread_owner) with
   | Some _, Some thread_owner =>
     bool_decide (thread_owner = cpu)
@@ -204,11 +204,11 @@ Definition is_loc_thread_owned
 Definition is_pte_well_locked
   (cpu : thread_identifier)
   (pte : ghost_exploded_descriptor)
-  (gsm : casemate_model) : bool :=
-  match get_lock_of_owner pte.(ged_owner) gsm with
+  (cm : casemate_model) : bool :=
+  match get_lock_of_owner pte.(ged_owner) cm with
   | None => false
   | Some addr =>
-    match lookup addr gsm.(gsm_lock_state) with
+    match lookup addr cm.(cm_lock_state) with
     | Some lock_owner => bool_decide (lock_owner = cpu)
     | None => false
     end
@@ -218,14 +218,14 @@ Definition is_pte_well_locked
 Definition should_visit
   (cpu : thread_identifier)
   (addr : phys_addr_t)
-  (gsm : casemate_model) : bool :=
-  match gsm !! addr with
+  (cm : casemate_model) : bool :=
+  match cm !! addr with
   | None => true
   | Some location =>
       match location.(sl_pte) with
       | None => true
       | Some pte =>
-        orb (is_loc_thread_owned cpu location gsm) (is_pte_well_locked cpu pte gsm)
+        orb (is_loc_thread_owned cpu location cm) (is_pte_well_locked cpu pte cm)
       end
   end
 .
@@ -237,71 +237,71 @@ Inductive violation_type :=
 .
 
 Inductive casemate_model_error :=
-  | GSME_bbm_violation : violation_type -> phys_addr_t -> casemate_model_error
-  | GSME_not_a_pte : string -> phys_addr_t -> casemate_model_error
-  | GSME_inconsistent_read
-  | GSME_uninitialised : string -> phys_addr_t -> casemate_model_error
-  | GSME_unclean_child : phys_addr_t -> casemate_model_error
-  | GSME_write_on_not_writable : phys_addr_t -> casemate_model_error
-  | GSME_double_use_of_pte : phys_addr_t -> casemate_model_error
-  | GSME_root_already_exists
-  | GSME_unaligned_write
-  | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> casemate_model_error
-  | GSME_transition_without_lock : phys_addr_t -> casemate_model_error
-  | GSME_write_without_authorization : phys_addr_t -> casemate_model_error
-  | GSME_unimplemented
-  | GSME_internal_error : internal_error_type -> casemate_model_error
-  | GSME_parent_invalidated : phys_addr_t -> casemate_model_error
-  | GSME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> casemate_model_error
+  | CME_bbm_violation : violation_type -> phys_addr_t -> casemate_model_error
+  | CME_not_a_pte : string -> phys_addr_t -> casemate_model_error
+  | CME_inconsistent_read
+  | CME_uninitialised : string -> phys_addr_t -> casemate_model_error
+  | CME_unclean_child : phys_addr_t -> casemate_model_error
+  | CME_write_on_not_writable : phys_addr_t -> casemate_model_error
+  | CME_double_use_of_pte : phys_addr_t -> casemate_model_error
+  | CME_root_already_exists
+  | CME_unaligned_write
+  | CME_double_lock_acquire : thread_identifier -> thread_identifier -> casemate_model_error
+  | CME_transition_without_lock : phys_addr_t -> casemate_model_error
+  | CME_write_without_authorization : phys_addr_t -> casemate_model_error
+  | CME_unimplemented
+  | CME_internal_error : internal_error_type -> casemate_model_error
+  | CME_parent_invalidated : phys_addr_t -> casemate_model_error
+  | CME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> casemate_model_error
 .
 
 Record casemate_model_result := mk_casemate_model_result {
-  gsmsr_log : list log_element;
-  gsmsr_data : result casemate_model casemate_model_error
+  cmr_log : list log_element;
+  cmr_data : result casemate_model casemate_model_error
 }.
 
 #[export] Instance eta_casemate_model_result : Settable _ :=
-  settable! mk_casemate_model_result <gsmsr_log; gsmsr_data>.
+  settable! mk_casemate_model_result <cmr_log; cmr_data>.
 
-Definition Mreturn (gsm : casemate_model) : casemate_model_result :=
-  {| gsmsr_log := nil; gsmsr_data := Ok _ _ gsm |}.
+Definition Mreturn (cm : casemate_model) : casemate_model_result :=
+  {| cmr_log := nil; cmr_data := Ok _ _ cm |}.
 
 Definition Mbind
   (r : casemate_model_result)
   (f : casemate_model -> casemate_model_result) :
   casemate_model_result :=
-  match r.(gsmsr_data) with
+  match r.(cmr_data) with
   | Error _ _ e => r
-  | Ok _ _ gsm =>
-    let s' := f gsm in
-    {| gsmsr_log := app s'.(gsmsr_log) r.(gsmsr_log);
-       gsmsr_data := s'.(gsmsr_data); |}
+  | Ok _ _ cm =>
+    let s' := f cm in
+    {| cmr_log := app s'.(cmr_log) r.(cmr_log);
+       cmr_data := s'.(cmr_data); |}
   end.
 
 Definition Merror (gse : casemate_model_error) : casemate_model_result :=
-  {| gsmsr_log := nil; gsmsr_data := Error _ _ gse |}.
+  {| cmr_log := nil; cmr_data := Error _ _ gse |}.
 
 Definition Mlog
   (s : log_element)
   (r : casemate_model_result) : casemate_model_result :=
-  r <|gsmsr_log := s :: r.(gsmsr_log) |>.
+  r <|cmr_log := s :: r.(cmr_log) |>.
 
 Definition Mupdate_state
   (updater : casemate_model -> casemate_model_result)
   (st : casemate_model_result) :
   casemate_model_result :=
   match st with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
-    let new_st := updater gsm in
-    new_st <| gsmsr_log := new_st.(gsmsr_log) ++ logs |>
+  | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
+    let new_st := updater cm in
+    new_st <| cmr_log := new_st.(cmr_log) ++ logs |>
   | e => e
   end
 .
 
 Definition insert_location
   (loc : sm_location)
-  (gsm : casemate_model) : casemate_model :=
-  (gsm <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> gsm.(gsm_memory) |>)
+  (cm : casemate_model) : casemate_model :=
+  (cm <| cm_memory := <[ loc.(sl_phys_addr) := loc ]> cm.(cm_memory) |>)
 .
 
 Definition Minsert_location
@@ -309,10 +309,10 @@ Definition Minsert_location
   (mon : casemate_model_result) :
   casemate_model_result :=
   match mon with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
+  | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
     {|
-      gsmsr_log := logs;
-      gsmsr_data := Ok _ _ (insert_location loc gsm)
+      cmr_log := logs;
+      cmr_data := Ok _ _ (insert_location loc cm)
     |}
   | e => e
   end

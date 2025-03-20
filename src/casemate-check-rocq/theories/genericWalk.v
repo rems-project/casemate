@@ -157,7 +157,7 @@ Fixpoint traverse_pgt_from_aux
                             b0
                             max_call_number
                             mon
-  | O => Merror (GSME_internal_error IET_infinite_loop)
+  | O => Merror (CME_internal_error IET_infinite_loop)
   end
   (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs
@@ -175,8 +175,8 @@ with traverse_pgt_from_offs
     if i b=? b512 then mon (* We are done with this page table *)
     else
       match mon with
-      | {| gsmsr_log := _; gsmsr_data := Error _ _ _ |} => mon (* If it fails, it fails *)
-      | {| gsmsr_log := _; gsmsr_data := Ok _ _ st |} as mon =>
+      | {| cmr_log := _; cmr_data := Error _ _ _ |} => mon (* If it fails, it fails *)
+      | {| cmr_log := _; cmr_data := Ok _ _ st |} as mon =>
         let addr := table_start pa+ (Phys_addr (b8 b* i)) in
         let location := st !! addr in
         let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
@@ -192,7 +192,7 @@ with traverse_pgt_from_offs
           |}
         in
         let mon := Mupdate_state visitor_state_updater mon in
-        match mon.(gsmsr_data) with (* The visitor can edit the state and write logs *)
+        match mon.(cmr_data) with (* The visitor can edit the state and write logs *)
         | Error _ _ r  => mon (* If it fails, it fails *)
         | Ok _ _ updated_state =>
           let location := updated_state !! addr in
@@ -237,7 +237,7 @@ with traverse_pgt_from_offs
           end
         end
       end
-  | O => Merror (GSME_internal_error IET_infinite_loop)
+  | O => Merror (CME_internal_error IET_infinite_loop)
   end
 .
 
@@ -247,7 +247,7 @@ Definition traverse_pgt_from
   (level : level_t)
   (stage : stage_t)
   (visitor_cb : page_table_context -> casemate_model_result)
-  (gsm : casemate_model) :
+  (cm : casemate_model) :
   casemate_model_result :=
   traverse_pgt_from_aux
     root
@@ -256,14 +256,14 @@ Definition traverse_pgt_from
     level stage
     visitor_cb
     (4*n512)
-    (Mreturn gsm)
+    (Mreturn cm)
 .
 
 Definition traverse_pgt_from_root
   (root : owner_t)
   (stage : stage_t)
   (visitor_cb : page_table_context -> casemate_model_result)
-  (gsm : casemate_model) :
+  (cm : casemate_model) :
   casemate_model_result :=
   traverse_pgt_from
     root
@@ -272,7 +272,7 @@ Definition traverse_pgt_from_root
     l0
     stage
     visitor_cb
-    gsm
+    cm
 .
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
@@ -283,7 +283,7 @@ Fixpoint traverse_si_pgt_aux
   (roots : list owner_t)
   (res : casemate_model_result) :
   casemate_model_result :=
-  match roots, res.(gsmsr_data) with
+  match roots, res.(cmr_data) with
   | [], _ => res
   (* If the state is failed, there is no point in going on *)
   | _, Error _ _ _ => res
@@ -296,27 +296,27 @@ Fixpoint traverse_si_pgt_aux
 (* Generic function to traverse all S1 or S2 roots *)
 Definition traverse_si_pgt
   (th : option thread_identifier)
-  (gsm : casemate_model)
+  (cm : casemate_model)
   (visitor_cb : page_table_context -> casemate_model_result)
   (stage : stage_t) :
   casemate_model_result :=
   let roots :=
     match stage with
-    | S2 => gsm.(gsm_roots).(pr_s2)
-    | S1 => gsm.(gsm_roots).(pr_s1)
+    | S2 => cm.(cm_roots).(pr_s2)
+    | S1 => cm.(cm_roots).(pr_s1)
     end
   in
-  traverse_si_pgt_aux th visitor_cb stage roots (Mreturn gsm)
+  traverse_si_pgt_aux th visitor_cb stage roots (Mreturn cm)
 .
 
 Definition traverse_all_pgt
   (th : option thread_identifier)
-  (gsm : casemate_model)
+  (cm : casemate_model)
   (visitor_cb : page_table_context -> casemate_model_result) :=
-  match traverse_si_pgt th gsm visitor_cb S1 with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
-    let res := traverse_si_pgt th gsm visitor_cb S2 in
-    res <| gsmsr_log := res.(gsmsr_log) ++ logs |>
+  match traverse_si_pgt th cm visitor_cb S1 with
+  | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
+    let res := traverse_si_pgt th cm visitor_cb S2 in
+    res <| cmr_log := res.(cmr_log) ++ logs |>
   | err => err
   end
 .
@@ -331,15 +331,15 @@ Definition mark_cb
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_pte) with
-    | Some _ => Merror (GSME_double_use_of_pte ctx.(ptc_addr))
+    | Some _ => Merror (CME_double_use_of_pte ctx.(ptc_addr))
     | None =>
       let new_desc := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
       let new_location := location <| sl_pte := (Some new_desc) |> <| sl_thread_owner := None |> in
-      let new_state := ctx.(ptc_state) <| gsm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(gsm_memory) |> in
+      let new_state := ctx.(ptc_state) <| cm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(cm_memory) |> in
       Mreturn new_state
     end
   | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-    Merror (GSME_uninitialised "mark_cb" ctx.(ptc_addr))
+    Merror (CME_uninitialised "mark_cb" ctx.(ptc_addr))
   end
 .
 
@@ -352,13 +352,13 @@ Definition unmark_cb
     match location.(sl_pte) with
       | Some _ =>
         let new_loc := location <| sl_pte := None |> in
-        let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(gsm_memory) in
-        Mreturn (ctx.(ptc_state) <| gsm_memory := new_st |>)
+        let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cm_memory) in
+        Mreturn (ctx.(ptc_state) <| cm_memory := new_st |>)
       | None =>
-        Merror (GSME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
+        Merror (CME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
     end
   | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-      Merror (GSME_uninitialised "unmark_cb" ctx.(ptc_addr))
+      Merror (CME_uninitialised "unmark_cb" ctx.(ptc_addr))
   end
 .
 
@@ -374,14 +374,14 @@ Definition mark_not_writable_cb
         | Some desc =>
           let new_desc := desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |> in
           let new_location := location <| sl_pte := Some new_desc |> in
-          let new_gsm := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(gsm_memory) in
-          Mreturn (ctx.(ptc_state) <| gsm_memory := new_gsm |>)
+          let new_cm := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(cm_memory) in
+          Mreturn (ctx.(ptc_state) <| cm_memory := new_cm |>)
         | None =>
-          Merror (GSME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
+          Merror (CME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
       end
-    | Some tho => Merror (GSME_parent_invalidated location.(sl_phys_addr))
+    | Some tho => Merror (CME_parent_invalidated location.(sl_phys_addr))
     end
   | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-      Merror (GSME_uninitialised "mark_not_writable" ctx.(ptc_addr))
+      Merror (CME_uninitialised "mark_not_writable" ctx.(ptc_addr))
   end
 .
