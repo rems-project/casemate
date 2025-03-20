@@ -143,19 +143,19 @@ Fixpoint traverse_pgt_from_aux
   (table_start partial_ia : phys_addr_t)
   (level : level_t)
   (stage : stage_t)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (visitor_cb : page_table_context -> casemate_model_result)
   (max_call_number : nat)
-  (mon : ghost_simplified_model_result) : 
-  ghost_simplified_model_result :=
+  (mon : casemate_model_result) :
+  casemate_model_result :=
   match max_call_number with
-  | S max_call_number => traverse_pgt_from_offs 
-                            root 
-                            table_start partial_ia 
-                            level 
-                            stage 
-                            visitor_cb 
-                            b0 
-                            max_call_number 
+  | S max_call_number => traverse_pgt_from_offs
+                            root
+                            table_start partial_ia
+                            level
+                            stage
+                            visitor_cb
+                            b0
+                            max_call_number
                             mon
   | O => Merror (GSME_internal_error IET_infinite_loop)
   end
@@ -165,11 +165,11 @@ with traverse_pgt_from_offs
       (table_start partial_ia : phys_addr_t)
       (level : level_t)
       (stage : stage_t)
-      (visitor_cb : page_table_context -> ghost_simplified_model_result)
+      (visitor_cb : page_table_context -> casemate_model_result)
       (i : u64)
       (max_call_number : nat)
-      (mon : ghost_simplified_model_result):
-      ghost_simplified_model_result :=
+      (mon : casemate_model_result):
+      casemate_model_result :=
   match max_call_number with
   | S max_call_number =>
     if i b=? b512 then mon (* We are done with this page table *)
@@ -216,23 +216,23 @@ with traverse_pgt_from_offs
                     (((Phys_addr i) pa* exploded_desc.(ged_ia_region).(range_size))) in
                 (* recursive call: explore sub-pgt *)
                 traverse_pgt_from_aux
-                  root 
-                  rec_table_start next_partial_ia 
-                  (next_level level) 
-                  stage 
-                  visitor_cb 
-                  max_call_number 
+                  root
+                  rec_table_start next_partial_ia
+                  (next_level level)
+                  stage
+                  visitor_cb
+                  max_call_number
                   mon
               | _ => mon
               end
             in
-            traverse_pgt_from_offs 
-              root 
-              table_start partial_ia 
-              level stage 
-              visitor_cb 
-              (bv_add_64 i b1)  
-              max_call_number 
+            traverse_pgt_from_offs
+              root
+              table_start partial_ia
+              level stage
+              visitor_cb
+              (bv_add_64 i b1)
+              max_call_number
               mon
           end
         end
@@ -246,9 +246,9 @@ Definition traverse_pgt_from
   (table_start partial_ia : phys_addr_t)
   (level : level_t)
   (stage : stage_t)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (visitor_cb : page_table_context -> casemate_model_result)
+  (gsm : casemate_model) :
+  casemate_model_result :=
   traverse_pgt_from_aux
     root
     table_start
@@ -262,15 +262,15 @@ Definition traverse_pgt_from
 Definition traverse_pgt_from_root
   (root : owner_t)
   (stage : stage_t)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
-  traverse_pgt_from 
-    root 
-    (root_val root) 
-    pa0 
-    l0 
-    stage 
+  (visitor_cb : page_table_context -> casemate_model_result)
+  (gsm : casemate_model) :
+  casemate_model_result :=
+  traverse_pgt_from
+    root
+    (root_val root)
+    pa0
+    l0
+    stage
     visitor_cb
     gsm
 .
@@ -278,11 +278,11 @@ Definition traverse_pgt_from_root
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
 Fixpoint traverse_si_pgt_aux
   (th : option thread_identifier)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (visitor_cb : page_table_context -> casemate_model_result)
   (stage : stage_t)
   (roots : list owner_t)
-  (res : ghost_simplified_model_result) :
-  ghost_simplified_model_result :=
+  (res : casemate_model_result) :
+  casemate_model_result :=
   match roots, res.(gsmsr_data) with
   | [], _ => res
   (* If the state is failed, there is no point in going on *)
@@ -296,10 +296,10 @@ Fixpoint traverse_si_pgt_aux
 (* Generic function to traverse all S1 or S2 roots *)
 Definition traverse_si_pgt
   (th : option thread_identifier)
-  (gsm : ghost_simplified_model)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
+  (gsm : casemate_model)
+  (visitor_cb : page_table_context -> casemate_model_result)
   (stage : stage_t) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   let roots :=
     match stage with
     | S2 => gsm.(gsm_roots).(pr_s2)
@@ -311,10 +311,10 @@ Definition traverse_si_pgt
 
 Definition traverse_all_pgt
   (th : option thread_identifier)
-  (gsm : ghost_simplified_model)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result) :=
+  (gsm : casemate_model)
+  (visitor_cb : page_table_context -> casemate_model_result) :=
   match traverse_si_pgt th gsm visitor_cb S1 with
-  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} => 
+  | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
     let res := traverse_si_pgt th gsm visitor_cb S2 in
     res <| gsmsr_log := res.(gsmsr_log) ++ logs |>
   | err => err
@@ -327,7 +327,7 @@ Definition traverse_all_pgt
 Definition mark_cb
   (cpu_id : thread_identifier)
   (ctx : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_pte) with
@@ -346,7 +346,7 @@ Definition mark_cb
 Definition unmark_cb
   (cpu_id : thread_identifier)
   (ctx : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_pte) with
@@ -365,7 +365,7 @@ Definition unmark_cb
 Definition mark_not_writable_cb
   (cpu_id : thread_identifier)
   (ctx : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_thread_owner) with

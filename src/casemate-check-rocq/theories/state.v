@@ -115,7 +115,7 @@ Record sm_location := mk_sm_location {
   sl_pte : option ghost_exploded_descriptor;
   sl_thread_owner : option thread_identifier;
 }.
-#[export] Instance eta_sm_location : Settable _ := 
+#[export] Instance eta_sm_location : Settable _ :=
   settable! mk_sm_location <sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
 
 Record owner_locks := {
@@ -125,23 +125,23 @@ Record owner_locks := {
 }.
 
 (* The memory state is a map from address to simplified model location *)
-Definition ghost_simplified_model_state := cmap sm_location.
+Definition casemate_model_state := cmap sm_location.
 
 (* The zalloc'd memory is stored here *)
-Definition ghost_simplified_model_zallocd := zmap unit.
+Definition casemate_model_zallocd := zmap unit.
 
 (* the map from root to lock address *)
-Definition ghost_simplified_model_lock_addr := zmap u64.
+Definition casemate_model_lock_addr := zmap u64.
 
 (* the map from lock address to thread that acquired it if any *)
-Definition ghost_simplified_model_lock_state := zmap thread_identifier.
+Definition casemate_model_lock_state := zmap thread_identifier.
 
 Inductive write_authorization :=
   | write_authorized
   | write_unauthorized
 .
 
-Definition ghost_simplified_model_lock_write_authorization := zmap write_authorization.
+Definition casemate_model_lock_write_authorization := zmap write_authorization.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record pte_roots := mk_pte_roots {
@@ -150,19 +150,19 @@ Record pte_roots := mk_pte_roots {
 }.
 #[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
 
-Record ghost_simplified_model := mk_ghost_simplified_model {
+Record casemate_model := mk_casemate_model {
   gsm_roots : pte_roots;
-  gsm_memory : ghost_simplified_model_state;
-  gsm_zalloc : ghost_simplified_model_zallocd;
-  gsm_lock_addr : ghost_simplified_model_lock_addr;
-  gsm_lock_state : ghost_simplified_model_lock_state;
-  gsm_lock_authorization : ghost_simplified_model_lock_write_authorization
+  gsm_memory : casemate_model_state;
+  gsm_zalloc : casemate_model_zallocd;
+  gsm_lock_addr : casemate_model_lock_addr;
+  gsm_lock_state : casemate_model_lock_state;
+  gsm_lock_authorization : casemate_model_lock_write_authorization
 }.
-#[export] Instance eta_ghost_simplified_model : Settable _ := 
-  settable! mk_ghost_simplified_model 
+#[export] Instance eta_casemate_model : Settable _ :=
+  settable! mk_casemate_model
     <gsm_roots; gsm_memory; gsm_zalloc; gsm_lock_addr; gsm_lock_state; gsm_lock_authorization>.
 
-Definition is_zallocd (st : ghost_simplified_model) (addr : phys_addr_t) : bool :=
+Definition is_zallocd (st : casemate_model) (addr : phys_addr_t) : bool :=
   match st.(gsm_zalloc) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
     | Some _ => true
     | None => false
@@ -170,7 +170,7 @@ Definition is_zallocd (st : ghost_simplified_model) (addr : phys_addr_t) : bool 
 .
 
 Definition get_location
-  (st : ghost_simplified_model)
+  (st : casemate_model)
   (addr : phys_addr_t) : option sm_location :=
   match st.(gsm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
   | Some loc => Some loc
@@ -184,16 +184,16 @@ Definition get_location
 
 Definition get_lock_of_owner
   (owner : owner_t)
-  (gsm : ghost_simplified_model) : option u64 :=
+  (gsm : casemate_model) : option u64 :=
   lookup (phys_addr_val (root_val owner)) gsm.(gsm_lock_addr).
- 
+
 
 Infix "!!" := get_location (at level 20).
 
 Definition is_loc_thread_owned
   (cpu : thread_identifier)
   (location : sm_location)
-  (gsm : ghost_simplified_model) : bool :=
+  (gsm : casemate_model) : bool :=
   match location.(sl_pte), location.(sl_thread_owner) with
   | Some _, Some thread_owner =>
     bool_decide (thread_owner = cpu)
@@ -204,7 +204,7 @@ Definition is_loc_thread_owned
 Definition is_pte_well_locked
   (cpu : thread_identifier)
   (pte : ghost_exploded_descriptor)
-  (gsm : ghost_simplified_model) : bool :=
+  (gsm : casemate_model) : bool :=
   match get_lock_of_owner pte.(ged_owner) gsm with
   | None => false
   | Some addr =>
@@ -218,13 +218,13 @@ Definition is_pte_well_locked
 Definition should_visit
   (cpu : thread_identifier)
   (addr : phys_addr_t)
-  (gsm : ghost_simplified_model) : bool :=
+  (gsm : casemate_model) : bool :=
   match gsm !! addr with
   | None => true
-  | Some location => 
+  | Some location =>
       match location.(sl_pte) with
       | None => true
-      | Some pte => 
+      | Some pte =>
         orb (is_loc_thread_owned cpu location gsm) (is_pte_well_locked cpu pte gsm)
       end
   end
@@ -236,40 +236,40 @@ Inductive violation_type :=
   | VT_release_unclean
 .
 
-Inductive ghost_simplified_model_error :=
-  | GSME_bbm_violation : violation_type -> phys_addr_t -> ghost_simplified_model_error
-  | GSME_not_a_pte : string -> phys_addr_t -> ghost_simplified_model_error
+Inductive casemate_model_error :=
+  | GSME_bbm_violation : violation_type -> phys_addr_t -> casemate_model_error
+  | GSME_not_a_pte : string -> phys_addr_t -> casemate_model_error
   | GSME_inconsistent_read
-  | GSME_uninitialised : string -> phys_addr_t -> ghost_simplified_model_error
-  | GSME_unclean_child : phys_addr_t -> ghost_simplified_model_error
-  | GSME_write_on_not_writable : phys_addr_t -> ghost_simplified_model_error
-  | GSME_double_use_of_pte : phys_addr_t -> ghost_simplified_model_error
+  | GSME_uninitialised : string -> phys_addr_t -> casemate_model_error
+  | GSME_unclean_child : phys_addr_t -> casemate_model_error
+  | GSME_write_on_not_writable : phys_addr_t -> casemate_model_error
+  | GSME_double_use_of_pte : phys_addr_t -> casemate_model_error
   | GSME_root_already_exists
   | GSME_unaligned_write
-  | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> ghost_simplified_model_error
-  | GSME_transition_without_lock : phys_addr_t -> ghost_simplified_model_error
-  | GSME_write_without_authorization : phys_addr_t -> ghost_simplified_model_error
+  | GSME_double_lock_acquire : thread_identifier -> thread_identifier -> casemate_model_error
+  | GSME_transition_without_lock : phys_addr_t -> casemate_model_error
+  | GSME_write_without_authorization : phys_addr_t -> casemate_model_error
   | GSME_unimplemented
-  | GSME_internal_error : internal_error_type -> ghost_simplified_model_error
-  | GSME_parent_invalidated : phys_addr_t -> ghost_simplified_model_error
-  | GSME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> ghost_simplified_model_error
+  | GSME_internal_error : internal_error_type -> casemate_model_error
+  | GSME_parent_invalidated : phys_addr_t -> casemate_model_error
+  | GSME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> casemate_model_error
 .
 
-Record ghost_simplified_model_result := mk_ghost_simplified_model_result {
+Record casemate_model_result := mk_casemate_model_result {
   gsmsr_log : list log_element;
-  gsmsr_data : result ghost_simplified_model ghost_simplified_model_error
+  gsmsr_data : result casemate_model casemate_model_error
 }.
 
-#[export] Instance eta_ghost_simplified_model_result : Settable _ :=
-  settable! mk_ghost_simplified_model_result <gsmsr_log; gsmsr_data>.
+#[export] Instance eta_casemate_model_result : Settable _ :=
+  settable! mk_casemate_model_result <gsmsr_log; gsmsr_data>.
 
-Definition Mreturn (gsm : ghost_simplified_model) : ghost_simplified_model_result :=
+Definition Mreturn (gsm : casemate_model) : casemate_model_result :=
   {| gsmsr_log := nil; gsmsr_data := Ok _ _ gsm |}.
 
 Definition Mbind
-  (r : ghost_simplified_model_result)
-  (f : ghost_simplified_model -> ghost_simplified_model_result) :
-  ghost_simplified_model_result :=
+  (r : casemate_model_result)
+  (f : casemate_model -> casemate_model_result) :
+  casemate_model_result :=
   match r.(gsmsr_data) with
   | Error _ _ e => r
   | Ok _ _ gsm =>
@@ -278,18 +278,18 @@ Definition Mbind
        gsmsr_data := s'.(gsmsr_data); |}
   end.
 
-Definition Merror (gse : ghost_simplified_model_error) : ghost_simplified_model_result :=
+Definition Merror (gse : casemate_model_error) : casemate_model_result :=
   {| gsmsr_log := nil; gsmsr_data := Error _ _ gse |}.
 
 Definition Mlog
   (s : log_element)
-  (r : ghost_simplified_model_result) : ghost_simplified_model_result :=
+  (r : casemate_model_result) : casemate_model_result :=
   r <|gsmsr_log := s :: r.(gsmsr_log) |>.
 
 Definition Mupdate_state
-  (updater : ghost_simplified_model -> ghost_simplified_model_result)
-  (st : ghost_simplified_model_result) :
-  ghost_simplified_model_result :=
+  (updater : casemate_model -> casemate_model_result)
+  (st : casemate_model_result) :
+  casemate_model_result :=
   match st with
   | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
     let new_st := updater gsm in
@@ -300,15 +300,14 @@ Definition Mupdate_state
 
 Definition insert_location
   (loc : sm_location)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model :=
+  (gsm : casemate_model) : casemate_model :=
   (gsm <| gsm_memory := <[ loc.(sl_phys_addr) := loc ]> gsm.(gsm_memory) |>)
 .
 
 Definition Minsert_location
   (loc : sm_location)
-  (mon : ghost_simplified_model_result) :
-  ghost_simplified_model_result :=
+  (mon : casemate_model_result) :
+  casemate_model_result :=
   match mon with
   | {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |} =>
     {|
@@ -323,7 +322,7 @@ Definition Minsert_location
 
 (* Type used as input of the page table visitor function  *)
 Record page_table_context := mk_page_table_context {
-  ptc_state: ghost_simplified_model;
+  ptc_state: casemate_model;
   ptc_loc: option sm_location;
   ptc_partial_ia: phys_addr_t;
   ptc_addr: phys_addr_t;

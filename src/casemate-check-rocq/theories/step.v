@@ -15,7 +15,7 @@ Require Export transition.
 (** Write *)
 
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialized or invalid unclean entry *)
-Definition clean_reachable_cb (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition clean_reachable_cb (ctx : page_table_context) : casemate_model_result :=
   match ctx.(ptc_loc) with
     | None => Merror (GSME_uninitialised "clean_reachable" ctx.(ptc_addr))
     | Some location =>
@@ -34,8 +34,8 @@ Definition clean_reachable_cb (ctx : page_table_context) : ghost_simplified_mode
 Definition clean_reachable
   (map : table_data_t)
   (descriptor : ghost_exploded_descriptor)
-  (gsm : ghost_simplified_model):
-  ghost_simplified_model_result :=
+  (gsm : casemate_model):
+  casemate_model_result :=
   traverse_pgt_from
     descriptor.(ged_owner)
     map.(next_level_table_addr)
@@ -52,9 +52,9 @@ Definition step_write_table_mark_children
   (loc : sm_location)
   (val : u64)
   (descriptor : ghost_exploded_descriptor)
-  (visitor_cb : page_table_context -> ghost_simplified_model_result)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (visitor_cb : page_table_context -> casemate_model_result)
+  (gsm : casemate_model) :
+  casemate_model_result :=
   if is_desc_valid val then
     (* Tests if the page table is well formed *)
     match descriptor.(ged_pte_kind) with
@@ -82,8 +82,8 @@ Definition step_write_on_invalid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
@@ -106,8 +106,8 @@ Definition step_write_on_invalid_unclean
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
     (Merror (GSME_bbm_violation VT_valid_on_invalid_unclean loc.(sl_phys_addr)))
@@ -145,8 +145,8 @@ Definition step_write_valid_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match require_bbm tid loc val with (* If no change in memory: no problem*)
     | None => Merror (GSME_internal_error IET_unexpected_none)
     | Some false =>
@@ -170,8 +170,8 @@ Definition step_write_invalid_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
   let old := loc.(sl_val) in
   match loc.(sl_pte) with
@@ -197,8 +197,8 @@ Definition step_write_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   if is_desc_valid val
     then step_write_valid_on_valid tid wmo loc val gsm
   else
@@ -218,8 +218,8 @@ Definition drop_write_authorisation_of_lock
   (wmo : write_memory_order)
   (descriptor : u64)
   (pte : ghost_exploded_descriptor)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match get_lock_of_owner pte.(ged_owner) gsm with
   | None => Mreturn gsm
   | Some addr_lock =>
@@ -250,8 +250,8 @@ Definition drop_write_authorisation_of_lock
 Definition drop_write_authorisation
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -275,8 +275,8 @@ Definition drop_write_authorisation
 Definition step_write_aux
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -328,9 +328,9 @@ Definition step_write_aux
 Function step_write_page
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (res : ghost_simplified_model_result)
+  (res : casemate_model_result)
   (offs : Z) {measure Z.abs_nat offs} :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   if Zle_bool offs 0 then
     res
   else
@@ -350,8 +350,8 @@ Proof. lia. Qed.
 Definition step_write
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match wd.(twd_mo) with
     | WMO_plain | WMO_release => step_write_aux tid wd gsm
     | WMO_page => step_write_page tid wd (Mreturn gsm) z512
@@ -363,8 +363,8 @@ Definition step_write
 
 Definition step_zalloc_aux
   (addr : phys_addr_t)
-  (st : ghost_simplified_model_result) :
-  ghost_simplified_model_result :=
+  (st : casemate_model_result) :
+  casemate_model_result :=
   let update s := {| gsmsr_log := nil; gsmsr_data := Ok _ _ (s <| gsm_zalloc := <[ addr := () ]> s.(gsm_zalloc) |>) |} in
   Mupdate_state update st
 .
@@ -373,10 +373,10 @@ Definition _step_zalloc_step_size := Phys_addr (bv_shiftl_64 b1 (bv64.BV64 3)).
 
 Fixpoint step_zalloc_all
   (addr : phys_addr_t)
-  (st : ghost_simplified_model_result)
+  (st : casemate_model_result)
   (offs : phys_addr_t)
   (max : nat) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match max with
     | O => st
     | S max =>
@@ -387,8 +387,8 @@ Fixpoint step_zalloc_all
 
 Definition step_zalloc
   (zd : trans_zalloc_data)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   step_zalloc_all (Phys_addr (bv_shiftr_64 (phys_addr_val zd.(tzd_addr)) (bv64.BV64 9))) {|gsmsr_log := nil; gsmsr_data := Ok _ _ gsm|} pa0 (to_nat zd.(tzd_size))
 .
 
@@ -398,8 +398,8 @@ Definition step_zalloc
 Definition step_read
   (tid : thread_identifier)
   (rd : trans_read_data)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   (* Test if the memory has been initialized (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match gsm !! rd.(trd_phys_addr) with
     | Some loc =>
@@ -427,7 +427,7 @@ Definition dsb_invalid_unclean_unmark_children
   (loc : sm_location)
   (lis : aut_invalid_unclean)
   (ptc : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   let st := ptc.(ptc_state) in
   let desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
     deconstruct_pte cpu_id ptc.(ptc_partial_ia) lis.(ai_old_valid_desc) ptc.(ptc_level) ptc.(ptc_root) ptc.(ptc_stage)
@@ -479,7 +479,7 @@ Definition dsb_visitor
   (kind : DxB)
   (cpu_id : thread_identifier)
   (ctx : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match ctx.(ptc_loc) with
     | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
       Merror (GSME_uninitialised "dsb_visitor"%string ctx.(ptc_addr))
@@ -521,8 +521,8 @@ Definition dsb_visitor
 Fixpoint reset_write_authorizations_aux
   (tid : thread_identifier)
   (roots: list owner_t)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model :=
+  (gsm : casemate_model) :
+  casemate_model :=
   match roots with
   | [] => gsm
   | h :: q =>
@@ -546,13 +546,13 @@ Fixpoint reset_write_authorizations_aux
 .
 
 
-Definition reset_write_authorizations (tid : thread_identifier) (gsm : ghost_simplified_model) : ghost_simplified_model :=
+Definition reset_write_authorizations (tid : thread_identifier) (gsm : casemate_model) : casemate_model :=
   (* Reset the authorizations for both states *)
   reset_write_authorizations_aux tid gsm.(gsm_roots).(pr_s2)
     (reset_write_authorizations_aux tid gsm.(gsm_roots).(pr_s1) gsm)
 .
 
-Definition step_dsb (tid : thread_identifier) (dk : DxB) (gsm : ghost_simplified_model) : ghost_simplified_model_result :=
+Definition step_dsb (tid : thread_identifier) (dk : DxB) (gsm : casemate_model) : casemate_model_result :=
   (* There is enough barrier now to write plain again *)
   let st := reset_write_authorizations tid gsm in
   (* walk the pgt with dsb_visitor*)
@@ -631,7 +631,7 @@ Definition tlbi_visitor
   (cpu_id : thread_identifier)
   (td : TLBI_intermediate)
   (ptc : page_table_context) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   match ptc.(ptc_loc) with
     | None => (* Cannot do anything if the page is not initialized *)
       Merror (GSME_uninitialised "tlbi_visitor" ptc.(ptc_addr))
@@ -685,7 +685,7 @@ Definition tlbi_visitor
   end
 .
 
-Definition step_tlbi (tid : thread_identifier) (td : TLBI) (gsm : ghost_simplified_model) : ghost_simplified_model_result :=
+Definition step_tlbi (tid : thread_identifier) (td : TLBI) (gsm : casemate_model) : casemate_model_result :=
   match decode_tlbi td with
   | None => Merror GSME_unimplemented
   | Some decoded_TLBI =>
@@ -721,10 +721,10 @@ Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
 
 Definition register_si_root
   (tid : thread_identifier)
-  (gsm : ghost_simplified_model)
+  (gsm : casemate_model)
   (root : owner_t)
   (stage : stage_t) :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   let other_root_list :=
     match stage with
       | S1 => pr_s2
@@ -747,7 +747,7 @@ Definition register_si_root
     end
 .
 
-Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (gsm : ghost_simplified_model) : ghost_simplified_model_result :=
+Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (gsm : casemate_model) : casemate_model_result :=
   let stage :=
     match md.(tmd_sysreg) with
       | SYSREG_TTBR_EL2 => S1
@@ -774,19 +774,19 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (gsm : ghost
 Definition step_hint_set_root_lock
   (root : owner_t)
   (addr : phys_addr_t)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
     Mreturn (gsm <| gsm_lock_addr := insert (phys_addr_val (root_val root)) (phys_addr_val addr) gsm.(gsm_lock_addr)|>)
 .
 
 Function set_owner_root
   (phys : phys_addr_t)
   (root : owner_t)
-  (gsm : ghost_simplified_model)
+  (gsm : casemate_model)
   (logs : list log_element)
   (offs : Z)
   {measure Z.abs_nat offs} :
-  ghost_simplified_model_result :=
+  casemate_model_result :=
   if Zle_bool offs 0 then
     {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm |}
   else
@@ -815,7 +815,7 @@ Set Warnings "-funind-cannot-build-inversion -funind-cannot-define-graph".
 Proof. lia. Qed.
 Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
 
-Definition step_release_cb (ctx : page_table_context) : ghost_simplified_model_result :=
+Definition step_release_cb (ctx : page_table_context) : casemate_model_result :=
     match ctx.(ptc_loc) with
     | None => Merror (GSME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
     | Some location =>
@@ -842,8 +842,8 @@ Fixpoint remove (x : owner_t) (l : list owner_t) : list owner_t :=
 Definition try_unregister_root
   (addr : owner_t)
   (cpu : thread_identifier)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match gsm !! root_val addr with
     | None => Merror (GSME_internal_error IET_unexpected_none)
     | Some loc =>
@@ -865,8 +865,8 @@ Definition try_unregister_root
 Definition step_release_table
   (cpu : thread_identifier)
   (addr : owner_t)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match gsm !! root_val addr with
     | None => Merror (GSME_uninitialised "release"%string (root_val addr))
     | Some location =>
@@ -889,8 +889,8 @@ Definition step_release_table
 Definition step_hint_set_pte_thread_owner
   (phys : phys_addr_t)
   (val : owner_t)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match gsm !! phys with
     | None => Merror (GSME_uninitialised "set_pte_thread_owner"%string phys)
     | Some location =>
@@ -908,8 +908,8 @@ Definition step_hint_set_pte_thread_owner
 Definition step_hint
   (cpu : thread_identifier)
   (hd : trans_hint_data)
-  (gsm : ghost_simplified_model)
-: ghost_simplified_model_result :=
+  (gsm : casemate_model)
+: casemate_model_result :=
   match hd.(thd_hint_kind) with
     | GHOST_HINT_SET_ROOT_LOCK =>
       (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
@@ -931,8 +931,8 @@ Definition step_hint
 Definition step_lock
   (cpu : thread_identifier)
   (hd : trans_lock_data)
-  (gsm : ghost_simplified_model)
-: ghost_simplified_model_result :=
+  (gsm : casemate_model)
+: casemate_model_result :=
   match hd.(tld_kind), lookup (phys_addr_val hd.(tld_addr)) gsm.(gsm_lock_state) with
     | LOCK, None =>(* lock and authorize to write to that page-table *)
         Mreturn (gsm <| gsm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu gsm.(gsm_lock_state) |>

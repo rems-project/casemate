@@ -11,9 +11,9 @@ Require Import Recdef.
 Require Export step.
 
 Definition take_step
-  (trans : ghost_simplified_model_transition)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (trans : casemate_model_step)
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match trans.(gsmt_data) with
   | GSMDT_TRANS_MEM_WRITE wd =>
       step_write trans.(gsmt_thread_identifier) wd gsm
@@ -45,10 +45,10 @@ Definition memory_init := {|
 |}.
 
 Fixpoint steps_aux
-  (transitions : list ghost_simplified_model_transition)
+  (transitions : list casemate_model_step)
   (logs : list log_element)
-  (gsm : ghost_simplified_model) :
-  ghost_simplified_model_result :=
+  (gsm : casemate_model) :
+  casemate_model_result :=
   match transitions with
     | [] => {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm; |}
     | h :: t =>
@@ -62,8 +62,8 @@ Fixpoint steps_aux
 .
 
 Definition steps
-  (transitions : list ghost_simplified_model_transition) :
-  ghost_simplified_model_result :=
+  (transitions : list casemate_model_step) :
+  casemate_model_result :=
   let res := steps_aux transitions [] memory_init in
   res <| gsmsr_log := rev res.(gsmsr_log) |>
 .

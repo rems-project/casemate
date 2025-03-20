@@ -24,7 +24,7 @@
 
 %start trans
 
-%type <ghost_simplified_model_transition> trans
+%type <casemate_model_step> trans
 
 %%
 

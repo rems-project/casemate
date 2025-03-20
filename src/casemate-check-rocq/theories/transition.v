@@ -227,7 +227,7 @@ Record trans_lock_data := {
   tld_addr : phys_addr_t;
 }.
 
-Inductive ghost_simplified_model_transition_data :=
+Inductive casemate_model_transition_data :=
   | GSMDT_TRANS_MEM_WRITE (write_data : trans_write_data)
   | GSMDT_TRANS_MEM_ZALLOC (zalloc_data : trans_zalloc_data)
   | GSMDT_TRANS_MEM_READ (read_data : trans_read_data)
@@ -238,10 +238,10 @@ Inductive ghost_simplified_model_transition_data :=
   | GSMDT_TRANS_LOCK (lock_data : trans_lock_data)
 .
 
-Record ghost_simplified_model_transition := {
+Record casemate_model_step := {
   gsmt_src_loc : option src_loc;
   gsmt_thread_identifier : thread_identifier;
-  gsmt_data : ghost_simplified_model_transition_data;
+  gsmt_data : casemate_model_transition_data;
   gsmt_id : nat;
 }.
 

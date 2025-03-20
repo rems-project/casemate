@@ -107,8 +107,8 @@ let pp_log ppf = function
 let pp_logs ppf log = (Fmt.list ~sep:Fmt.comma pp_log) ppf log
 
 let pp_step_result :
-    ( Coq_executable_sm.ghost_simplified_model,
-      Coq_executable_sm.ghost_simplified_model_error )
+    ( Coq_executable_sm.casemate_model,
+      Coq_executable_sm.casemate_model_error )
     result
     Fmt.t =
   Fmt.(
@@ -179,7 +179,7 @@ let pp_sm_location ppf sl =
 
 type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
 
-let pp_ghost_simplified_model_state ppf m =
+let pp_casemate_model_state ppf m =
   let pp_k_v =
     Fmt.pair p0xZ pp_sm_location ~sep:(fun ppf () -> Fmt.pf ppf "@ ->@ ")
     |> Fmt.box
@@ -193,7 +193,7 @@ let pp_ghost_simplified_model_state ppf m =
          | None -> xs)
        m [])
 
-let pp_ghost_simplified_model_zallocd ppf m =
+let pp_casemate_model_zallocd ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma p0xZ)
     (Zmap.fold (fun x () xs -> Big_int_Z.shift_left_big_int x 12 :: xs) m [])
@@ -208,7 +208,7 @@ let pp_lock_entry ppf (root, addr, status, auth) =
         | Some Write_authorized -> "; authorized to write"
         | Some Write_unauthorized -> "; unauthorized to write")
 
-let pp_ghost_simplified_model_locks ppf m =
+let pp_casemate_model_locks ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
     Fmt.(list ~sep:comma pp_lock_entry)
     (Zmap.fold
@@ -220,16 +220,16 @@ let pp_ghost_simplified_model_locks ppf m =
          :: xs)
        m.gsm_lock_addr [])
 
-let pp_ghost_simplified_model ppf m =
+let pp_casemate_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
-    pp_pte_roots m.gsm_roots pp_ghost_simplified_model_state m.gsm_memory
-    pp_ghost_simplified_model_zallocd m.gsm_zalloc
-    pp_ghost_simplified_model_locks m
+    pp_pte_roots m.gsm_roots pp_casemate_model_state m.gsm_memory
+    pp_casemate_model_zallocd m.gsm_zalloc
+    pp_casemate_model_locks m
 
 let pp_state state =
-  Fmt.(result ~ok:pp_ghost_simplified_model ~error:pp_error) state
+  Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state
 
 let pp_tr ppf tr =
   Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS" pp_transition tr
