@@ -3,5 +3,3 @@
 (name simplified)
 
 (using coq 0.8)
-
-(using menhir 2.0)
