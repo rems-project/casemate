@@ -1,11 +1,6 @@
 (ocamllex
  (modules lexer))
 
-(menhir
- (modules menhir_parser)
- (flags --explain --dump)
- (infer true))
-
 (executable
  (public_name casemate)
  (name casemate)

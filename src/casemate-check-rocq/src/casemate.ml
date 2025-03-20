@@ -22,7 +22,7 @@ let parse_line line =
       match strip_suffix line' ~suffix with
       | None -> Fmt.invalid_arg "Ill-formed line: %S" line
       | Some line' ->
-          match Parser_v2.of_line line' with
+          match Parser.of_line line' with
           | None -> Fmt.invalid_arg "Parse error: %S" line
           | res -> res
 
