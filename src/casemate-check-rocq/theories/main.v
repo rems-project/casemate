@@ -1,15 +1,9 @@
-(** Simplified model *)
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
+(** Casemate - Entrypoint *)
+Require Export utils.
+Require Export transition.
+Require Export state.
+Require Export genericWalk.
 Require Export step.
-
 
 (******************************************************************************************)
 (*                             Toplevel function                                          *)

@@ -1,17 +1,7 @@
-(** Simplified model *)
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-(* uses https://github.com/tchajed/coq-record-update *)
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
-Require Export state.
-Require Export genericWalk.
-Require Export transition.
+Require Import utils.
+Require Import state.
+Require Import genericWalk.
+Require Import transition.
 
 (******************************************************************************************)
 (*                             Code for write                                             *)
