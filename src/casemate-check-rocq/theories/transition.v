@@ -1,14 +1,7 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
+Require Import utils.
 Require Import state.
 
-Import bv64.
+(* Import bv64. *)
 
 (* Inductive SecurityState := SS_NonSecure | SS_Root | SS_Realm | SS_Secure. *)
 Inductive Regime := Regime_EL3 | Regime_EL30 | Regime_EL2 | Regime_EL20 | Regime_EL10.

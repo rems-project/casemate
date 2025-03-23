@@ -1,14 +1,5 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
+Require Import utils.
 Require Import state.
-Require Export utils.
 
 
 Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
