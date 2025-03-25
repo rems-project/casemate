@@ -8,14 +8,14 @@ Import RecordSetNotations.
 Require Import stdpp.gmap.
 Require Import Recdef.
 
-Require Export state.
-Require Export genericWalk.
+Require Export model.
+Require Export pgtable.
 Require Export transition.
 
 (** Write *)
 
 (* Visiting a page table fails with this visitor iff the visited part has an uninitialised or invalid unclean entry *)
-Definition clean_reachable_cb (ctx : page_table_context) : casemate_model_result :=
+Definition clean_reachable_cb (ctx : pgtable_traverse_context) : casemate_model_result :=
   match ctx.(ptc_loc) with
     | None => Merror (CME_uninitialised "clean_reachable" ctx.(ptc_addr))
     | Some location =>
@@ -34,7 +34,7 @@ Definition clean_reachable_cb (ctx : page_table_context) : casemate_model_result
 Definition clean_reachable
   (map : table_data_t)
   (descriptor : ghost_exploded_descriptor)
-  (cm : casemate_model):
+  (cm : casemate_model_state):
   casemate_model_result :=
   traverse_pgt_from
     descriptor.(ged_owner)
@@ -52,8 +52,8 @@ Definition step_write_table_mark_children
   (loc : sm_location)
   (val : u64)
   (descriptor : ghost_exploded_descriptor)
-  (visitor_cb : page_table_context -> casemate_model_result)
-  (cm : casemate_model) :
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
+  (cm : casemate_model_state) :
   casemate_model_result :=
   if is_desc_valid val then
     (* Tests if the page table is well formed *)
@@ -82,7 +82,7 @@ Definition step_write_on_invalid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   (* If the location is a PTE table, tests if its children are clean *)
   match loc.(sl_pte) with
@@ -106,7 +106,7 @@ Definition step_write_on_invalid_unclean
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
@@ -145,7 +145,7 @@ Definition step_write_valid_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match require_bbm tid loc val with (* If no change in memory: no problem*)
   | None => Merror (CME_internal_error IET_unexpected_none)
@@ -170,7 +170,7 @@ Definition step_write_invalid_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   (* Invalidation of pgt: changing the state to invalid unclean unguarded *)
   let old := loc.(sl_val) in
@@ -197,7 +197,7 @@ Definition step_write_on_valid
   (wmo : write_memory_order)
   (loc : sm_location)
   (val : u64)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   if is_desc_valid val
     then step_write_valid_on_valid tid wmo loc val cm
@@ -218,8 +218,7 @@ Definition drop_write_authorization_of_lock
   (wmo : write_memory_order)
   (descriptor : u64)
   (pte : ghost_exploded_descriptor)
-  (cm : casemate_model) :
-  casemate_model_result :=
+  (cm : casemate_model_state) : casemate_model_result :=
   match get_lock_of_owner pte.(ged_owner) cm with
   | None => Mreturn cm
   | Some addr_lock =>
@@ -250,7 +249,7 @@ Definition drop_write_authorization_of_lock
 Definition drop_write_authorization
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
@@ -275,7 +274,7 @@ Definition drop_write_authorization
 Definition step_write_aux
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (cm : casemate_model) : casemate_model_result :=
+  (cm : casemate_model_state) : casemate_model_result :=
   let wmo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
@@ -349,7 +348,7 @@ Proof. lia. Qed.
 Definition step_write
   (tid : thread_identifier)
   (wd : trans_write_data)
-  (cm : casemate_model) : casemate_model_result :=
+  (cm : casemate_model_state) : casemate_model_result :=
   match wd.(twd_mo) with
   | WMO_plain | WMO_release => step_write_aux tid wd cm
   | WMO_page => step_write_page tid wd (Mreturn cm) z512
@@ -384,7 +383,7 @@ Fixpoint step_init_all
 
 Definition step_init
   (init_data : trans_init_data)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   step_init_all (Phys_addr (bv_shiftr_64 (phys_addr_val init_data.(tid_addr)) (bv64.BV64 9))) {|cmr_log := nil; cmr_data := Ok _ _ cm|} pa0 (to_nat init_data.(tid_size))
 .
@@ -392,7 +391,7 @@ Definition step_init
 Definition step_memset
   (tid : thread_identifier)
   (memset_data : trans_memset_data)
-  (cm : casemate_model) : casemate_model_result :=
+  (cm : casemate_model_state) : casemate_model_result :=
   let write_data := {|
     twd_mo := WMO_plain;
     twd_phys_addr := memset_data.(tmd_addr);
@@ -406,7 +405,7 @@ Definition step_memset
 Definition step_read
   (tid : thread_identifier)
   (rd : trans_read_data)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   (* Test if the memory has been initialised (it might refuse acceptable executions, not sure if it is a good idea) and its content is consistent. *)
   match cm !! rd.(trd_phys_addr) with
@@ -434,7 +433,7 @@ Definition dsb_invalid_unclean_unmark_children
   (cpu_id : thread_identifier)
   (loc : sm_location)
   (lis : aut_invalid_unclean)
-  (ptc : page_table_context) :
+  (ptc : pgtable_traverse_context) :
   casemate_model_result :=
   let st := ptc.(ptc_state) in
   let desc := (* This uses the old descriptor to rebuild a fresh old descriptor *)
@@ -486,7 +485,7 @@ Definition new_pte_after_dsb
 Definition dsb_visitor
   (kind : DxB)
   (cpu_id : thread_identifier)
-  (ctx : page_table_context) :
+  (ctx : pgtable_traverse_context) :
   casemate_model_result :=
   match ctx.(ptc_loc) with
   | None => (* This case is not explicitly excluded by the C code, but we cannot do anything in this case. *)
@@ -528,9 +527,9 @@ Definition dsb_visitor
 
 Fixpoint reset_write_authorizations_aux
   (tid : thread_identifier)
-  (roots: list owner_t)
-  (cm : casemate_model) :
-  casemate_model :=
+  (roots: list sm_owner_t)
+  (cm : casemate_model_state) :
+  casemate_model_state :=
   match roots with
   | [] => cm
   | h :: q =>
@@ -554,13 +553,13 @@ Fixpoint reset_write_authorizations_aux
 .
 
 
-Definition reset_write_authorizations (tid : thread_identifier) (cm : casemate_model) : casemate_model :=
+Definition reset_write_authorizations (tid : thread_identifier) (cm : casemate_model_state) : casemate_model_state :=
   (* Reset the authorizations for both states *)
   reset_write_authorizations_aux tid cm.(cm_roots).(pr_s2)
     (reset_write_authorizations_aux tid cm.(cm_roots).(pr_s1) cm)
 .
 
-Definition step_dsb (tid : thread_identifier) (dk : DxB) (cm : casemate_model) : casemate_model_result :=
+Definition step_dsb (tid : thread_identifier) (dk : DxB) (cm : casemate_model_state) : casemate_model_result :=
   (* There is enough barrier now to write plain again *)
   let st := reset_write_authorizations tid cm in
   (* walk the pgt with dsb_visitor*)
@@ -583,7 +582,7 @@ Definition is_last_level_only (d : TLBI_op_by_addr_data) : bool :=
   end
 .
 
-Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_context) : option bool :=
+Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : pgtable_traverse_context) : option bool :=
   match ptc.(ptc_loc) with
   | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
   | Some loc =>
@@ -603,12 +602,25 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : page_table_contex
           Some false
         else
           Some true
-      | TLBI_by_addr_space _ => None
+      | TLBI_by_addr_space addr_id =>
+        match td.(TI_regime), td.(TI_stage) with
+        (* for VMID *)
+        | Regime_EL10, TLBI_OP_stage2 =>
+            (*pte_root = retrieve_root_for_baddr roots_s2 ptc.(pgtable_traverse_context root)*)
+            (*get_current_vttbr()->id == pte_root->id)*)
+            Some true
+        (* for ASID *)
+        | Regime_EL2, TLBI_OP_stage1 =>
+            (*retrieve_root_for_baddr roots_s1 ptc.(pgtable_traverse_context root)*)
+            (*__get_tlbi_asid(tlbi, &asid)*)
+            (*if asid != pte_root-> id*)
+            Some true
+        | _, _ => Some true
+        end
       | TLBI_by_addr_all => Some true
       end
     end
-  end
-.
+  end.
 
 
 Definition step_pte_on_tlbi_after_dsb (td: TLBI_intermediate) : option LIS :=
@@ -638,7 +650,7 @@ Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS 
 Definition tlbi_visitor
   (cpu_id : thread_identifier)
   (td : TLBI_intermediate)
-  (ptc : page_table_context) :
+  (ptc : pgtable_traverse_context) :
   casemate_model_result :=
   match ptc.(ptc_loc) with
   | None => (* Cannot do anything if the page is not initialised *)
@@ -693,7 +705,7 @@ Definition tlbi_visitor
   end
 .
 
-Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cm : casemate_model) : casemate_model_result :=
+Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cm : casemate_model_state) : casemate_model_result :=
   match decode_tlbi td with
   | None => Merror CME_unimplemented
   | Some decoded_TLBI =>
@@ -714,7 +726,7 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cm : casemate_model)
 
 (** MSR *)
 
-Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
+Fixpoint si_root_exists (root : sm_owner_t) (roots : list sm_owner_t) : bool :=
   match roots with
   | [] => false
   | t :: q => (bool_decide (t = root)) || (si_root_exists root q)
@@ -722,16 +734,16 @@ Fixpoint si_root_exists (root : owner_t) (roots : list owner_t) : bool :=
 .
 
 Definition _extract_si_root_big_bv := BV64 0xfffffffffffe%Z. (* GENMASK (b47) (b1) *)
-Definition extract_si_root (val : u64) (stage : stage_t) : owner_t :=
+Definition extract_si_root (val : u64) (stage : entry_stage_t) : sm_owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
   Root (Phys_addr (bv_and_64 val _extract_si_root_big_bv))
 .
 
 Definition register_si_root
   (tid : thread_identifier)
-  (cm : casemate_model)
-  (root : owner_t)
-  (stage : stage_t) :
+  (cm : casemate_model_state)
+  (root : sm_owner_t)
+  (stage : entry_stage_t) :
   casemate_model_result :=
   let other_root_list :=
     match stage with
@@ -755,7 +767,7 @@ Definition register_si_root
     end
 .
 
-Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cm : casemate_model) : casemate_model_result :=
+Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cm : casemate_model_state) : casemate_model_result :=
   let stage :=
     match md.(tmd_sysreg) with
     | SYSREG_TTBR_EL2 => S1
@@ -780,17 +792,17 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cm : casema
 (** Hint *)
 
 Definition step_hint_set_root_lock
-  (root : owner_t)
+  (root : sm_owner_t)
   (addr : phys_addr_t)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
     Mreturn (cm <| cm_lock_addr := insert (phys_addr_val (root_val root)) (phys_addr_val addr) cm.(cm_lock_addr)|>)
 .
 
 Function set_owner_root
   (phys : phys_addr_t)
-  (root : owner_t)
-  (cm : casemate_model)
+  (root : sm_owner_t)
+  (cm : casemate_model_state)
   (logs : list log_element)
   (offs : Z)
   {measure Z.abs_nat offs} :
@@ -823,7 +835,7 @@ Set Warnings "-funind-cannot-build-inversion -funind-cannot-define-graph".
 Proof. lia. Qed.
 Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
 
-Definition step_release_cb (ctx : page_table_context) : casemate_model_result :=
+Definition step_release_cb (ctx : pgtable_traverse_context) : casemate_model_result :=
     match ctx.(ptc_loc) with
     | None => Merror (CME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
     | Some location =>
@@ -840,17 +852,30 @@ Definition step_release_cb (ctx : page_table_context) : casemate_model_result :=
 .
 
 
-Fixpoint remove (x : owner_t) (l : list owner_t) : list owner_t :=
+Fixpoint remove (x : sm_owner_t) (l : list sm_owner_t) : list sm_owner_t :=
   match l with
   | nil => nil
   | y::tl => if bool_decide (x = y) then remove x tl else y::(remove x tl)
   end
 .
 
+(* Definition retrieve_root_for_baddr
+  (cm : casemate_model_state)
+  (stage : entry_stage_t)
+  (root : sm_owner_t) : option root :=
+  let roots := match stage with
+  | S1 => cm.(cm_roots).(pr_s1)
+  | S2 => cm.(cm_roots).(pr_s2)
+  end in
+  match find root roots (fn elems root -> elems.(r_baddr) =? (root_addr root)) with
+  | Some root => root
+  | _ => None
+  end. *)
+
 Definition try_unregister_root
-  (addr : owner_t)
+  (addr : sm_owner_t)
   (cpu : thread_identifier)
-  (cm : casemate_model) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match cm !! root_val addr with
   | None => Merror (CME_internal_error IET_unexpected_none)
@@ -872,8 +897,8 @@ Definition try_unregister_root
 
 Definition step_release_table
   (cpu : thread_identifier)
-  (addr : owner_t)
-  (cm : casemate_model) :
+  (addr : sm_owner_t)
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match cm !! root_val addr with
   | None => Merror (CME_uninitialised "release"%string (root_val addr))
@@ -896,8 +921,8 @@ Definition step_release_table
 
 Definition step_hint_set_pte_thread_owner
   (phys : phys_addr_t)
-  (val : owner_t)
-  (cm : casemate_model) :
+  (val : sm_owner_t)
+  (cm : casemate_model_state) :
   casemate_model_result :=
   match cm !! phys with
   | None => Merror (CME_uninitialised "set_pte_thread_owner"%string phys)
@@ -916,7 +941,7 @@ Definition step_hint_set_pte_thread_owner
 Definition step_hint
   (cpu : thread_identifier)
   (hd : trans_hint_data)
-  (cm : casemate_model)
+  (cm : casemate_model_state)
 : casemate_model_result :=
   match hd.(thd_hint_kind) with
   | GHOST_HINT_SET_ROOT_LOCK =>
@@ -939,7 +964,7 @@ Definition step_hint
 Definition step_lock
   (cpu : thread_identifier)
   (hd : trans_lock_data)
-  (cm : casemate_model)
+  (cm : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) with
   | None =>(* lock and authorize to write to that page-table *)
@@ -952,7 +977,7 @@ Definition step_lock
 Definition step_unlock
   (cpu : thread_identifier)
   (hd : trans_lock_data)
-  (cm : casemate_model)
+  (cm : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) with
   | Some thread =>

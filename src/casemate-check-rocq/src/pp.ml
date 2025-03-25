@@ -108,7 +108,7 @@ let pp_log ppf = function
 let pp_logs ppf log = (Fmt.list ~sep:Fmt.comma pp_log) ppf log
 
 let pp_step_result :
-    ( Coq_executable_sm.casemate_model,
+    ( Coq_executable_sm.casemate_model_state,
       Coq_executable_sm.casemate_model_error )
     result
     Fmt.t =
@@ -127,7 +127,7 @@ let pp_step_result :
    the printers by hand.
 *)
 
-type owner_t = [%import: Coq_executable_sm.owner_t] [@@deriving show]
+type sm_owner_t = [%import: Coq_executable_sm.sm_owner_t] [@@deriving show]
 
 let pp_sm_pte_state ppf state =
   Fmt.pf ppf
@@ -153,7 +153,7 @@ let pp_pte_rec ppf = function
         (Z.add t.range_start t.range_size)
   | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
-let pp_stage_t ppf = function S1 -> Fmt.pf ppf "1" | S2 -> Fmt.pf ppf "2"
+let pp_entry_stage_t ppf = function S1 -> Fmt.pf ppf "1" | S2 -> Fmt.pf ppf "2"
 
 let pp_level_t ppf = function
   | L0 -> Fmt.pf ppf "0"
@@ -168,7 +168,7 @@ let pp_ghost_exploded_descriptor ppf desc =
      state: %a;@ @]}"
     p0xZ desc.ged_ia_region.range_start p0xZ
     (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level pp_stage_t desc.ged_stage p0xZ desc.ged_owner
+    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ desc.ged_owner
     pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
 
 let pp_sm_location ppf sl =
@@ -180,7 +180,7 @@ let pp_sm_location ppf sl =
 
 type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
 
-let pp_casemate_model_state ppf m =
+let pp_casemate_model_memory ppf m =
   let pp_k_v =
     Fmt.pair p0xZ pp_sm_location ~sep:(fun ppf () -> Fmt.pf ppf "@ ->@ ")
     |> Fmt.box
@@ -225,7 +225,7 @@ let pp_casemate_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
-    pp_pte_roots m.cm_roots pp_casemate_model_state m.cm_memory
+    pp_pte_roots m.cm_roots pp_casemate_model_memory m.cm_memory
     pp_casemate_model_initialised m.cm_initialised pp_casemate_model_locks m
 
 let pp_state state = Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state

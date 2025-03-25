@@ -7,7 +7,7 @@ Import RecordSetNotations.
 Require Import stdpp.gmap.
 Require Import Recdef.
 
-Require Import state.
+Require Import model.
 Require Export utils.
 
 
@@ -74,6 +74,21 @@ Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
   Phys_addr (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
 .
 
+(** States about page tables *)
+
+(* Type used as input of the page table visitor function  *)
+Record pgtable_traverse_context := mk_pgtable_traverse_context {
+  ptc_state: casemate_model_state;
+  ptc_loc: option sm_location;
+  ptc_partial_ia: phys_addr_t;
+  ptc_addr: phys_addr_t;
+  ptc_root: sm_owner_t;
+  ptc_level: level_t;
+  ptc_stage: entry_stage_t;
+}.
+#[export] Instance eta_pgtable_traverse_context : Settable _ :=
+  settable! mk_pgtable_traverse_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.
+
 Definition is_desc_table (descriptor : u64) (level : level_t) :=
   match level with
   | l3 => false
@@ -118,8 +133,8 @@ Definition deconstruct_pte
   (partial_ia : phys_addr_t)
   (desc : u64)
   (level : level_t)
-  (root : owner_t)
-  (stage : stage_t) :
+  (root : sm_owner_t)
+  (stage : entry_stage_t) :
   ghost_exploded_descriptor :=
   let pte_kind := deconstruct_pte_kind desc level in
   {|
@@ -139,11 +154,11 @@ Definition deconstruct_pte
 (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
           the number of recursive calls is bounded. *)
 Fixpoint traverse_pgt_from_aux
-  (root : owner_t)
+  (root : sm_owner_t)
   (table_start partial_ia : phys_addr_t)
   (level : level_t)
-  (stage : stage_t)
-  (visitor_cb : page_table_context -> casemate_model_result)
+  (stage : entry_stage_t)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (max_call_number : nat)
   (mon : casemate_model_result) :
   casemate_model_result :=
@@ -161,11 +176,11 @@ Fixpoint traverse_pgt_from_aux
   end
   (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs
-      (root : owner_t)
+      (root : sm_owner_t)
       (table_start partial_ia : phys_addr_t)
       (level : level_t)
-      (stage : stage_t)
-      (visitor_cb : page_table_context -> casemate_model_result)
+      (stage : entry_stage_t)
+      (visitor_cb : pgtable_traverse_context -> casemate_model_result)
       (i : u64)
       (max_call_number : nat)
       (mon : casemate_model_result):
@@ -242,17 +257,16 @@ with traverse_pgt_from_offs
 .
 
 Definition traverse_pgt_from
-  (root : owner_t)
+  (root : sm_owner_t)
   (table_start partial_ia : phys_addr_t)
   (level : level_t)
-  (stage : stage_t)
-  (visitor_cb : page_table_context -> casemate_model_result)
-  (cm : casemate_model) :
+  (stage : entry_stage_t)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
+  (cm : casemate_model_state) :
   casemate_model_result :=
   traverse_pgt_from_aux
     root
-    table_start
-    partial_ia
+    table_start partial_ia
     level stage
     visitor_cb
     (4*n512)
@@ -260,15 +274,14 @@ Definition traverse_pgt_from
 .
 
 Definition traverse_pgt_from_root
-  (root : owner_t)
-  (stage : stage_t)
-  (visitor_cb : page_table_context -> casemate_model_result)
-  (cm : casemate_model) :
+  (root : sm_owner_t)
+  (stage : entry_stage_t)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
+  (cm : casemate_model_state) :
   casemate_model_result :=
   traverse_pgt_from
     root
-    (root_val root)
-    pa0
+    (root_val root) pa0
     l0
     stage
     visitor_cb
@@ -278,9 +291,9 @@ Definition traverse_pgt_from_root
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
 Fixpoint traverse_si_pgt_aux
   (th : option thread_identifier)
-  (visitor_cb : page_table_context -> casemate_model_result)
-  (stage : stage_t)
-  (roots : list owner_t)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
+  (stage : entry_stage_t)
+  (roots : list sm_owner_t)
   (res : casemate_model_result) :
   casemate_model_result :=
   match roots, res.(cmr_data) with
@@ -296,9 +309,9 @@ Fixpoint traverse_si_pgt_aux
 (* Generic function to traverse all S1 or S2 roots *)
 Definition traverse_si_pgt
   (th : option thread_identifier)
-  (cm : casemate_model)
-  (visitor_cb : page_table_context -> casemate_model_result)
-  (stage : stage_t) :
+  (cm : casemate_model_state)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result)
+  (stage : entry_stage_t) :
   casemate_model_result :=
   let roots :=
     match stage with
@@ -311,8 +324,8 @@ Definition traverse_si_pgt
 
 Definition traverse_all_pgt
   (th : option thread_identifier)
-  (cm : casemate_model)
-  (visitor_cb : page_table_context -> casemate_model_result) :=
+  (cm : casemate_model_state)
+  (visitor_cb : pgtable_traverse_context -> casemate_model_result) :=
   match traverse_si_pgt th cm visitor_cb S1 with
   | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
     let res := traverse_si_pgt th cm visitor_cb S2 in
@@ -326,7 +339,7 @@ Definition traverse_all_pgt
 
 Definition mark_cb
   (cpu_id : thread_identifier)
-  (ctx : page_table_context) :
+  (ctx : pgtable_traverse_context) :
   casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>
@@ -345,7 +358,7 @@ Definition mark_cb
 
 Definition unmark_cb
   (cpu_id : thread_identifier)
-  (ctx : page_table_context) :
+  (ctx : pgtable_traverse_context) :
   casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>
@@ -364,7 +377,7 @@ Definition unmark_cb
 
 Definition mark_not_writable_cb
   (cpu_id : thread_identifier)
-  (ctx : page_table_context) :
+  (ctx : pgtable_traverse_context) :
   casemate_model_result :=
   match ctx.(ptc_loc) with
   | Some location =>

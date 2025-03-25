@@ -115,20 +115,20 @@ Infix "pa*" := pa_mul (at level 40).
 Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
-Inductive owner_t :=
-  | Root : phys_addr_t -> owner_t
+Inductive sm_owner_t :=
+  | Root : phys_addr_t -> sm_owner_t
 .
 
-Global Instance owner_t_eq_decision : EqDecision owner_t.
+Global Instance sm_owner_t_eq_decision : EqDecision sm_owner_t.
   Proof. solve_decision. Qed.
 
-Definition root_val (root : owner_t) : phys_addr_t :=
+Definition root_val (root : sm_owner_t) : phys_addr_t :=
   match root with
   | Root r => r
   end
 .
 
-Inductive stage_t :=
+Inductive entry_stage_t :=
   | S1
   | S2
 .
