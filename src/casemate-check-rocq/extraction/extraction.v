@@ -44,4 +44,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Set Warnings "-extraction-opaque-accessed -extraction-axiom-to-realize".
-Extraction "coq_executable_sm.ml" steps memory_init take_step.
+Extraction "coq_executable_sm.ml" steps cm_init take_step.

@@ -249,4 +249,3 @@ Record casemate_model_step := {
   cms_data : casemate_model_step_data;
   cms_id : nat;
 }.
-

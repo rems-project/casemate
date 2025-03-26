@@ -124,17 +124,6 @@ Record owner_locks := {
   ol_locks : unit;
 }.
 
-Record cm_root := {
-  r_baddr : sm_owner_t;
-  r_id : addr_id_t;
-  r_refcount : u64;
-}.
-
-Record thrd_ctxt := {
-  current_s1 : sm_owner_t;
-  current_s2 : sm_owner_t;
-}.
-
 (* The memory state is a map from address to simplified model location *)
 Definition casemate_model_memory := cmap sm_location.
 
@@ -142,25 +131,39 @@ Definition casemate_model_memory := cmap sm_location.
 Definition casemate_model_initialised := zmap unit.
 
 (* per-CPU thread-local context *)
+Record thrd_ctxt := {
+  current_s1 : sm_owner_t;
+  current_s2 : sm_owner_t;
+}.
+
 Definition casemate_model_thrd_ctxt := list thrd_ctxt.
 
 (* Map of pgtable root to lock that owns it *)
 Definition casemate_model_lock_owner_map := zmap u64.
 
-(* Map from the locks to the thread_identifier that has acquired it *)
-Definition casemate_model_lock_state_map := zmap thread_identifier.
-
+(* Map from the locks to the lock state *)
 Inductive write_authorization :=
-  | write_authorized
-  | write_unauthorized
+  | WA_AUTHORIZED
+  | WA_UNAUTHORIZED
 .
 
-(* Map of the locks to the write authorization state *)
-Definition casemate_model_lock_write_authorization := zmap write_authorization.
+Record lock_state := {
+  ls_tid : thread_identifier;
+  ls_write_authorization : write_authorization;
+}.
+
+Definition casemate_model_lock_state_map := zmap lock_state.
+
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 
 (* TODO: sm_owner_t to cm_root *)
+Record cm_root := {
+  r_baddr : sm_owner_t;
+  r_id : addr_id_t;
+  r_refcount : u64;
+}.
+
 Record pte_roots := mk_pte_roots {
   pr_s1 : list sm_owner_t;
   pr_s2 : list sm_owner_t;
@@ -174,11 +177,10 @@ Record casemate_model_state := mk_casemate_model_state {
   cm_thrd_ctxt : casemate_model_thrd_ctxt;
   cm_lock_addr : casemate_model_lock_owner_map;
   cm_lock_state : casemate_model_lock_state_map;
-  cm_lock_authorization : casemate_model_lock_write_authorization
 }.
 #[export] Instance eta_casemate_model_state : Settable _ :=
   settable! mk_casemate_model_state
-    <cm_roots; cm_memory; cm_initialised; cm_thrd_ctxt; cm_lock_addr; cm_lock_state; cm_lock_authorization>.
+    <cm_roots; cm_memory; cm_initialised; cm_thrd_ctxt; cm_lock_addr; cm_lock_state>.
 
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
   match st.(cm_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
@@ -227,7 +229,7 @@ Definition is_pte_well_locked
   | None => false
   | Some addr =>
     match lookup addr cm.(cm_lock_state) with
-    | Some lock_owner => bool_decide (lock_owner = cpu)
+    | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
   end
@@ -328,10 +330,7 @@ Definition Minsert_location
   casemate_model_result :=
   match mon with
   | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
-    {|
-      cmr_log := logs;
-      cmr_data := Ok _ _ (insert_location loc cm)
-    |}
+    {| cmr_log := logs; cmr_data := Ok _ _ (insert_location loc cm) |}
   | e => e
   end
 .

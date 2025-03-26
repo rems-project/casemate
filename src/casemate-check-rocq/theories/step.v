@@ -223,21 +223,24 @@ Definition drop_write_authorization_of_lock
   | None => Mreturn cm
   | Some addr_lock =>
     match lookup addr_lock cm.(cm_lock_state) with
-    | Some lock_owner =>
+    | Some {| ls_tid := lock_owner; ls_write_authorization := auth |} =>
       if bool_decide (lock_owner = cpu) then
         match wmo with
         | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
-          match lookup addr_lock cm.(cm_lock_authorization) with
-          | None => Merror (CME_internal_error IET_no_write_authorization)
-          | Some write_authorized => Mreturn (cm <| cm_lock_authorization := insert addr_lock write_unauthorized cm.(cm_lock_authorization)|>)
-          | Some write_unauthorized =>
+          match auth with
+          | WA_AUTHORIZED => 
+            let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := WA_UNAUTHORIZED |} in
+            Mreturn (cm <| cm_lock_state := insert addr_lock new_lock_state cm.(cm_lock_state)|>)
+          | WA_UNAUTHORIZED =>
             if (is_desc_valid descriptor) || is_valid_state pte.(ged_state) then
               Merror (CME_write_without_authorization addr)
             else
-              Mreturn (cm <| cm_lock_authorization := insert addr_lock write_unauthorized cm.(cm_lock_authorization)|>)
+              let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := WA_UNAUTHORIZED |} in
+              Mreturn (cm <| cm_lock_state := insert addr_lock new_lock_state cm.(cm_lock_state)|>)
           end
-        | WMO_release => (* drop the authorization*)
-          Mreturn (cm <| cm_lock_authorization := insert addr_lock write_unauthorized cm.(cm_lock_authorization)|>)
+        | WMO_release => (* drop the authorization *)
+          let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := WA_UNAUTHORIZED |} in
+          Mreturn (cm <| cm_lock_state := insert addr_lock new_lock_state cm.(cm_lock_state)|>)
         end
       else
         Merror (CME_transition_without_lock addr)
@@ -538,10 +541,11 @@ Fixpoint reset_write_authorizations_aux
       let new_st :=
         match lookup lock_addr cm.(cm_lock_state) with
         | None => cm
-        | Some thread =>
+        | Some {| ls_tid := thread; ls_write_authorization := _ |} =>
           if bool_decide (thread = tid) then
-            (cm <| cm_lock_authorization :=
-                insert lock_addr write_authorized cm.(cm_lock_authorization) |>)
+            let new_lock_state := {| ls_tid := tid; ls_write_authorization := WA_AUTHORIZED |} in
+            (cm <| cm_lock_state :=
+                insert lock_addr new_lock_state cm.(cm_lock_state) |>)
           else
             cm
         end
@@ -967,10 +971,10 @@ Definition step_lock
   (cm : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) with
-  | None =>(* lock and authorize to write to that page-table *)
-      Mreturn (cm <| cm_lock_state := insert (phys_addr_val hd.(tld_addr)) cpu cm.(cm_lock_state) |>
-                  <| cm_lock_authorization := insert (phys_addr_val hd.(tld_addr)) write_authorized cm.(cm_lock_authorization)|>)
-  | Some thread => Merror (CME_double_lock_acquire cpu thread)
+  | None =>(* lock and give the lock write_authorization to write the page-table *)
+    let lock_state := {| ls_tid := cpu; ls_write_authorization := WA_AUTHORIZED |} in
+    Mreturn (cm <| cm_lock_state := insert (phys_addr_val hd.(tld_addr)) lock_state cm.(cm_lock_state) |>)
+  | Some {| ls_tid := thread; ls_write_authorization := _ |} => Merror (CME_double_lock_acquire cpu thread)
   end
 .
 
@@ -980,7 +984,7 @@ Definition step_unlock
   (cm : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) with
-  | Some thread =>
+  | Some {| ls_tid := thread; ls_write_authorization := _ |} =>
     if bool_decide (thread = cpu) then
       Mreturn (cm <| cm_lock_state := delete (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) |>)
     else
@@ -988,4 +992,3 @@ Definition step_unlock
   | None => Merror (CME_double_lock_acquire cpu cpu)
   end
 .
-
