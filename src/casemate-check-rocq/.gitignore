@@ -78,3 +78,5 @@ time-of-build-pretty.log
 
 #
 logs/
+
+.vscode/

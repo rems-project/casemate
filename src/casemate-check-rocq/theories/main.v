@@ -44,14 +44,13 @@ Definition take_step
     step_hint trans.(cms_thread_identifier) hint_data cm
   end.
 
-Definition memory_init := {|
+Definition cm_init := {|
   cm_roots := {| pr_s1 := []; pr_s2 := []; |};
   cm_memory := ∅;
   cm_initialised := ∅;
   cm_thrd_ctxt := [];
   cm_lock_addr := ∅;
   cm_lock_state := ∅;
-  cm_lock_authorization := ∅;
 |}.
 
 Fixpoint steps
@@ -74,6 +73,6 @@ Fixpoint steps
 Definition run_model
   (transitions : list casemate_model_step) :
   casemate_model_result :=
-  let res := steps transitions [] memory_init in
+  let res := steps transitions [] cm_init in
   res <| cmr_log := rev res.(cmr_log) |>
 .

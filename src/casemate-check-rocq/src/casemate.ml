@@ -72,7 +72,7 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
     if Result.is_error res.cmr_data then Fmt.pr "@[%a@]@." pp_tr trans;
     res.cmr_data
   in
-  Iters.fold_result step_ memory_init xs |> Fmt.pr "@[%a@]@." pp_step_result
+  Iters.fold_result step_ cm_init xs |> Fmt.pr "@[%a@]@." pp_step_result
 
 (** Cmdline args **)
 
