@@ -1,7 +1,7 @@
 Require Import utils.
-Require Import state.
-Require Import genericWalk.
-Require Import transition.
+Require Import model.
+Require Import pgtable.
+Require Import transitions.
 
 (******************************************************************************************)
 (*                             Code for write                                             *)

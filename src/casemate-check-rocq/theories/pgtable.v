@@ -1,5 +1,5 @@
 Require Import utils.
-Require Import state.
+Require Import model.
 
 
 Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
