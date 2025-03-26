@@ -1,8 +1,8 @@
 (** Casemate - Entrypoint *)
 Require Export utils.
-Require Export transition.
-Require Export state.
-Require Export genericWalk.
+Require Export transitions.
+Require Export model.
+Require Export pgtable.
 Require Export step.
 
 (******************************************************************************************)
