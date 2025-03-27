@@ -157,21 +157,20 @@ Definition casemate_model_lock_state_map := zmap lock_state.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 
-(* TODO: sm_owner_t to cm_root *)
 Record cm_root := {
   r_baddr : sm_owner_t;
   r_id : addr_id_t;
   r_refcount : u64;
 }.
 
-Record pte_roots := mk_pte_roots {
-  pr_s1 : list sm_owner_t;
-  pr_s2 : list sm_owner_t;
+Record casemate_model_roots := mk_cm_roots {
+  pr_s1 : list cm_root;
+  pr_s2 : list cm_root;
 }.
-#[export] Instance eta_pte_roots : Settable _ := settable! mk_pte_roots <pr_s1; pr_s2>.
+#[export] Instance eta_casemate_model_roots : Settable _ := settable! mk_cm_roots <pr_s1; pr_s2>.
 
 Record casemate_model_state := mk_casemate_model_state {
-  cm_roots : pte_roots;
+  cm_roots : casemate_model_roots;
   cm_memory : casemate_model_memory;
   cm_initialised : casemate_model_initialised;
   cm_thrd_ctxt : casemate_model_thrd_ctxt;
@@ -184,8 +183,8 @@ Record casemate_model_state := mk_casemate_model_state {
 
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
   match st.(cm_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
-    | Some _ => true
-    | None => false
+  | Some _ => true
+  | None => false
   end
 .
 

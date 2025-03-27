@@ -530,13 +530,13 @@ Definition dsb_visitor
 
 Fixpoint reset_write_authorizations_aux
   (tid : thread_identifier)
-  (roots: list sm_owner_t)
+  (roots: list cm_root)
   (cm : casemate_model_state) :
   casemate_model_state :=
   match roots with
   | [] => cm
-  | h :: q =>
-    match lookup (phys_addr_val (root_val h)) cm.(cm_lock_addr) with
+  | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q =>
+    match lookup (phys_addr_val (root_val baddr)) cm.(cm_lock_addr) with
     | Some lock_addr =>
       let new_st :=
         match lookup lock_addr cm.(cm_lock_state) with
@@ -557,11 +557,12 @@ Fixpoint reset_write_authorizations_aux
 .
 
 
-Definition reset_write_authorizations (tid : thread_identifier) (cm : casemate_model_state) : casemate_model_state :=
+Definition reset_write_authorizations 
+  (tid : thread_identifier)
+  (cm : casemate_model_state) : casemate_model_state :=
   (* Reset the authorizations for both states *)
   reset_write_authorizations_aux tid cm.(cm_roots).(pr_s2)
-    (reset_write_authorizations_aux tid cm.(cm_roots).(pr_s1) cm)
-.
+    (reset_write_authorizations_aux tid cm.(cm_roots).(pr_s1) cm).
 
 Definition step_dsb (tid : thread_identifier) (dk : DxB) (cm : casemate_model_state) : casemate_model_result :=
   (* There is enough barrier now to write plain again *)
@@ -730,21 +731,15 @@ Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cm : casemate_model_
 
 (** MSR *)
 
-Fixpoint si_root_exists (root : sm_owner_t) (roots : list sm_owner_t) : bool :=
+Fixpoint root_exists (root : sm_owner_t) (roots : list cm_root) : bool :=
   match roots with
   | [] => false
-  | t :: q => (bool_decide (t = root)) || (si_root_exists root q)
-  end
-.
+  | t :: q => (bool_decide (t.(r_baddr) = root)) || (root_exists root q)
+  end.
 
-Definition _extract_si_root_big_bv := BV64 0xfffffffffffe%Z. (* GENMASK (b47) (b1) *)
-Definition extract_si_root (val : u64) (stage : entry_stage_t) : sm_owner_t :=
-  (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (Phys_addr (bv_and_64 val _extract_si_root_big_bv))
-.
-
-Definition register_si_root
+Definition register_root
   (tid : thread_identifier)
+  (addr_id : addr_id_t)
   (cm : casemate_model_state)
   (root : sm_owner_t)
   (stage : entry_stage_t) :
@@ -755,21 +750,21 @@ Definition register_si_root
     | S2 => pr_s1
     end cm.(cm_roots) in
   (* Check that the root does not already exist in the other root list*)
-  if si_root_exists root other_root_list then Merror CME_root_already_exists
+  if root_exists root other_root_list then Merror CME_root_already_exists
   else
-    (* Add the root to the list of roots*)
+    (* Add the root to the list of roots *)
     let new_roots :=
+      let new_root := {| r_baddr := root; r_id := addr_id; r_refcount := b0 |} in
       match stage with
-      | S2 => cm.(cm_roots) <| pr_s2 := root :: cm.(cm_roots).(pr_s2) |>
-      | S1 => cm.(cm_roots) <| pr_s1 := root :: cm.(cm_roots).(pr_s1) |>
+      | S2 => cm.(cm_roots) <| pr_s2 := new_root :: cm.(cm_roots).(pr_s2) |>
+      | S1 => cm.(cm_roots) <| pr_s1 := new_root :: cm.(cm_roots).(pr_s1) |>
       end
     in
     let new_st := cm <| cm_roots := new_roots |> in
     (* then mark all its children as PTE *)
     match root with
     | Root r => traverse_pgt_from root r pa0 l0 stage (mark_cb tid) new_st
-    end
-.
+    end.
 
 Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cm : casemate_model_state) : casemate_model_result :=
   let stage :=
@@ -778,19 +773,14 @@ Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cm : casema
     | SYSREG_VTTBR => S2
     end
   in
-  let root := extract_si_root md.(tmd_val) stage in
+  let root := ttbr_extract_baddr md.(tmd_val) in
+  let addr_id := ttbr_extract_id md.(tmd_val) in
   (* The value written to TTRB is a root, it might be new. *)
-  let roots :=
-    match stage with
-    | S2 =>  pr_s2
-    | S1 => pr_s1
-    end cm.(cm_roots)
-  in
-  if si_root_exists root (match stage with | S2 =>  pr_s2 | S1 => pr_s1 end cm.(cm_roots)) then
+  if root_exists root (match stage with | S2 => pr_s2 | S1 => pr_s1 end cm.(cm_roots)) then
     Mreturn cm (* If it is already known to be a root, do nothing, it has already been registered *)
   else
     (* Otherwise, register it *)
-    register_si_root tid cm root stage
+    register_root tid addr_id cm root stage
 .
 
 (** Hint *)
@@ -863,18 +853,26 @@ Fixpoint remove (x : sm_owner_t) (l : list sm_owner_t) : list sm_owner_t :=
   end
 .
 
-(* Definition retrieve_root_for_baddr
-  (cm : casemate_model_state)
-  (stage : entry_stage_t)
-  (root : sm_owner_t) : option root :=
-  let roots := match stage with
-  | S1 => cm.(cm_roots).(pr_s1)
-  | S2 => cm.(cm_roots).(pr_s2)
-  end in
-  match find root roots (fn elems root -> elems.(r_baddr) =? (root_addr root)) with
-  | Some root => root
-  | _ => None
-  end. *)
+Definition retrieve_root_for_baddr
+  (roots : list cm_root)
+  (root : sm_owner_t) : option cm_root :=
+  find (fun elem => bool_decide (elem.(r_baddr) = root)) roots.
+
+Definition retrieve_root_for_id
+  (roots : list cm_root)
+  (addr_id : addr_id_t) : option cm_root :=
+  find (fun elem => bool_decide (elem.(r_id) = addr_id)) roots.
+
+Fixpoint unregister_root
+  (addr : sm_owner_t)
+  (remaining : list cm_root)
+  (roots : list cm_root) : list cm_root :=
+  match roots with
+  | [] => []
+  | root :: tl =>
+    if bool_decide (root.(r_baddr) = addr) then remaining ++ tl
+    else unregister_root addr (remaining ++ [root]) tl
+  end.
 
 Definition try_unregister_root
   (addr : sm_owner_t)
@@ -889,8 +887,8 @@ Definition try_unregister_root
     | Some pte =>
       let new_roots :=
         match pte.(ged_stage) with
-        | S2 => cm.(cm_roots) <| pr_s2 := remove addr cm.(cm_roots).(pr_s2) |>
-        | S1 => cm.(cm_roots) <| pr_s1 := remove addr cm.(cm_roots).(pr_s1) |>
+        | S2 => cm.(cm_roots) <| pr_s2 := unregister_root addr [] cm.(cm_roots).(pr_s2) |>
+        | S1 => cm.(cm_roots) <| pr_s1 := unregister_root addr [] cm.(cm_roots).(pr_s1) |>
         end
       in
       let cm := cm <| cm_roots := new_roots |> in
@@ -971,7 +969,7 @@ Definition step_lock
   (cm : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val hd.(tld_addr)) cm.(cm_lock_state) with
-  | None =>(* lock and give the lock write_authorization to write the page-table *)
+  | None => (* give the lock write_authorization to write the page-table *)
     let lock_state := {| ls_tid := cpu; ls_write_authorization := WA_AUTHORIZED |} in
     Mreturn (cm <| cm_lock_state := insert (phys_addr_val hd.(tld_addr)) lock_state cm.(cm_lock_state) |>)
   | Some {| ls_tid := thread; ls_write_authorization := _ |} => Merror (CME_double_lock_acquire cpu thread)

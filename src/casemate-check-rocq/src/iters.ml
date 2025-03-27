@@ -46,8 +46,8 @@ let rec lines ic i =
   match input_line ic with
   | exception End_of_file -> ()
   | line ->
-    i line;
-    lines ic i
+      i line;
+      lines ic i
 
 let in_file path f i =
   let ic = open_in path in

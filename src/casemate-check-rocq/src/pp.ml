@@ -153,7 +153,9 @@ let pp_pte_rec ppf = function
         (Z.add t.range_start t.range_size)
   | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
-let pp_entry_stage_t ppf = function S1 -> Fmt.pf ppf "1" | S2 -> Fmt.pf ppf "2"
+let pp_entry_stage_t ppf = function
+  | S1 -> Fmt.pf ppf "1"
+  | S2 -> Fmt.pf ppf "2"
 
 let pp_level_t ppf = function
   | L0 -> Fmt.pf ppf "0"
@@ -168,8 +170,8 @@ let pp_ghost_exploded_descriptor ppf desc =
      state: %a;@ @]}"
     p0xZ desc.ged_ia_region.range_start p0xZ
     (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ desc.ged_owner
-    pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
+    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ
+    desc.ged_owner pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
 
 let pp_sm_location ppf sl =
   Fmt.pf ppf "@[val: %a@ %a@]" p0xZ sl.sl_val
@@ -178,7 +180,11 @@ let pp_sm_location ppf sl =
       | _ -> ())
     sl.sl_pte
 
-type pte_roots = [%import: Coq_executable_sm.pte_roots] [@@deriving show]
+(* TODO: update format *)
+let pp_cm_root ppf _ = Fmt.pf ppf ""
+
+type casemate_model_roots = [%import: Coq_executable_sm.casemate_model_roots]
+[@@deriving show]
 
 let pp_casemate_model_memory ppf m =
   let pp_k_v =
@@ -213,17 +219,14 @@ let pp_casemate_model_locks ppf m =
     Fmt.(list ~sep:comma pp_lock_entry)
     (Zmap.fold
        (fun root addr xs ->
-         ( root,
-           addr,
-           Zmap.find_opt addr m.cm_lock_state )
-         :: xs)
+         (root, addr, Zmap.find_opt addr m.cm_lock_state) :: xs)
        m.cm_lock_addr [])
 
 let pp_casemate_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
-    pp_pte_roots m.cm_roots pp_casemate_model_memory m.cm_memory
+    pp_casemate_model_roots m.cm_roots pp_casemate_model_memory m.cm_memory
     pp_casemate_model_initialised m.cm_initialised pp_casemate_model_locks m
 
 let pp_state state = Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state

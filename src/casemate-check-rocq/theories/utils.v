@@ -93,20 +93,19 @@ Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
 
 Inductive phys_addr_t :=
-  | Phys_addr : u64 -> phys_addr_t
-.
+  | Phys_addr : u64 -> phys_addr_t.
 
 Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
   Proof. solve_decision. Qed.
 
 Definition phys_addr_val (root : phys_addr_t) : u64 :=
   match root with
-    | Phys_addr r => r
-  end
-.
+  | Phys_addr r => r
+  end.
+
 Definition pa_plus (a b : phys_addr_t) : phys_addr_t :=
-  Phys_addr ((phys_addr_val a) b+ (phys_addr_val b))
-.
+  Phys_addr ((phys_addr_val a) b+ (phys_addr_val b)).
+
 Infix "pa+" := pa_plus (at level 50).
 Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
@@ -116,8 +115,7 @@ Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (a
 Definition pa0 := Phys_addr b0.
 
 Inductive sm_owner_t :=
-  | Root : phys_addr_t -> sm_owner_t
-.
+  | Root : phys_addr_t -> sm_owner_t.
 
 Global Instance sm_owner_t_eq_decision : EqDecision sm_owner_t.
   Proof. solve_decision. Qed.
@@ -138,9 +136,10 @@ Inductive vmid_t :=
 .
 
 Inductive addr_id_t :=
-  | ASID : u64 -> addr_id_t
-  | VMID : u64 -> addr_id_t
+  | Addr_id : u64 -> addr_id_t
 .
+Global Instance addr_id_t_eq_decision : EqDecision addr_id_t.
+  Proof. solve_decision. Qed.
 
 Inductive result (A B: Type): Type :=
   | Ok (a: A)
