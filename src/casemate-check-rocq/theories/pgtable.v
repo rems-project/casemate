@@ -73,6 +73,18 @@ Definition _align_4k_big_bv := BV64 0xfffffffffffffc00%Z. (* bv_not b1023 *)
 Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
   Phys_addr (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
 .
+Definition TTBR_BADDR_MASK := GENMASK (BV64 47) (BV64 1).
+Definition TTBR_ID_MASK := GENMASK (BV64 63) (BV64 48).
+
+Definition TLBI_PAGE_MASK := GENMASK (BV64 43) (BV64 0).
+Definition TLBI_ASID_MASK := GENMASK (BV64 63) (BV64 48).
+Definition TLBI_TTL_MASK := GENMASK (BV64 47) (BV64 44).
+
+Definition ttbr_extract_baddr (ttb : u64) : sm_owner_t :=
+  Root (Phys_addr (bv_and_64 ttb TTBR_BADDR_MASK)).
+
+Definition ttbr_extract_id (ttb : u64) : addr_id_t :=
+  Addr_id (bv_and_64 ttb TTBR_ID_MASK).
 
 (** States about page tables *)
 
@@ -152,7 +164,7 @@ Definition deconstruct_pte
 .
 
 (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
-          the number of recursive calls is bounded. *)
+    the number of recursive calls is bounded. *)
 Fixpoint traverse_pgt_from_aux
   (root : sm_owner_t)
   (table_start partial_ia : phys_addr_t)
@@ -160,7 +172,7 @@ Fixpoint traverse_pgt_from_aux
   (stage : entry_stage_t)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (max_call_number : nat)
-  (mon : casemate_model_result) :
+  (res : casemate_model_result) :
   casemate_model_result :=
   match max_call_number with
   | S max_call_number => traverse_pgt_from_offs
@@ -171,10 +183,10 @@ Fixpoint traverse_pgt_from_aux
                             visitor_cb
                             b0
                             max_call_number
-                            mon
+                            res
   | O => Merror (CME_internal_error IET_infinite_loop)
   end
-  (* This is the for loop that iterates over all the entries of a page table *)
+  (* This is a for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs
       (root : sm_owner_t)
       (table_start partial_ia : phys_addr_t)
@@ -183,15 +195,15 @@ with traverse_pgt_from_offs
       (visitor_cb : pgtable_traverse_context -> casemate_model_result)
       (i : u64)
       (max_call_number : nat)
-      (mon : casemate_model_result):
+      (res : casemate_model_result):
       casemate_model_result :=
   match max_call_number with
   | S max_call_number =>
-    if i b=? b512 then mon (* We are done with this page table *)
+    if i b=? b512 then res (* We are done with this page table *)
     else
-      match mon with
-      | {| cmr_log := _; cmr_data := Error _ _ _ |} => mon (* If it fails, it fails *)
-      | {| cmr_log := _; cmr_data := Ok _ _ st |} as mon =>
+      match res with
+      | {| cmr_log := _; cmr_data := Error _ _ _ |} => res (* If it fails, it fails *)
+      | {| cmr_log := _; cmr_data := Ok _ _ st |} as res =>
         let addr := table_start pa+ (Phys_addr (b8 b* i)) in
         let location := st !! addr in
         let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
@@ -206,13 +218,13 @@ with traverse_pgt_from_offs
             ptc_stage := stage;
           |}
         in
-        let mon := Mupdate_state visitor_state_updater mon in
-        match mon.(cmr_data) with (* The visitor can edit the state and write logs *)
-        | Error _ _ r  => mon (* If it fails, it fails *)
+        let res := Mupdate_state visitor_state_updater res in
+        match res.(cmr_data) with (* The visitor can edit the state and write logs *)
+        | Error _ _ r  => res (* If it fails, it fails *)
         | Ok _ _ updated_state =>
           let location := updated_state !! addr in
           match location with
-          | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
+          | None => res (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
           | Some location =>
             let exploded_desc :=
               match location.(sl_pte) with
@@ -221,7 +233,7 @@ with traverse_pgt_from_offs
                 deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root stage
               end
             in
-            let mon :=
+            let res :=
               (* if it is a valid descriptor, recursively call pgt_traversal_from, otherwise, continue *)
               match exploded_desc.(ged_pte_kind) with
               | PTER_PTE_KIND_TABLE table_data =>
@@ -237,8 +249,8 @@ with traverse_pgt_from_offs
                   stage
                   visitor_cb
                   max_call_number
-                  mon
-              | _ => mon
+                  res
+              | _ => res
               end
             in
             traverse_pgt_from_offs
@@ -248,7 +260,7 @@ with traverse_pgt_from_offs
               visitor_cb
               (bv_add_64 i b1)
               max_call_number
-              mon
+              res
           end
         end
       end
@@ -290,49 +302,46 @@ Definition traverse_pgt_from_root
 
 (* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
 Fixpoint traverse_si_pgt_aux
-  (th : option thread_identifier)
+  (tid : option thread_identifier)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (stage : entry_stage_t)
-  (roots : list sm_owner_t)
+  (roots : list cm_root)
   (res : casemate_model_result) :
   casemate_model_result :=
   match roots, res.(cmr_data) with
   | [], _ => res
   (* If the state is failed, there is no point in going on *)
   | _, Error _ _ _ => res
-  | r :: q, _ =>
-    let res := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) res in
-    traverse_si_pgt_aux th visitor_cb stage q res
+  | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q, _ =>
+    let res := Mupdate_state (traverse_pgt_from baddr (root_val baddr) pa0 l0 stage visitor_cb) res in
+    traverse_si_pgt_aux tid visitor_cb stage q res
   end
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
 Definition traverse_si_pgt
-  (th : option thread_identifier)
+  (tid : option thread_identifier)
   (cm : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
-  (stage : entry_stage_t) :
-  casemate_model_result :=
+  (stage : entry_stage_t) : casemate_model_result :=
   let roots :=
     match stage with
     | S2 => cm.(cm_roots).(pr_s2)
     | S1 => cm.(cm_roots).(pr_s1)
     end
   in
-  traverse_si_pgt_aux th visitor_cb stage roots (Mreturn cm)
-.
+  traverse_si_pgt_aux tid visitor_cb stage roots (Mreturn cm).
 
 Definition traverse_all_pgt
-  (th : option thread_identifier)
+  (thread : option thread_identifier)
   (cm : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result) :=
-  match traverse_si_pgt th cm visitor_cb S1 with
+  match traverse_si_pgt thread cm visitor_cb S1 with
   | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
-    let res := traverse_si_pgt th cm visitor_cb S2 in
+    let res := traverse_si_pgt thread cm visitor_cb S2 in
     res <| cmr_log := res.(cmr_log) ++ logs |>
   | err => err
-  end
-.
+  end.
 
 (*******************************************************************)
 (* Some generic walker functions to mark and unmark entries as PTE *)
@@ -363,15 +372,15 @@ Definition unmark_cb
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_pte) with
-      | Some _ =>
-        let new_loc := location <| sl_pte := None |> in
-        let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cm_memory) in
-        Mreturn (ctx.(ptc_state) <| cm_memory := new_st |>)
-      | None =>
-        Merror (CME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
+    | Some _ =>
+      let new_loc := location <| sl_pte := None |> in
+      let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cm_memory) in
+      Mreturn (ctx.(ptc_state) <| cm_memory := new_st |>)
+    | None =>
+      Merror (CME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
     end
   | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-      Merror (CME_uninitialised "unmark_cb" ctx.(ptc_addr))
+    Merror (CME_uninitialised "unmark_cb" ctx.(ptc_addr))
   end
 .
 

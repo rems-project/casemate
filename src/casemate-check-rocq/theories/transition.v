@@ -14,8 +14,7 @@ Import bv64.
 Inductive Regime := Regime_EL3 | Regime_EL30 | Regime_EL2 | Regime_EL20 | Regime_EL10.
 Inductive Shareability := Shareability_NSH | Shareability_ISH | Shareability_OSH.
 
-(***************************************)
-(* TLBI *)
+(** TLBI *)
 Inductive TLBIOp :=
   | TLBIOp_DALL
   | TLBIOp_DASID
@@ -86,30 +85,32 @@ Record TLBI_intermediate := {
 
 Definition decode_tlbi_stage (td : TLBI) : option TLBI_stage_kind :=
   match td.(TLBI_rec).(TLBIRecord_op) with
-    | TLBIOp_VA | TLBIOp_VMALL => Some TLBI_OP_stage1
-    | TLBIOp_IPAS2 => Some TLBI_OP_stage2
-    | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
-    | _ => None
+  | TLBIOp_VA 
+  | TLBIOp_VMALL => Some TLBI_OP_stage1
+  | TLBIOp_IPAS2 => Some TLBI_OP_stage2
+  | TLBIOp_VMALLS12 
+  | TLBIOp_ALL => Some TLBI_OP_both_stages
+  | _ => None
   end
 .
 
 Definition decode_tlbi_shootdown (td : TLBI) : option bool :=
   match td.(TLBI_shareability) with
-    | Shareability_ISH => Some true
-    | _ => Some true
+  | Shareability_ISH => Some true
+  | _ => Some true
   end
 .
 
 Definition decode_tlbi_method (td : TLBI) : option TLBI_method :=
   match td.(TLBI_rec).(TLBIRecord_op) with
-    | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-      Some TLBI_by_addr_all
-    | TLBIOp_VA | TLBIOp_IPAS2 =>
-      Some (TLBI_by_input_addr
-            {| TOBAD_page := td.(TLBI_rec).(TLBIRecord_address);
-              TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level); |})
-    | TLBIOp_ALL => Some TLBI_by_addr_all
-    | _ => None
+  | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
+    Some TLBI_by_addr_all
+  | TLBIOp_VA | TLBIOp_IPAS2 =>
+    Some (TLBI_by_input_addr
+          {| TOBAD_page := td.(TLBI_rec).(TLBIRecord_address);
+            TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level); |})
+  | TLBIOp_ALL => Some TLBI_by_addr_all
+  | _ => None
   end
 .
 
@@ -118,15 +119,15 @@ Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
   let shootdown := decode_tlbi_shootdown td in
   let method := decode_tlbi_method td in
   match stage, shootdown, method with
-    | Some stage, Some shootdown, Some method =>
-      Some
-      {|
-        TI_stage := stage;
-        TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
-        TI_shootdown := shootdown;
-        TI_method := method;
-      |}
-    | _, _, _ => None
+  | Some stage, Some shootdown, Some method =>
+    Some
+    {|
+      TI_stage := stage;
+      TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
+      TI_shootdown := shootdown;
+      TI_method := method;
+    |}
+  | _, _, _ => None
   end
 .
 
@@ -202,8 +203,8 @@ Record trans_read_data := {
 }.
 
 Record trans_init_data := {
-    tid_addr : phys_addr_t;
-    tid_size : u64;
+  tid_addr : phys_addr_t;
+  tid_size : u64;
 }.
 
 Record trans_memset_data := {
