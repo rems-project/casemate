@@ -127,7 +127,8 @@ let transition sexp =
     match sexp with
     | List
         (Atom "mem-write"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "mem-order"; order ]
         :: List [ Atom "address"; addr ]
         :: List [ Atom "value"; value ]
@@ -143,7 +144,8 @@ let transition sexp =
           tl )
     (*| List*)
     (*    (Atom "mem-set"*)
-    (*    :: id :: tid*)
+    (* :: List [ Atom "id"; id ]
+       :: List [ Atom "tid"; tid ]*)
     (*    :: List [ Atom "address"; addr ]*)
     (*    :: List [ Atom "size"; size ]*)
     (*    :: List [ Atom "value"; value ]*)
@@ -161,7 +163,8 @@ let transition sexp =
     (*        tl )*)
     | List
         (Atom "mem-read"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "address"; addr ]
         :: List [ Atom "value"; value ]
         :: tl) ->
@@ -170,13 +173,22 @@ let transition sexp =
           id,
           tid,
           tl )
-    | List (Atom "barrier" :: id :: tid :: barrier :: tl) ->
+    | List
+        (Atom "barrier"
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
+        :: barrier :: tl) ->
         (CMSD_TRANS_HW_BARRIER (barrier_of barrier), id, tid, tl)
-    | List (Atom "tlbi" :: id :: tid :: tlbi :: tl) ->
+    | List
+        (Atom "tlbi"
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
+        :: tlbi :: tl) ->
         (CMSD_TRANS_HW_TLBI (tlbi_of tlbi), id, tid, tl)
     | List
         (Atom "sysreg-write"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "sysreg"; sysreg ]
         :: List [ Atom "value"; value ]
         :: tl) ->
@@ -187,7 +199,8 @@ let transition sexp =
           tl )
     | List
         (Atom "mem-init"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "address"; addr ]
         :: List [ Atom "size"; size ]
         :: tl) ->
@@ -197,7 +210,8 @@ let transition sexp =
           tl )
     | List
         (Atom "mem-set"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "address"; addr ]
         :: List [ Atom "size"; size ]
         :: List [ Atom "value"; value ]
@@ -207,14 +221,24 @@ let transition sexp =
           id,
           tid,
           tl )
-    | List (Atom "lock" :: id :: tid :: List [ Atom "address"; addr ] :: tl) ->
+    | List
+        (Atom "lock"
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
+        :: List [ Atom "address"; addr ]
+        :: tl) ->
         (CMSD_TRANS_ABS_LOCK (u64 addr), id, tid, tl)
-    | List (Atom "unlock" :: id :: tid :: List [ Atom "address"; addr ] :: tl)
-      ->
+    | List
+        (Atom "unlock"
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
+        :: List [ Atom "address"; addr ]
+        :: tl) ->
         (CMSD_TRANS_ABS_UNLOCK (u64 addr), id, tid, tl)
     | List
         (Atom "hint"
-        :: id :: tid
+        :: List [ Atom "id"; id ]
+        :: List [ Atom "tid"; tid ]
         :: List [ Atom "kind"; kind ]
         :: List [ Atom "location"; loc ]
         :: List [ Atom "value"; value ]
@@ -232,7 +256,15 @@ let transition sexp =
   in
   let loc =
     match tl with
-    | [ List [ Atom "src"; Atom _loc ] ] -> None
+    | List [ Atom "src"; Atom loc_str ] :: _ -> (
+        (* Now loc_str is a string like "file.c:123" *)
+        match String.split_on_char ':' loc_str with
+        | [ file; lineno ] ->
+            Some
+              { sl_file = file; sl_lineno = int_of_string lineno; sl_func = "" }
+        | _ ->
+            of_sexp_error "Malformed src format (expected file:line)"
+              (List [ Atom "src"; Atom loc_str ]))
     | [] -> None
     | sexp -> of_sexp_error "bad location or extra data" (List sexp)
   in

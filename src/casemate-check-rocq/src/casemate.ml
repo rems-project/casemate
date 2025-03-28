@@ -2,29 +2,13 @@ module Z0 = Z (* Don't overwrite Zarith *)
 open Coq_executable_casemate
 open Pp
 
-let strip_prefix ~prefix s =
-  let n = String.length s and pn = String.length prefix in
-  if n < pn then None
-  else if String.sub s 0 pn <> prefix then None
-  else Some (String.sub s pn (n - pn))
-
-let strip_suffix ~suffix s =
-  let n = String.length s and sn = String.length suffix in
-  if n < sn then None
-  else if String.sub s (n - sn) sn <> suffix then None
-  else Some (String.sub s 0 (n - sn))
-
 let parse_line line =
-  let prefix = "\o033[46;37;1m" and suffix = "\o033[0m" in
-  match strip_prefix line ~prefix with
-  | None -> None
-  | Some line' -> (
-      match strip_suffix line' ~suffix with
-      | None -> Fmt.invalid_arg "Ill-formed line: %S" line
-      | Some line' -> (
-          match Parser.of_line line' with
-          | None -> Fmt.invalid_arg "Parse error: %S" line
-          | res -> res))
+  (* ignore the final line with "!" *)
+  if String.length line = 0 || String.get line 0 = '!' then None
+  else
+    match Parser.of_line line with
+    | None -> Fmt.invalid_arg "Parse error: %S" line
+    | res -> res
 
 let transitions ic = Iters.lines ic |> Iters.filter_map parse_line
 
@@ -59,16 +43,17 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
   in
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let step_ state trans =
+    (* TODO: remove after debugging *)
+    (* Fmt.pr "[step_] Running transition: %a@." pp_tr trans; *)
     let res = Coq_executable_casemate.step trans state in
-    if res.cmr_log != [] then (
+    if res.cmr_log != [] then
       if dump_trans then
         Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.cmr_log
       else Fmt.pr "%a@." pp_logs res.cmr_log;
-      if dump_roots then
-        Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots
-          state.cm_roots;
-      if dump_state then
-        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_casemate_model state);
+    if dump_roots then
+      Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots state.cm_roots;
+    if dump_state then
+      Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_casemate_model state;
     (* If we reach an error, we dump the transition *)
     if Result.is_error res.cmr_data then Fmt.pr "@[%a@]@." pp_tr trans;
     res.cmr_data
