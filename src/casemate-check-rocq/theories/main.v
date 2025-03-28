@@ -5,11 +5,7 @@ Require Export model.
 Require Export pgtable.
 Require Export step.
 
-(******************************************************************************************)
-(*                             Toplevel function                                          *)
-(******************************************************************************************)
-
-Definition take_step
+Definition step
   (trans : ghost_simplified_model_transition) 
   (gsm : ghost_simplified_model) : 
   ghost_simplified_model_result :=
@@ -43,7 +39,7 @@ Definition memory_init := {|
   gsm_lock_authorization := ∅;
 |}.
 
-Fixpoint all_steps_aux
+Fixpoint steps
   (transitions : list ghost_simplified_model_transition)
   (logs : list log_element)
   (gsm : ghost_simplified_model) :
@@ -51,19 +47,18 @@ Fixpoint all_steps_aux
   match transitions with
     | [] => {| gsmsr_log := logs; gsmsr_data := Ok _ _ gsm; |}
     | h :: t =>
-      match take_step h gsm with
+      match step h gsm with
         | {| gsmsr_log := logs_next; gsmsr_data := Ok _ _ st_next |} =>
-            all_steps_aux t (logs_next ++ logs) st_next
+            steps t (logs_next ++ logs) st_next
         | {| gsmsr_log := logs_next; gsmsr_data := Error _ _ f |} =>
             {| gsmsr_log := logs_next ++ logs; gsmsr_data := Error _ _ f |}
       end
   end
 .
 
-Definition all_steps 
+Definition run_model 
   (transitions : list ghost_simplified_model_transition) :
   ghost_simplified_model_result :=
-  let res := all_steps_aux transitions [] memory_init in
+  let res := steps transitions [] memory_init in
   res <| gsmsr_log := rev res.(gsmsr_log) |>
 .
-

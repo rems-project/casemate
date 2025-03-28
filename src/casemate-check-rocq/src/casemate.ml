@@ -59,7 +59,7 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
   in
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let step_ state trans =
-    let res = Rocq_casemate.take_step trans state in
+    let res = Rocq_casemate.step trans state in
     if res.gsmsr_log != [] then (
       if dump_trans then
         Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.gsmsr_log
