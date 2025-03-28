@@ -1,7 +1,7 @@
 module Z0 = Z
 open Sexplib0.Sexp
 open Sexplib0.Sexp_conv
-open Coq_executable_sm
+open Coq_executable_casemate
 
 let ( ~$ ) = Z0.( ~$ )
 let int = Sexplib0.Sexp_conv.int_of_sexp

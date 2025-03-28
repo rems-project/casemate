@@ -8,9 +8,20 @@ Import RecordSetNotations.
 Require Import stdpp.gmap.
 Require Import Recdef.
 
-Require Export step.
+Require Export transition.
+Require Export model.
+Require Export pgtable.
 
-Definition take_step
+Definition cm_init := {|
+  cm_roots := {| pr_s1 := []; pr_s2 := []; |};
+  cm_memory := ∅;
+  cm_initialised := ∅;
+  cm_thrd_ctxt := [];
+  cm_lock_addr := ∅;
+  cm_lock_state := ∅;
+|}.
+
+Definition step
   (trans : casemate_model_step)
   (cm : casemate_model_state) :
   casemate_model_result :=
@@ -39,16 +50,7 @@ Definition take_step
     step_hint trans.(cms_thread_identifier) hint_data cm
   end.
 
-Definition cm_init := {|
-  cm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  cm_memory := ∅;
-  cm_initialised := ∅;
-  cm_thrd_ctxt := [];
-  cm_lock_addr := ∅;
-  cm_lock_state := ∅;
-|}.
-
-Fixpoint steps_aux
+Fixpoint apply_steps
   (transitions : list casemate_model_step)
   (logs : list log_element)
   (cm : casemate_model_state) :
@@ -56,19 +58,16 @@ Fixpoint steps_aux
   match transitions with
   | [] => {| cmr_log := logs; cmr_data := Ok _ _ cm; |}
   | h :: t =>
-    match take_step h cm with
+    match step h cm with
     | {| cmr_log := logs_next; cmr_data := Ok _ _ st_next |} =>
-        steps_aux t (logs_next ++ logs) st_next
+        apply_steps t (logs_next ++ logs) st_next
     | {| cmr_log := logs_next; cmr_data := Error _ _ f |} =>
         {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
     end
-  end
-.
+  end.
 
 Definition steps
   (transitions : list casemate_model_step) :
   casemate_model_result :=
-  let res := steps_aux transitions [] cm_init in
-  res <| cmr_log := rev res.(cmr_log) |>
-.
-
+  let res := apply_steps transitions [] cm_init in
+  res <| cmr_log := rev res.(cmr_log) |>.

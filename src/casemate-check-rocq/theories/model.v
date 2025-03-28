@@ -124,7 +124,7 @@ Record owner_locks := {
   ol_locks : unit;
 }.
 
-(* The memory state is a map from address to simplified model location *)
+(* The memory state is a map from address to casemate model location *)
 Definition casemate_model_memory := cmap sm_location.
 
 (* The memory initialised is stored here *)
@@ -217,8 +217,7 @@ Definition is_loc_thread_owned
   | Some _, Some thread_owner =>
     bool_decide (thread_owner = cpu)
   | _, _ => false
-  end
-.
+  end.
 
 Definition is_pte_well_locked
   (cpu : thread_identifier)
@@ -231,8 +230,7 @@ Definition is_pte_well_locked
     | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
-  end
-.
+  end.
 
 Definition should_visit
   (cpu : thread_identifier)
@@ -333,4 +331,3 @@ Definition Minsert_location
   | e => e
   end
 .
-
