@@ -44,4 +44,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Set Warnings "-extraction-opaque-accessed -extraction-axiom-to-realize".
-Extraction "rocq_casemate.ml" all_steps memory_init take_step.
+Extraction "rocq_casemate.ml" run_model memory_init step.
