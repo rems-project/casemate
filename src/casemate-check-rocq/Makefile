@@ -7,7 +7,7 @@ all:
 run-all:
 	for log_file in $(EXAMPLES_DIR)/*.log; do \
 	    echo "Processing '$$log_file'..."; \
-	    dune exec casemate -- --dump-state=true --dump-roots=true --dump-trans=true "$$log_file"; \
+	    dune exec casemate -- "$$log_file"; \
 	done
 
 sm-test:

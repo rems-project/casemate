@@ -44,7 +44,7 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let step_ state trans =
     (* TODO: remove after debugging *)
-    (* Fmt.pr "[step_] Running transition: %a@." pp_tr trans; *)
+    Fmt.pr "[step_] Running transition: %a@." pp_tr trans;
     let res = Coq_executable_casemate.step trans state in
     if res.cmr_log != [] then
       if dump_trans then

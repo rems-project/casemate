@@ -11,11 +11,22 @@ Require Import model.
 Require Import pgtable.
 
 (* Inductive SecurityState := SS_NonSecure | SS_Root | SS_Realm | SS_Secure. *)
-Inductive Regime := Regime_EL3 | Regime_EL30 | Regime_EL2 | Regime_EL20 | Regime_EL10.
-Inductive Shareability := Shareability_NSH | Shareability_ISH | Shareability_OSH.
+Inductive Regime := 
+  | Regime_EL3
+  | Regime_EL30
+  | Regime_EL2
+  | Regime_EL20
+  | Regime_EL10
+.
+
+Inductive Shareability := 
+  | Shareability_NSH
+  | Shareability_ISH 
+  | Shareability_OSH
+.
 
 (** TLBI *)
-Inductive TLBIOp :=
+(* Inductive TLBIOp :=
   | TLBIOp_DALL
   | TLBIOp_DASID
   | TLBIOp_DVA
@@ -34,11 +45,11 @@ Inductive TLBIOp :=
   | TLBIOp_RVA
   | TLBIOp_RPA
   | TLBIOp_PAALL
-.
+. *)
 
 Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last.
 
-Record TLBIRecord  := {
+(* Record TLBIRecord  := {
   TLBIRecord_op : TLBIOp;
   (* TLBIRecord_from_aarch64 : bool; *)
   (* TLBIRecord_security : SecurityState; *)
@@ -57,7 +68,7 @@ Record TLBIRecord  := {
 Record TLBI := {
   TLBI_rec : TLBIRecord;
   TLBI_shareability : Shareability;
-}.
+}. *)
 
 Inductive TLBI_stage_kind :=
   | TLBI_OP_stage1
@@ -67,13 +78,15 @@ Inductive TLBI_stage_kind :=
 
 Record TLBI_op_by_addr_data := {
   TOBAD_page : phys_addr_t;
-  TOBAD_last_level_only : TLBILevel;
+  TOBAD_level_hint : option u64;
+  TOBAD_last_level_only : bool;
+  TOBAD_asid : option u64;
 }.
 
 Inductive TLBI_method :=
   | TLBI_by_addr_space : phys_addr_t -> TLBI_method
   | TLBI_by_input_addr : TLBI_op_by_addr_data -> TLBI_method
-  | TLBI_by_addr_all
+  | TLBI_by_all
 .
 
 Record TLBI_intermediate := {
@@ -83,53 +96,121 @@ Record TLBI_intermediate := {
   TI_method : TLBI_method;
 }.
 
-Definition decode_tlbi_stage (td : TLBI) : option TLBI_stage_kind :=
-  match td.(TLBI_rec).(TLBIRecord_op) with
-  | TLBIOp_VA 
-  | TLBIOp_VMALL => Some TLBI_OP_stage1
-  | TLBIOp_IPAS2 => Some TLBI_OP_stage2
-  | TLBIOp_VMALLS12 
-  | TLBIOp_ALL => Some TLBI_OP_both_stages
-  | _ => None
-  end
+Inductive tlbi_kind :=
+  | TLBI_vmalls12e1
+	| TLBI_vmalls12e1is
+	| TLBI_vmalle1is
+	| TLBI_alle1is
+  | TLBI_vae2
+	| TLBI_vmalle1
+	| TLBI_vale2is
+	| TLBI_vae2is
+	| TLBI_ipas2e1is
 .
 
-Definition decode_tlbi_shootdown (td : TLBI) : option bool :=
-  match td.(TLBI_shareability) with
-  | Shareability_ISH => Some true
-  | _ => Some true
-  end
-.
+Record trans_tlbi_data := {
+  ttd_tlbi_kind : tlbi_kind;
+  ttd_value : u64
+}.
 
-Definition decode_tlbi_method (td : TLBI) : option TLBI_method :=
-  match td.(TLBI_rec).(TLBIRecord_op) with
-  | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-    Some TLBI_by_addr_all
-  | TLBIOp_VA | TLBIOp_IPAS2 =>
-    Some (TLBI_by_input_addr
-          {| TOBAD_page := td.(TLBI_rec).(TLBIRecord_address);
-            TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level); |})
-  | TLBIOp_ALL => Some TLBI_by_addr_all
-  | _ => None
-  end
-.
+Definition decode_tlbi_stage (td : trans_tlbi_data) : TLBI_stage_kind :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1 => TLBI_OP_both_stages
+	| TLBI_vmalls12e1is => TLBI_OP_both_stages
+	| TLBI_vmalle1is => TLBI_OP_stage1
+	| TLBI_alle1is => TLBI_OP_stage1
+  | TLBI_vae2 => TLBI_OP_stage1
+	| TLBI_vmalle1 => TLBI_OP_stage1
+	| TLBI_vale2is => TLBI_OP_stage1
+	| TLBI_vae2is => TLBI_OP_stage1
+	| TLBI_ipas2e1is => TLBI_OP_stage2
+  end.
 
-Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
+Definition decode_tlbi_regime (td : trans_tlbi_data) : Regime :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1 => Regime_EL10
+	| TLBI_vmalls12e1is => Regime_EL10
+	| TLBI_vmalle1is => Regime_EL10
+	| TLBI_alle1is => Regime_EL10
+	| TLBI_vmalle1 => Regime_EL10
+  | TLBI_vae2 => Regime_EL2
+	| TLBI_vale2is => Regime_EL2
+	| TLBI_vae2is => Regime_EL2
+	| TLBI_ipas2e1is => Regime_EL10
+  end.
+
+Definition decode_tlbi_shootdown (td : trans_tlbi_data) : bool :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1 => false
+	| TLBI_vmalls12e1is => true
+	| TLBI_vmalle1is => true
+	| TLBI_alle1is => true
+	| TLBI_vmalle1 => false
+  | TLBI_vae2 => false (* TODO: missing kind in C *)
+	| TLBI_vale2is => true
+	| TLBI_vae2is => true
+	| TLBI_ipas2e1is => true
+  end.
+
+Definition __decoded_tlbi_has_asid (td : trans_tlbi_data) : option u64 :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vale2is
+	| TLBI_vae2is => Some (bv_and_64 td.(ttd_value) TLBI_ASID_MASK)
+  | TLBI_vmalls12e1 => None
+	| TLBI_vmalls12e1is => None
+	| TLBI_vmalle1is => None
+	| TLBI_alle1is => None
+	| TLBI_vmalle1 => None
+  | TLBI_vae2 => None
+	| TLBI_ipas2e1is => None
+  end.
+
+Definition decode_tlbi_by_addr (td : trans_tlbi_data) : TLBI_op_by_addr_data :=
+  let page := bv_and_64 td.(ttd_value) TLBI_PAGE_MASK in
+  let last_level_only := 
+    match td.(ttd_tlbi_kind) with
+    | TLBI_vale2is => true
+    | _ => false
+    end in
+  let level := bv_and_64 td.(ttd_value) TLBI_TTL_MASK in
+  let level_hint := 
+    if (level b<? b4) then None 
+    else Some (bv_and_64 level b4) in
+
+  {|
+    TOBAD_page := PA page;
+    TOBAD_last_level_only := last_level_only;
+    TOBAD_level_hint := level_hint;
+    TOBAD_asid := __decoded_tlbi_has_asid td;
+  |}.
+
+Definition decode_tlbi_by_space_id (td : trans_tlbi_data) : phys_addr_t := PA b0.
+
+Definition decode_tlbi_method (td : trans_tlbi_data) : TLBI_method :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1
+	| TLBI_vmalls12e1is
+	| TLBI_vmalle1is
+  | TLBI_vmalle1 => TLBI_by_input_addr (decode_tlbi_by_addr td)
+  | TLBI_vale2is
+  | TLBI_vae2
+  | TLBI_vae2is
+  | TLBI_ipas2e1is => TLBI_by_addr_space (decode_tlbi_by_space_id td)
+	| TLBI_alle1is => TLBI_by_all
+  end.
+
+Definition decode_tlbi (td : trans_tlbi_data) : TLBI_intermediate :=
   let stage := decode_tlbi_stage td in
+  let regime := decode_tlbi_regime td in
   let shootdown := decode_tlbi_shootdown td in
   let method := decode_tlbi_method td in
-  match stage, shootdown, method with
-  | Some stage, Some shootdown, Some method =>
-    Some
-    {|
-      TI_stage := stage;
-      TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
-      TI_shootdown := shootdown;
-      TI_method := method;
-    |}
-  | _, _, _ => None
-  end
-.
+  
+  {|
+    TI_stage := stage;
+    TI_regime := regime;
+    TI_shootdown := shootdown;
+    TI_method := method;
+  |}.
 
 
 (** Barrier *)
@@ -233,7 +314,7 @@ Inductive casemate_model_step_data :=
   | CMSD_TRANS_HW_MEM_WRITE (write_data : trans_write_data)
   | CMSD_TRANS_HW_MEM_READ (read_data : trans_read_data)
   | CMSD_TRANS_HW_BARRIER (dsb_data : Barrier)
-  | CMSD_TRANS_HW_TLBI (tlbi_data : TLBI)
+  | CMSD_TRANS_HW_TLBI (tlbi_data : trans_tlbi_data)
   | CMSD_TRANS_HW_MSR (msr_data : trans_msr_data)
   (* ABS_step *)
   | CMSD_TRANS_ABS_MEM_INIT (init_data : trans_init_data)
@@ -601,7 +682,7 @@ Definition step_init_aux
   let update s := {| cmr_log := nil; cmr_data := Ok _ _ (s <| cm_initialised := <[ addr := () ]> s.(cm_initialised) |>) |} in
   Mupdate_state update st.
 
-Definition _step_init_step_size := PA (bv_shiftl_64 b1 (bv64.BV64 3)).
+Definition _step_init_step_size := PA (bv_shiftl_64 b1 b3).
 
 Fixpoint step_init_all
   (addr : phys_addr_t)
@@ -804,12 +885,6 @@ Definition is_leaf (kind : pte_rec) : bool :=
   | _ => true
   end.
 
-Definition is_last_level_only (d : TLBI_op_by_addr_data) : bool :=
-  match d.(TOBAD_last_level_only) with
-  | TLBILevel_Any => false
-  | TLBILevel_Last => true
-  end.
-
 Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : pgtable_traverse_context) : option bool :=
   match ptc.(ptc_loc) with
   | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
@@ -826,7 +901,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : pgtable_traverse_
                  && (phys_addr_val ia_start b<=? tlbi_addr)
                  && (tlbi_addr b<? phys_addr_val ia_end)) then
           Some false
-        else if ((negb (is_l3 pte_desc.(ged_level))) && is_last_level_only d) then
+        else if ((negb (is_l3 pte_desc.(ged_level))) && d.(TOBAD_last_level_only)) then
           Some false
         else
           Some true
@@ -845,7 +920,7 @@ Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : pgtable_traverse_
             Some true
         | _, _ => Some true
         end
-      | TLBI_by_addr_all => Some true
+      | TLBI_by_all => Some true
       end
     end
   end.
@@ -930,22 +1005,19 @@ Definition tlbi_visitor
     end
   end.
 
-Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cm : casemate_model_state) : casemate_model_result :=
-  match decode_tlbi td with
-  | None => Merror CME_unimplemented
-  | Some decoded_TLBI =>
-    match td.(TLBI_rec).(TLBIRecord_regime) with
-    | Regime_EL2 =>
-      (* traverse all s1 pages*)
-      traverse_si_pgt (Some tid) cm (tlbi_visitor tid decoded_TLBI) S1
-    | Regime_EL10 =>
-      (* traverse s2 pages *)
-      traverse_si_pgt (Some tid) cm (tlbi_visitor tid decoded_TLBI) S2
-    | _ =>
-      (* traverse all page tables and add a warning *)
-      let res := traverse_all_pgt (Some tid) cm (tlbi_visitor tid decoded_TLBI) in
-      res <| cmr_log := Warning_unsupported_TLBI :: res.(cmr_log) |>
-    end
+Definition step_tlbi (tid : thread_identifier) (td : trans_tlbi_data) (cm : casemate_model_state) : casemate_model_result :=
+  let tlbi := decode_tlbi td in
+  match tlbi.(TI_regime) with
+  | Regime_EL2 =>
+    (* traverse all s1 pages*)
+    traverse_si_pgt (Some tid) cm (tlbi_visitor tid tlbi) S1
+  | Regime_EL10 =>
+    (* traverse s2 pages *)
+    traverse_si_pgt (Some tid) cm (tlbi_visitor tid tlbi) S2
+  | _ =>
+    (* traverse all page tables and add a warning *)
+    let res := traverse_all_pgt (Some tid) cm (tlbi_visitor tid tlbi) in
+    res <| cmr_log := Warning_unsupported_TLBI :: res.(cmr_log) |>
   end.
 
 (** MSR *)

@@ -74,6 +74,7 @@ Definition b0 := BV64 0.
 Definition b1 := BV64 1.
 Definition b2 := BV64 2.
 Definition b3 := BV64 3.
+Definition b4 := BV64 4.
 Definition b7 := BV64 7.
 Definition b8 := BV64 8.
 Definition b12 := BV64 12.

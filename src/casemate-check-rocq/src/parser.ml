@@ -31,7 +31,7 @@ let msr_sysreg = function
 let hint_kind = function
   | Atom "set_root_lock" -> GHOST_HINT_SET_ROOT_LOCK
   | Atom "set_owner_root" -> GHOST_HINT_SET_OWNER_ROOT
-  | Atom "release" -> GHOST_HINT_RELEASE_TABLE
+  | Atom "release_table" -> GHOST_HINT_RELEASE_TABLE
   | Atom "set_pte_thread_owner" -> GHOST_HINT_SET_PTE_THREAD_OWNER
   | sexp -> of_sexp_error "bad lock hint kind" sexp
 
@@ -42,84 +42,55 @@ let barrier_kind = function
   | Atom "sy" -> MBReqDomain_FullSystem
   | sexp -> of_sexp_error "bad barrier kind" sexp
 
-let barrier_of = function
-  | List [ Atom "dsb"; List [ Atom "kind"; kind ] ] ->
-      Barrier_DSB (barrier_kind kind)
-  | Atom "isb" -> Barrier_ISB ()
-  | sexp -> of_sexp_error "bad barrier" sexp
+let barrier_of barrier_name tl =
+  match barrier_name with
+  | Atom "dsb" -> (
+      match tl with
+      | List [ Atom "kind"; kind ] :: tl -> (Barrier_DSB (barrier_kind kind), tl)
+      | sexpr -> of_sexp_error "bad barrier kind" (List sexpr))
+  | Atom "isb" -> (Barrier_ISB (), tl)
+  | sexpr -> of_sexp_error "bad barrier name" sexpr
 
-let tlbi_op = function
-  | `DALL -> TLBIOp_DALL
-  | `DASID -> TLBIOp_DASID
-  | `DVA -> TLBIOp_DVA
-  | `IALL -> TLBIOp_IALL
-  | `IASID -> TLBIOp_IASID
-  | `IVA -> TLBIOp_IVA
-  | `ALL -> TLBIOp_ALL
-  | `ASID -> TLBIOp_ASID
-  | `IPAS2 -> TLBIOp_IPAS2
-  | `VAA -> TLBIOp_VAA
-  | `VA -> TLBIOp_VA
-  | `VMALL -> TLBIOp_VMALL
-  | `VMALLS12 -> TLBIOp_VMALLS12
-  | `RIPAS2 -> TLBIOp_RIPAS2
-  | `RVAA -> TLBIOp_RVAA
-  | `RVA -> TLBIOp_RVA
-  | `RPA -> TLBIOp_RPA
-  | `PAALL -> TLBIOp_PAALL
-
-and regime_of = function
-  | `EL3 -> Regime_EL3
-  | `EL30 -> Regime_EL30
-  | `EL2 -> Regime_EL2
-  | `EL20 -> Regime_EL20
-  | `EL10 -> Regime_EL10
-
-and shareability = function
-  | `NSH -> Shareability_NSH
-  | `ISH -> Shareability_ISH
-  | `OSH -> Shareability_OSH
-
-let tlbi ?level ?addr ~regime ~shr op =
-  let level =
-    match level with
-    | None -> TLBILevel_Any
-    | Some (Atom "any") -> TLBILevel_Any
-    | Some (Atom "last") -> TLBILevel_Last
-    | Some sexp -> of_sexp_error "bad tlbi level" sexp
-  and address = match addr with Some a -> u64 a | _ -> Z0.zero in
-  {
-    tLBI_shareability = shareability shr;
-    tLBI_rec =
-      {
-        tLBIRecord_op = tlbi_op op;
-        tLBIRecord_regime = regime_of regime;
-        tLBIRecord_level = level;
-        tLBIRecord_address = address;
-      };
-  }
-
-let tlbi_of = function
-  | Atom "vmalls12e1" -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`NSH
-  | Atom "vmalls12e1is" -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`ISH
-  | Atom "vmalle1is" -> tlbi `VMALL ~regime:`EL10 ~shr:`ISH
-  | Atom "alle1is" -> tlbi `ALL ~regime:`EL10 ~shr:`ISH
-  | List
-      [ Atom "vae2"; List [ Atom "addr"; addr ]; List [ Atom "level"; level ] ]
-    ->
-      tlbi `VA ~regime:`EL2 ~shr:`NSH ~addr ~level
-  | List
-      [
-        Atom "vae2is"; List [ Atom "addr"; addr ]; List [ Atom "level"; level ];
-      ] ->
-      tlbi `VA ~regime:`EL2 ~shr:`ISH ~addr ~level
-  | List
-      [
-        Atom "ipas2e1is";
-        List [ Atom "addr"; addr ];
-        List [ Atom "level"; level ];
-      ] ->
-      tlbi `IPAS2 ~regime:`EL10 ~shr:`NSH ~addr ~level
+let tlbi_of tlbi_name tl =
+  match tlbi_name with
+  | Atom "vmalls12e1" ->
+      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1; ttd_value = b0 },
+        tl )
+  | Atom "vmalls12e1is" ->
+      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1is; ttd_value = b0 },
+        tl )
+  | Atom "vmalle1is" ->
+      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalle1is; ttd_value = b0 }, tl)
+  | Atom "alle1is" ->
+      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_alle1is; ttd_value = b0 }, tl)
+  | Atom "vae2" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vae2; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "bad tlbi data" (List sexpr))
+  | Atom "vale2is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vale2is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "bad tlbi data" (List sexpr))
+  | Atom "vae2is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vae2is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "bad tlbi data" (List sexpr))
+  | Atom "ipas2e1is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_ipas2e1is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "bad tlbi data" (List sexpr))
   | sexp -> of_sexp_error "bad tlbi" sexp
 
 let transition sexp =
@@ -177,14 +148,16 @@ let transition sexp =
         (Atom "barrier"
         :: List [ Atom "id"; id ]
         :: List [ Atom "tid"; tid ]
-        :: barrier :: tl) ->
-        (CMSD_TRANS_HW_BARRIER (barrier_of barrier), id, tid, tl)
+        :: barrier_name :: tl) ->
+        let barrier, tl = barrier_of barrier_name tl in
+        (CMSD_TRANS_HW_BARRIER barrier, id, tid, tl)
     | List
         (Atom "tlbi"
         :: List [ Atom "id"; id ]
         :: List [ Atom "tid"; tid ]
-        :: tlbi :: tl) ->
-        (CMSD_TRANS_HW_TLBI (tlbi_of tlbi), id, tid, tl)
+        :: tlbi_name :: tl) ->
+        let tlbi, tl = tlbi_of tlbi_name tl in
+        (tlbi, id, tid, tl)
     | List
         (Atom "sysreg-write"
         :: List [ Atom "id"; id ]

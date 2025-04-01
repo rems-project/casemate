@@ -4,17 +4,16 @@ let p0xZ ppf z = Fmt.pf ppf "0x%Lx" (Big_int_Z.int64_of_big_int z)
 let pp_u64 = p0xZ
 let pp_phys_addr_t = p0xZ
 
-type tLBIOp = [%import: Coq_executable_casemate.tLBIOp] [@@deriving show]
+(* type tLBIOp = [%import: Coq_executable_casemate.tLBIOp] [@@deriving show] *)
 type regime = [%import: Coq_executable_casemate.regime] [@@deriving show]
-type tLBILevel = [%import: Coq_executable_casemate.tLBILevel] [@@deriving show]
+(* type tLBILevel = [%import: Coq_executable_casemate.tLBILevel] [@@deriving show] *)
 
-type tLBIRecord = [%import: Coq_executable_casemate.tLBIRecord]
-[@@deriving show]
+(* type tLBIRecord = [%import: Coq_executable_casemate.tLBIRecord] [@@deriving show] *)
 
-type shareability = [%import: Coq_executable_casemate.shareability]
-[@@deriving show]
+(* type shareability = [%import: Coq_executable_casemate.shareability]
+   [@@deriving show] *)
 
-type tLBI = [%import: Coq_executable_casemate.tLBI] [@@deriving show]
+(* type tLBI = [%import: Coq_executable_casemate.tLBI] [@@deriving show] *)
 
 let pp_transition_data ppf = function
   | CMSD_TRANS_HW_MEM_WRITE
@@ -27,14 +26,14 @@ let pp_transition_data ppf = function
         p0xZ addr p0xZ value
   | CMSD_TRANS_HW_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R %a (=%a)" p0xZ addr p0xZ value
-  | CMSD_TRANS_HW_BARRIER _ -> Fmt.pf ppf "barrier"
+  | CMSD_TRANS_HW_BARRIER _ -> Fmt.pf ppf "barrier" (* TODO: better printing *)
   | CMSD_TRANS_HW_MSR { tmd_sysreg = reg; tmd_val = value } ->
       Fmt.pf ppf "MSR %s %a"
         (match reg with
         | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
         | SYSREG_VTTBR -> "SYSREG_VTTBR")
         p0xZ value
-  | CMSD_TRANS_HW_TLBI data -> Fmt.pf ppf "TLBI %a" pp_tLBI data
+  | CMSD_TRANS_HW_TLBI _ -> Fmt.pf ppf "TLBI" (* TODO: better printing *)
   | CMSD_TRANS_ABS_MEM_INIT { tid_addr = addr; tid_size = size } ->
       Fmt.pf ppf "INIT %a size %a" p0xZ addr p0xZ size
   | CMSD_TRANS_ABS_MEMSET
@@ -146,20 +145,21 @@ let pp_lis ppf = function
 let pp_sm_pte_state ppf = function
   | SPS_STATE_PTE_VALID _ -> Fmt.pf ppf "valid"
   | SPS_STATE_PTE_INVALID_CLEAN _ -> Fmt.pf ppf "invalid clean"
-  | SPS_STATE_PTE_INVALID_UNCLEAN x ->
-      Fmt.pf ppf "unclean (%a)" pp_lis x.ai_lis
+  | SPS_STATE_PTE_INVALID_UNCLEAN x -> Fmt.pf ppf "unclean (%a)" pp_lis x.ai_lis
   | SPS_STATE_PTE_NOT_WRITABLE -> Fmt.pf ppf "not writable"
 
 let pp_pte_rec ppf = function
-| PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table → %a" p0xZ t
-| PTER_PTE_KIND_MAP t ->
-    let start = t.range_start in
-    let size = t.range_size in
-    let finish = Z.add start size in
-    Fmt.pf ppf "Map [%a - %a]" p0xZ start p0xZ finish
-| PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
+  | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table → %a" p0xZ t
+  | PTER_PTE_KIND_MAP t ->
+      let start = t.range_start in
+      let size = t.range_size in
+      let finish = Z.add start size in
+      Fmt.pf ppf "Map [%a - %a]" p0xZ start p0xZ finish
+  | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
-let pp_entry_stage_t ppf = function S1 -> Fmt.pf ppf "S1" | S2 -> Fmt.pf ppf "S2"
+let pp_entry_stage_t ppf = function
+  | S1 -> Fmt.pf ppf "S1"
+  | S2 -> Fmt.pf ppf "S2"
 
 let pp_level_t ppf = function
   | L0 -> Fmt.pf ppf "L0"
@@ -170,18 +170,15 @@ let pp_level_t ppf = function
 
 let pp_ghost_exploded_descriptor ppf desc =
   Fmt.pf ppf
-    "@[<v>{ region: [%a - %a];@ level: %a;@ stage: %a;@ owner: %a;@ kind: %a;@ state: %a }@]"
-    p0xZ desc.ged_ia_region.range_start
-    p0xZ Z.(add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level
-    pp_entry_stage_t desc.ged_stage
-    p0xZ desc.ged_owner
-    pp_pte_rec desc.ged_pte_kind
-    pp_sm_pte_state desc.ged_state  
+    "@[<v>{ region: [%a - %a];@ level: %a;@ stage: %a;@ owner: %a;@ kind: %a;@ \
+     state: %a }@]"
+    p0xZ desc.ged_ia_region.range_start p0xZ
+    Z.(add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
+    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ
+    desc.ged_owner pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
 
 let pp_sm_location ppf sl =
-  Fmt.pf ppf "@[<v>val: %a%a@]"
-    p0xZ sl.sl_val
+  Fmt.pf ppf "@[<v>val: %a%a@]" p0xZ sl.sl_val
     (fun ppf -> function
       | Some pte -> Fmt.pf ppf "@\nPTE: %a" pp_ghost_exploded_descriptor pte
       | None -> ())
