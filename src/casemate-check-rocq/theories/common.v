@@ -1,11 +1,11 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
+Require Export String Cmap.cmap Zmap.zmap stdpp.gmap.
+Require Export stdpp.bitvector.bitvector.
+ 
+From RecordUpdate Require Export RecordSet.
+Export RecordSetNotations.
+Require Export Recdef.
 
-(* This is to prevent non-bools from being used as bools *)
+(* This is to prevent non boolean values from being used as boolean values *)
 Notation "'if' C 'then' A 'else' B" :=
   (match C with
     | true => A
@@ -93,26 +93,26 @@ Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
 
 Inductive phys_addr_t :=
-  | Phys_addr : u64 -> phys_addr_t.
+  | PA : u64 -> phys_addr_t.
 
 Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
   Proof. solve_decision. Qed.
 
 Definition phys_addr_val (root : phys_addr_t) : u64 :=
   match root with
-  | Phys_addr r => r
+  | PA r => r
   end.
 
 Definition pa_plus (a b : phys_addr_t) : phys_addr_t :=
-  Phys_addr ((phys_addr_val a) b+ (phys_addr_val b)).
+  PA ((phys_addr_val a) b+ (phys_addr_val b)).
 
 Infix "pa+" := pa_plus (at level 50).
 Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
-  Phys_addr ((phys_addr_val a) b* (phys_addr_val b))
-.
+  PA ((phys_addr_val a) b* (phys_addr_val b)).
+
 Infix "pa*" := pa_mul (at level 40).
 Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (at level 100).
-Definition pa0 := Phys_addr b0.
+Definition pa0 := PA b0.
 
 Inductive sm_owner_t :=
   | Root : phys_addr_t -> sm_owner_t.
@@ -132,12 +132,13 @@ Inductive entry_stage_t :=
 .
 
 Inductive vmid_t :=
-   | U64 : u64 -> vmid_t
- .
- 
-Inductive addr_id_t :=
-  | Addr_id : u64 -> addr_id_t
+  | VMID : u64 -> vmid_t
 .
+
+Inductive addr_id_t :=
+  | AID : u64 -> addr_id_t
+.
+
 Global Instance addr_id_t_eq_decision : EqDecision addr_id_t.
   Proof. solve_decision. Qed.
 
@@ -158,4 +159,3 @@ Inductive internal_error_type :=
   | IET_unexpected_none
   | IET_no_write_authorization
 .
-

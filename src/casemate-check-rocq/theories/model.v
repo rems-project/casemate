@@ -1,13 +1,4 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
-Require Export utils.
+Require Export common.
 
 Inductive LVS :=
   | LVS_unguarded
@@ -124,7 +115,7 @@ Record owner_locks := {
   ol_locks : unit;
 }.
 
-(* The memory state is a map from address to simplified model location *)
+(* The memory state is a map from address to casemate model location *)
 Definition casemate_model_memory := cmap sm_location.
 
 (* The memory initialised is stored here *)
@@ -181,6 +172,15 @@ Record casemate_model_state := mk_casemate_model_state {
   settable! mk_casemate_model_state
     <cm_roots; cm_memory; cm_initialised; cm_thrd_ctxt; cm_lock_addr; cm_lock_state>.
 
+Definition cm_init := {|
+  cm_roots := {| pr_s1 := []; pr_s2 := []; |};
+  cm_memory := ∅;
+  cm_initialised := ∅;
+  cm_thrd_ctxt := [];
+  cm_lock_addr := ∅;
+  cm_lock_state := ∅;
+|}.
+    
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
   match st.(cm_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
   | Some _ => true
@@ -217,8 +217,7 @@ Definition is_loc_thread_owned
   | Some _, Some thread_owner =>
     bool_decide (thread_owner = cpu)
   | _, _ => false
-  end
-.
+  end.
 
 Definition is_pte_well_locked
   (cpu : thread_identifier)
@@ -231,8 +230,7 @@ Definition is_pte_well_locked
     | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
-  end
-.
+  end.
 
 Definition should_visit
   (cpu : thread_identifier)
@@ -333,4 +331,3 @@ Definition Minsert_location
   | e => e
   end
 .
-

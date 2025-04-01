@@ -1,21 +1,9 @@
-(** Simplified model *)
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
+(** Casemate - Entrypoint *)
+Require Export transition.
+Require Export model.
+Require Export pgtable.
 
-Require Export step.
-
-
-(******************************************************************************************)
-(*                             Toplevel function                                          *)
-(******************************************************************************************)
-
-Definition take_step
+Definition step
   (trans : casemate_model_step)
   (cm : casemate_model_state) :
   casemate_model_result :=
@@ -44,15 +32,6 @@ Definition take_step
     step_hint trans.(cms_thread_identifier) hint_data cm
   end.
 
-Definition cm_init := {|
-  cm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  cm_memory := ∅;
-  cm_initialised := ∅;
-  cm_thrd_ctxt := [];
-  cm_lock_addr := ∅;
-  cm_lock_state := ∅;
-|}.
-
 Fixpoint steps
   (transitions : list casemate_model_step)
   (logs : list log_element)
@@ -61,14 +40,13 @@ Fixpoint steps
   match transitions with
   | [] => {| cmr_log := logs; cmr_data := Ok _ _ cm; |}
   | h :: t =>
-    match take_step h cm with
+    match step h cm with
     | {| cmr_log := logs_next; cmr_data := Ok _ _ st_next |} =>
         steps t (logs_next ++ logs) st_next
     | {| cmr_log := logs_next; cmr_data := Error _ _ f |} =>
         {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
     end
-  end
-.
+  end.
 
 Definition run_model
   (transitions : list casemate_model_step) :
