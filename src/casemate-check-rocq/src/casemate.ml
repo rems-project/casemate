@@ -60,19 +60,19 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let step_ state trans =
     let res = Rocq_casemate.step trans state in
-    if res.gsmsr_log != [] then (
+    if res.cmr_log != [] then (
       if dump_trans then
-        Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.gsmsr_log
-      else Fmt.pr "%a@." pp_logs res.gsmsr_log;
+        Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.cmr_log
+      else Fmt.pr "%a@." pp_logs res.cmr_log;
       if dump_roots then
-        Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_pte_roots state.gsm_roots;
+        Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots state.cms_roots;
       if dump_state then
-        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_ghost_simplified_model state);
+        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_casemate_model_state state);
     (* If we reach an error, we dump the transition *)
-    if Result.is_error res.gsmsr_data then Fmt.pr "@[%a@]@." pp_tr trans;
-    res.gsmsr_data
+    if Result.is_error res.cmr_data then Fmt.pr "@[%a@]@." pp_tr trans;
+    res.cmr_data
   in
-  Iters.fold_result step_ memory_init xs |> Fmt.pr "@[%a@]@." pp_step_result
+  Iters.fold_result step_ cms_init xs |> Fmt.pr "@[%a@]@." pp_step_result
 
 (** Cmdline args **)
 

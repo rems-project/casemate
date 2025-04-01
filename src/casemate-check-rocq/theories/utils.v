@@ -33,7 +33,8 @@ Module bv64.
   Definition bv_not_64 := @bv_not _64.
   Definition bv_sub_64 := @bv_sub _64.
 
-  Definition to_nat (n: bv 64) := Z.to_nat (bv_unsigned n).
+  Definition to_nat (n : bv 64) := Z.to_nat (bv_unsigned n).
+  Definition to_Z (n : bv 64) := bv_unsigned n.
 
   Definition u64_eqb (x y : bv 64) : bool :=
     (bv_unsigned x =? bv_unsigned y)%Z .
@@ -112,19 +113,19 @@ Infix "pa*" := pa_mul (at level 40).
 Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (at level 100).
 Definition pa0 := Phys_addr b0.
 
-Inductive owner_t :=
-| Root : phys_addr_t -> owner_t
+Inductive sm_owner_t :=
+| Root : phys_addr_t -> sm_owner_t
 .
-Global Instance owner_t_eq_decision : EqDecision owner_t.
+Global Instance owner_t_eq_decision : EqDecision sm_owner_t.
   Proof. solve_decision. Qed.
 
-Definition root_val (root : owner_t) : phys_addr_t :=
+Definition root_val (root : sm_owner_t) : phys_addr_t :=
   match root with
   | Root r => r
   end
 .
 
-Inductive stage_t :=
+Inductive entry_stage_t :=
   | S1
   | S2
 .
