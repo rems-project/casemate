@@ -131,12 +131,12 @@ Definition casemate_model_memory := cmap sm_location.
 Definition casemate_model_initialised := zmap unit.
 
 (* per-CPU thread-local context *)
-Record thrd_ctxt := {
+Record cm_thrd_ctxt := {
   current_s1 : sm_owner_t;
   current_s2 : sm_owner_t;
 }.
 
-Definition casemate_model_thrd_ctxt := list thrd_ctxt.
+Definition casemate_model_thrd_ctxt := list cm_thrd_ctxt.
 
 (* Map of pgtable root to lock that owns it *)
 Definition casemate_model_lock_owner_map := zmap u64.
@@ -157,41 +157,100 @@ Definition casemate_model_lock_state_map := zmap lock_state.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 
-Record cm_root := {
+Record cm_root := mk_cm_root {
   r_baddr : sm_owner_t;
   r_id : addr_id_t;
-  r_refcount : u64;
+  r_refcount : nat;
 }.
+#[export] Instance eta_cm_root : Settable _ := settable! mk_cm_root <r_baddr; r_id; r_refcount>.
 
 Record casemate_model_roots := mk_cm_roots {
-  pr_s1 : list cm_root;
-  pr_s2 : list cm_root;
+  cmr_s1 : list cm_root;
+  cmr_s2 : list cm_root;
 }.
-#[export] Instance eta_casemate_model_roots : Settable _ := settable! mk_cm_roots <pr_s1; pr_s2>.
+#[export] Instance eta_casemate_model_roots : Settable _ := settable! mk_cm_roots <cmr_s1; cmr_s2>.
+
+Definition retrieve_roots_for_stage
+  (stage : entry_stage_t)
+  (cm_roots : casemate_model_roots) :
+  list cm_root :=
+  match stage with
+  | S1 => cm_roots.(cmr_s1)
+  | S2 => cm_roots.(cmr_s2)
+  end.
+
+Definition retrieve_root_for_baddr
+  (roots : list cm_root)
+  (root_addr : sm_owner_t) : option cm_root :=
+  find (fun elem => bool_decide (elem.(r_baddr) = root_addr)) roots.
+
+Definition retrieve_root_for_id
+  (roots : list cm_root)
+  (addr_id : addr_id_t) : option cm_root :=
+  find (fun elem => bool_decide (elem.(r_id) = addr_id)) roots.
+
+Definition update_root_for_baddr
+  (root_addr : sm_owner_t)
+  (new_root : cm_root) 
+  (roots : list cm_root) : list cm_root :=
+  let idx := index_of (fun elem => bool_decide (elem.(r_baddr) = root_addr)) roots in
+  list_insert idx new_root roots.
+
+Definition update_root_for_id
+  (addr_id : addr_id_t)
+  (new_root : cm_root) 
+  (roots : list cm_root) : list cm_root :=
+  let idx := index_of (fun elem => bool_decide (elem.(r_id) = addr_id)) roots in
+  list_insert idx new_root roots.
+
+Definition update_cms_root_for_baddr
+  (stage : entry_stage_t)
+  (root_addr : sm_owner_t)
+  (new_root : cm_root)
+  (cms_roots : casemate_model_roots) :
+  casemate_model_roots :=
+  match stage with
+  | S1 => let new_roots := update_root_for_baddr root_addr new_root cms_roots.(cmr_s1) in
+    cms_roots <| cmr_s1 := new_roots |>
+  | S2 => let new_roots := update_root_for_baddr root_addr new_root cms_roots.(cmr_s2) in
+    cms_roots <| cmr_s2 := new_roots |>
+  end.
+
+Definition update_cms_root_for_id
+  (stage : entry_stage_t)
+  (addr_id : addr_id_t)
+  (new_root : cm_root)
+  (cms_roots : casemate_model_roots) :
+  casemate_model_roots :=
+  match stage with
+  | S1 => let new_roots := update_root_for_id addr_id new_root cms_roots.(cmr_s1) in
+    cms_roots <| cmr_s1 := new_roots |>
+  | S2 => let new_roots := update_root_for_id addr_id new_root cms_roots.(cmr_s2) in
+    cms_roots <| cmr_s2 := new_roots |>
+  end.
 
 Record casemate_model_state := mk_casemate_model_state {
-  cm_roots : casemate_model_roots;
-  cm_memory : casemate_model_memory;
-  cm_initialised : casemate_model_initialised;
-  cm_thrd_ctxt : casemate_model_thrd_ctxt;
-  cm_lock_addr : casemate_model_lock_owner_map;
-  cm_lock_state : casemate_model_lock_state_map;
+  cms_roots : casemate_model_roots;
+  cms_memory : casemate_model_memory;
+  cms_initialised : casemate_model_initialised;
+  cms_thrd_ctxt : casemate_model_thrd_ctxt;
+  cms_lock_addr : casemate_model_lock_owner_map;
+  cms_lock_state : casemate_model_lock_state_map;
 }.
 #[export] Instance eta_casemate_model_state : Settable _ :=
   settable! mk_casemate_model_state
-    <cm_roots; cm_memory; cm_initialised; cm_thrd_ctxt; cm_lock_addr; cm_lock_state>.
+    <cms_roots; cms_memory; cms_initialised; cms_thrd_ctxt; cms_lock_addr; cms_lock_state>.
 
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
-  match st.(cm_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
+  match st.(cms_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
   | Some _ => true
   | None => false
-  end
-.
+  end.
 
 Definition get_location
   (st : casemate_model_state)
   (addr : phys_addr_t) : option sm_location :=
-  match st.(cm_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
+  match st.(cms_memory) !! bv_shiftr_64 (phys_addr_val addr) b3 with
   | Some loc => Some loc
   | None =>
     match is_initialised st addr with
@@ -204,7 +263,7 @@ Definition get_location
 Definition get_lock_of_owner
   (owner : sm_owner_t)
   (cm : casemate_model_state) : option u64 :=
-  lookup (phys_addr_val (root_val owner)) cm.(cm_lock_addr).
+  lookup (phys_addr_val (root_val owner)) cm.(cms_lock_addr).
 
 
 Infix "!!" := get_location (at level 20).
@@ -226,7 +285,7 @@ Definition is_pte_well_locked
   match get_lock_of_owner pte.(ged_owner) cm with
   | None => false
   | Some addr =>
-    match lookup addr cm.(cm_lock_state) with
+    match lookup addr cm.(cms_lock_state) with
     | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
@@ -239,13 +298,63 @@ Definition should_visit
   match cm !! addr with
   | None => true
   | Some location =>
-      match location.(sl_pte) with
-      | None => true
-      | Some pte =>
-        orb (is_loc_thread_owned cpu location cm) (is_pte_well_locked cpu pte cm)
-      end
-  end
-.
+    match location.(sl_pte) with
+    | None => true
+    | Some pte =>
+      orb (is_loc_thread_owned cpu location cm) (is_pte_well_locked cpu pte cm)
+    end
+  end.
+
+Definition current_thread_context 
+  (tid : thread_identifier)
+  (cm : casemate_model_state) : 
+  option cm_thrd_ctxt :=
+  nth_opt (thread_identifier_to_nat tid) cm.(cms_thrd_ctxt).
+
+Definition current_thread_context_root
+  (tid : thread_identifier)
+  (stage : entry_stage_t)
+  (cm : casemate_model_state) : option cm_root :=
+  match current_thread_context tid cm with
+  | Some thrd_ctxt =>
+    let root_addr :=
+      match stage with
+      | S1 => thrd_ctxt.(current_s1)
+      | S2 => thrd_ctxt.(current_s2)
+      end in
+    let roots := retrieve_roots_for_stage stage cm.(cms_roots) in
+    retrieve_root_for_baddr roots root_addr
+  | None => None
+  end.
+
+Definition get_current_ttbr
+  (tid : thread_identifier)
+  (cm : casemate_model_state) : option cm_root :=
+  current_thread_context_root tid S1 cm.
+
+Definition get_current_vttbr
+  (tid : thread_identifier)
+  (cm : casemate_model_state) : option cm_root :=
+  current_thread_context_root tid S2 cm.
+
+Definition update_current_thread_context
+  (tid : thread_identifier)
+  (stage : entry_stage_t)
+  (assoc_root : sm_owner_t)
+  (cm : casemate_model_state) :
+  casemate_model_state :=
+  match current_thread_context tid cm with
+  | Some thrd_ctxt =>
+    let new_thrd_ctxt := 
+      match stage with
+      | S1 => {| current_s1 := assoc_root; current_s2 := thrd_ctxt.(current_s2) |}
+      | S2 => {| current_s1 := thrd_ctxt.(current_s2); current_s2 := assoc_root|}
+      end in
+    let idx := thread_identifier_to_nat tid in
+    let new_cms_thrd_ctxt := list_insert idx new_thrd_ctxt cm.(cms_thrd_ctxt) in
+    cm <| cms_thrd_ctxt := new_cms_thrd_ctxt |>
+  | None => cm
+  end.
 
 Inductive violation_type :=
   | VT_valid_on_invalid_unclean
@@ -270,6 +379,7 @@ Inductive casemate_model_error :=
   | CME_internal_error : internal_error_type -> casemate_model_error
   | CME_parent_invalidated : phys_addr_t -> casemate_model_error
   | CME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> casemate_model_error
+  | CME_addr_id_error : string -> casemate_model_error
 .
 
 Record casemate_model_result := mk_casemate_model_result {
@@ -318,7 +428,7 @@ Definition Mupdate_state
 Definition insert_location
   (loc : sm_location)
   (cm : casemate_model_state) : casemate_model_state :=
-  (cm <| cm_memory := <[ loc.(sl_phys_addr) := loc ]> cm.(cm_memory) |>)
+  (cm <| cms_memory := <[ loc.(sl_phys_addr) := loc ]> cm.(cms_memory) |>)
 .
 
 Definition Minsert_location

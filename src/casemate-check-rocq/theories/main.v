@@ -13,12 +13,12 @@ Require Export model.
 Require Export pgtable.
 
 Definition cm_init := {|
-  cm_roots := {| pr_s1 := []; pr_s2 := []; |};
-  cm_memory := ∅;
-  cm_initialised := ∅;
-  cm_thrd_ctxt := [];
-  cm_lock_addr := ∅;
-  cm_lock_state := ∅;
+  cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
+  cms_memory := ∅;
+  cms_initialised := ∅;
+  cms_thrd_ctxt := [];
+  cms_lock_addr := ∅;
+  cms_lock_state := ∅;
 |}.
 
 Definition step

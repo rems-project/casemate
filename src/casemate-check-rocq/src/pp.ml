@@ -96,6 +96,7 @@ let pp_error ppf = function
   | CME_owned_pte_accessed_by_other_thread (str, addr) ->
       Fmt.pf ppf "Private PTE %a was accessed by other thread in function %s"
         p0xZ addr str
+  | CME_addr_id_error str -> Fmt.pf ppf "%s" str
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -224,15 +225,15 @@ let pp_casemate_model_locks ppf m =
     Fmt.(list ~sep:comma pp_lock_entry)
     (Zmap.fold
        (fun root addr xs ->
-         (root, addr, Zmap.find_opt addr m.cm_lock_state) :: xs)
-       m.cm_lock_addr [])
+         (root, addr, Zmap.find_opt addr m.cms_lock_state) :: xs)
+       m.cms_lock_addr [])
 
 let pp_casemate_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
-    pp_casemate_model_roots m.cm_roots pp_casemate_model_memory m.cm_memory
-    pp_casemate_model_initialised m.cm_initialised pp_casemate_model_locks m
+    pp_casemate_model_roots m.cms_roots pp_casemate_model_memory m.cms_memory
+    pp_casemate_model_initialised m.cms_initialised pp_casemate_model_locks m
 
 let pp_state state = Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state
 

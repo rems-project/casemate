@@ -229,7 +229,7 @@ with traverse_pgt_from_offs
               match location.(sl_pte) with
               | Some pte => pte
               | None => (* 0 is a placeholder, we do not use it afterwards *)
-                deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root stage
+                deconstruct_pte (TID 0) partial_ia location.(sl_val) level root stage
               end
             in
             let res :=
@@ -325,8 +325,8 @@ Definition traverse_si_pgt
   (stage : entry_stage_t) : casemate_model_result :=
   let roots :=
     match stage with
-    | S2 => cm.(cm_roots).(pr_s2)
-    | S1 => cm.(cm_roots).(pr_s1)
+    | S2 => cm.(cms_roots).(cmr_s2)
+    | S1 => cm.(cms_roots).(cmr_s1)
     end
   in
   traverse_si_pgt_aux tid visitor_cb stage roots (Mreturn cm).
@@ -356,7 +356,7 @@ Definition mark_cb
     | None =>
       let new_desc := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
       let new_location := location <| sl_pte := (Some new_desc) |> <| sl_thread_owner := None |> in
-      let new_state := ctx.(ptc_state) <| cm_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(cm_memory) |> in
+      let new_state := ctx.(ptc_state) <| cms_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(cms_memory) |> in
       Mreturn new_state
     end
   | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
@@ -373,8 +373,8 @@ Definition unmark_cb
     match location.(sl_pte) with
     | Some _ =>
       let new_loc := location <| sl_pte := None |> in
-      let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cm_memory) in
-      Mreturn (ctx.(ptc_state) <| cm_memory := new_st |>)
+      let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cms_memory) in
+      Mreturn (ctx.(ptc_state) <| cms_memory := new_st |>)
     | None =>
       Merror (CME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
     end
@@ -395,8 +395,8 @@ Definition mark_not_writable_cb
         | Some desc =>
           let new_desc := desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |> in
           let new_location := location <| sl_pte := Some new_desc |> in
-          let new_cm := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(cm_memory) in
-          Mreturn (ctx.(ptc_state) <| cm_memory := new_cm |>)
+          let new_cm := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(cms_memory) in
+          Mreturn (ctx.(ptc_state) <| cms_memory := new_cm |>)
         | None =>
           Merror (CME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
       end

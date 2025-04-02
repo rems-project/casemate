@@ -87,8 +87,12 @@ Definition b1023 := BV64 1023.
 (** Addresses **)
 
 Inductive thread_identifier :=
-  | Thread_identifier : nat -> thread_identifier
+  | TID : nat -> thread_identifier
 .
+Definition thread_identifier_to_nat (tid : thread_identifier) :=
+  match tid with 
+  | TID tid => tid
+  end.
 
 Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
@@ -142,7 +146,7 @@ Inductive addr_id_t :=
 Global Instance addr_id_t_eq_decision : EqDecision addr_id_t.
   Proof. solve_decision. Qed.
 
-Inductive result (A B: Type): Type :=
+Inductive result (A B: Type) : Type :=
   | Ok (a: A)
   | Error (b: B)
 .
@@ -159,3 +163,20 @@ Inductive internal_error_type :=
   | IET_unexpected_none
   | IET_no_write_authorization
 .
+
+Fixpoint nth_opt {A : Type} (n : nat) (l : list A) {struct l} : option A :=
+  match n, l with
+  | O, x :: l' => Some x
+  | O, _ => None
+  | S m, nil => None
+  | S m, x :: t => nth_opt m t
+  end.
+
+Fixpoint idx_of {A : Type} (f : A -> bool) (acc : nat) (l : list A) {struct l} : nat :=
+  match l with
+  | nil => acc
+  | x :: l' => if (f x) then acc else idx_of f (acc + 1) l'
+  end.
+
+Definition index_of {A : Type} (f : A -> bool) (l : list A) : nat :=
+  idx_of f 0 l.
