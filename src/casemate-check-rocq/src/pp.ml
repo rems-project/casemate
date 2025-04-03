@@ -26,14 +26,35 @@ let pp_transition_data ppf = function
         p0xZ addr p0xZ value
   | CMSD_TRANS_HW_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R %a (=%a)" p0xZ addr p0xZ value
-  | CMSD_TRANS_HW_BARRIER _ -> Fmt.pf ppf "barrier" (* TODO: better printing *)
+  | CMSD_TRANS_HW_BARRIER barrier ->
+      Fmt.pf ppf "%s"
+        (match barrier with
+        | Barrier_DSB _ -> "dsb"
+        | Barrier_DMB _ -> "dmb"
+        | Barrier_ISB _ -> "isb"
+        (* Speculative barriers *)
+        | Barrier_SSBB _ -> "ssbb"
+        | Barrier_PSSBB _ -> "pssbb"
+        | Barrier_SB _ -> "sb")
   | CMSD_TRANS_HW_MSR { tmd_sysreg = reg; tmd_val = value } ->
       Fmt.pf ppf "MSR %s %a"
         (match reg with
         | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
         | SYSREG_VTTBR -> "SYSREG_VTTBR")
         p0xZ value
-  | CMSD_TRANS_HW_TLBI _ -> Fmt.pf ppf "TLBI" (* TODO: better printing *)
+  | CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = tlbi_kind; ttd_value = value } ->
+      Fmt.pf ppf "TLBI %s %a"
+        (match tlbi_kind with
+        | TLBI_vmalls12e1 -> "vmalls12e1"
+        | TLBI_vmalls12e1is -> "vmalls12e1is"
+        | TLBI_vmalle1is -> "vmalle1is"
+        | TLBI_alle1is -> "alle1is"
+        | TLBI_vae2 -> "vae2"
+        | TLBI_vmalle1 -> "vmalle1"
+        | TLBI_vale2is -> "vale2is"
+        | TLBI_vae2is -> "vae2is"
+        | TLBI_ipas2e1is -> "ipas2e1is")
+        p0xZ value
   | CMSD_TRANS_ABS_MEM_INIT { tid_addr = addr; tid_size = size } ->
       Fmt.pf ppf "INIT %a size %a" p0xZ addr p0xZ size
   | CMSD_TRANS_ABS_MEMSET
@@ -48,57 +69,62 @@ let pp_location ppf = function
   | None -> Fmt.pf ppf "unknown location"
 
 let pp_transition ppf trans =
-  Fmt.pf ppf "@[ID: %d;@ CPU: %a;@ %a@ at@ %a@]" trans.cms_id
-    p0xZ trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
+  Fmt.pf ppf "@[ID: %d;@ CPU: %a;@ %a@ at@ %a@]" trans.cms_id p0xZ
+    trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
     trans.cms_src_loc
 
 let pp_error ppf = function
   | CME_bbm_violation (violation, addr) ->
-      Fmt.pf ppf "@[BBM violation:@ %s %a@]"
+      Fmt.pf ppf "@[BBM violation:@ %s at %a@]"
         (match violation with
-        | VT_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
-        | VT_valid_on_valid -> "Wrote valid on another valid descriptor"
-        | VT_release_unclean -> "Tried to release a page that was still unclean")
+        | BBM_valid_on_invalid_unclean -> "invalid unclean->valid"
+        | BBM_valid_on_valid -> "valid->valid"
+        | BBM_release_unclean ->
+            "tried to release a page that was still unclean")
         p0xZ addr
   | CME_not_a_pte (str, addr) ->
-      Fmt.pf ppf "Address %a was expected to be a PTE in function %s" p0xZ addr
+      Fmt.pf ppf "address %a was expected to be a PTE in function %s" p0xZ addr
         str
   | CME_inconsistent_read -> Fmt.pf ppf "Inconsistent read"
   | CME_uninitialised (str, addr) ->
-      Fmt.pf ppf "Address %a was uninitialised in function %s" p0xZ addr str
+      Fmt.pf ppf "address %a was uninitialised in function %s" p0xZ addr str
   | CME_unclean_child loc ->
-      Fmt.pf ppf "An unclean child has been encountered at address: %a" p0xZ loc
+      Fmt.pf ppf "an unclean child has been encountered at address: %a" p0xZ loc
   | CME_write_on_not_writable loc ->
-      Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ
+      Fmt.pf ppf "tried to write while a parent is unclean at address %a" p0xZ
         loc
   | CME_double_use_of_pte loc ->
-      Fmt.pf ppf "PTE at address %a is used in two page-tables" p0xZ loc
-  | CME_root_already_exists -> Fmt.pf ppf "CME_root_already_exists"
+      Fmt.pf ppf "double-use pte at address %a" p0xZ loc
+  | CME_root_already_exists -> Fmt.pf ppf "the root already exists"
   | CME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | CME_double_lock_acquire (i, j) ->
       Fmt.pf ppf "locking error, locked owned by %a, used by %a" p0xZ i p0xZ j
-  | CME_transition_without_lock i ->
-      Fmt.pf ppf
-        "Tried to take make a step without owning the lock at address: %a" p0xZ
-        i
+  | CME_write_without_lock i ->
+      Fmt.pf ppf "must write to pte at address %a while holding owner lock" p0xZ i
   | CME_unimplemented -> Fmt.pf ppf "CME_unimplemented"
   | CME_internal_error e ->
       Fmt.pf ppf "@[CME_internal_error:@ %s@]"
         (match e with
         | IET_infinite_loop -> "the maximum number of iterations was reached."
-        | IET_unexpected_none -> "a None was found where it was unexpected."
+        | IET_unexpected_none -> "a `None` was found where it was unexpected."
         | IET_no_write_authorization -> "no write authorization was found.")
   | CME_write_without_authorization addr ->
-      Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ
+      Fmt.pf ppf "wrote plain without being authorized to at address %a" p0xZ
         addr
   | CME_parent_invalidated addr ->
-      Fmt.pf ppf "Address %a's parent was invalidated" p0xZ addr
+      Fmt.pf ppf "address %a's parent was invalidated" p0xZ addr
   | CME_owned_pte_accessed_by_other_thread addr ->
-      Fmt.pf ppf "Location %a owned by a thread but accessed by another" p0xZ
+      Fmt.pf ppf "location %a owned by a thread but accessed by another" p0xZ
         addr
-  | CME_addr_id_error str -> Fmt.pf ppf "%s" str
-  | CME_owner_not_associated ->
-      Fmt.pf ppf "must have associated location with an owner"
+  | CME_addr_id_error violation ->
+      Fmt.pf ppf "@[(VM/AS)ID violation:@ %s@]"
+        (match violation with
+        | AID_root_already_associated ->
+            "root already associated with an (VM/AS)ID"
+        | AID_TTBR0_EL2_reserved_zero -> "TTBR0_EL2 ASID is reserved 0"
+        | AID_duplicate_addr_id -> "duplicate (VM/AS)ID")
+  | CME_owner_not_associated_with_a_root ->
+      Fmt.pf ppf "must have associated owner with a root"
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -120,7 +146,9 @@ let pp_step_result :
     Fmt.t =
   Fmt.(
     result ~ok:(const string "Success!\n") ~error:(fun ppf ->
-        Fmt.pf ppf "@[<v>@[<2>Error:@ @[%a@]@]@]" pp_error))
+        Fmt.pf ppf "@[<v>@[<2>%a:@ @[%a@]@]@]"
+          Fmt.(styled `Red string)
+          "Error" pp_error))
 
 (* Automatically derive printers using pretty evil metaprogramming, with
    ppx_import and ppx_deriving.show.
@@ -187,8 +215,9 @@ let pp_sm_location ppf sl =
       | None -> ())
     sl.sl_pte
 
-(* TODO: update format *)
-let pp_cm_root ppf _ = Fmt.pf ppf ""
+let pp_cm_root ppf root =
+  Fmt.pf ppf "[<v>{ baddr: %a;@ id: %a;@ refcount: %d }@]" p0xZ root.r_baddr
+    p0xZ root.r_id root.r_refcount
 
 type casemate_model_roots =
   [%import: Coq_executable_casemate.casemate_model_roots]
@@ -238,6 +267,4 @@ let pp_casemate_model ppf m =
     pp_casemate_model_initialised m.cms_initialised pp_casemate_model_locks m
 
 let pp_state state = Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state
-
-let pp_tr ppf tr =
-  Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Green string) "TRANS" pp_transition tr
+let pp_tr ppf tr = Fmt.pf ppf "TRANS: @[%a@]" pp_transition tr

@@ -42,13 +42,13 @@ Fixpoint steps
   | h :: t =>
     match step h cm with
     | {| cmr_log := logs_next; cmr_data := Ok _ _ st_next |} =>
-        steps t (logs_next ++ logs) st_next
+      steps t (logs_next ++ logs) st_next
     | {| cmr_log := logs_next; cmr_data := Error _ _ f |} =>
-        {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
+      {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
     end
   end.
 
-Definition run_model
+Definition run
   (transitions : list casemate_model_step) :
   casemate_model_result :=
   let res := steps transitions [] cms_init in

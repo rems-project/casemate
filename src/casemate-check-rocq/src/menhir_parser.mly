@@ -9,7 +9,7 @@
 %token <Big_int_Z.big_int> VAL
 %token <int> NUM
 %token <string> FN
-%token W Wrel Wpage
+%token W Wrel
 %token READ
 %token DSB_ish DSB_ishst DSB_nsh
 %token ISB
@@ -66,10 +66,10 @@ trans_data:
   //   CMSD_TRANS_HW_TLBI (
   //   let op, regime, shareability, level =
   //     match tlbi with
-  //     | "TLBI_vmalls12e1" -> (TLBIOp_VMALLS12, TLBI_REGIME_EL10, Shareability_NSH, TLBILevel_Any)
-  //     | "TLBI_vmalle1is" -> (TLBIOp_VMALL, TLBI_REGIME_EL10, Shareability_ISH, TLBILevel_Any)
-  //     | "TLBI_vmalls12e1is" -> (TLBIOp_VMALLS12, TLBI_REGIME_EL10, Shareability_ISH, TLBILevel_Any)
-  //     | "TLBI_vmalle1" -> (TLBIOp_VMALL, TLBI_REGIME_EL10, Shareability_NSH, TLBILevel_Any)
+  //     | "TLBI_vmalls12e1" -> (TLBIOp_VMALLS12, TLBI_REGIME_EL10, NSH, TLBILevel_Any)
+  //     | "TLBI_vmalle1is" -> (TLBIOp_VMALL, TLBI_REGIME_EL10, ISH, TLBILevel_Any)
+  //     | "TLBI_vmalls12e1is" -> (TLBIOp_VMALLS12, TLBI_REGIME_EL10, ISH, TLBILevel_Any)
+  //     | "TLBI_vmalle1" -> (TLBIOp_VMALL, TLBI_REGIME_EL10, NSH, TLBILevel_Any)
   //     | _ ->
   //         Printf.eprintf "Unsupported TLBI operation %s\n" tlbi;
   //         exit 1
@@ -88,10 +88,10 @@ trans_data:
   //   CMSD_TRANS_HW_TLBI (
   //     let op, regime, shareability, level =
   //       match tlbi with
-  //       | "TLBI_alle1is" -> (TLBIOp_ALL, TLBI_REGIME_EL10, Shareability_ISH, TLBILevel_Any)
-  //       | "TLBI_vale2is" -> (TLBIOp_VA, TLBI_REGIME_EL2, Shareability_ISH, TLBILevel_Last)
-  //       | "TLBI_vae2is" -> (TLBIOp_VA, TLBI_REGIME_EL2, Shareability_ISH, TLBILevel_Any)
-  //       | "TLBI_ipas2e1is" -> (TLBIOp_IPAS2, TLBI_REGIME_EL10, Shareability_ISH, TLBILevel_Any)
+  //       | "TLBI_alle1is" -> (TLBIOp_ALL, TLBI_REGIME_EL10, ISH, TLBILevel_Any)
+  //       | "TLBI_vale2is" -> (TLBIOp_VA, TLBI_REGIME_EL2, ISH, TLBILevel_Last)
+  //       | "TLBI_vae2is" -> (TLBIOp_VA, TLBI_REGIME_EL2, ISH, TLBILevel_Any)
+  //       | "TLBI_ipas2e1is" -> (TLBIOp_IPAS2, TLBI_REGIME_EL10, ISH, TLBILevel_Any)
   //       | _ ->
   //           Printf.eprintf "Unsupported TLBI operation %s\n" tlbi;
   //           exit 1

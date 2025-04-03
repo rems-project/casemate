@@ -1,7 +1,6 @@
 Require Import common.
 Require Import model.
 
-
 Definition PTE_BIT_VALID : u64 := b1. (* binary: 0001 *)
 Definition PTE_BIT_TABLE : u64 := b2. (* binary: 0010 *)
 
@@ -20,8 +19,7 @@ Definition PTE_BITS_ADDRESS : u64 := BV64 0xfffffffff000%Z.
 Definition NOT_PTE_FIELD_UPPER_ATTRS_SW_MASK : u64 := BV64 0x7fffffffffffff%Z.
 
 Definition is_desc_valid (descriptor : u64) : bool :=
-  negb ((bv_and_64 descriptor PTE_BIT_VALID) b=? b0)
-.
+  negb ((bv_and_64 descriptor PTE_BIT_VALID) b=? b0).
 
 Definition OA_shift (level : level_t) : u64 :=
   match level with
@@ -29,8 +27,7 @@ Definition OA_shift (level : level_t) : u64 :=
   | l2 => BV64 (12 + 9)
   | l3 => b12
   | _ => b0  (* Should not happen*)
-  end
-.
+  end.
 
 Definition _mask_OA_shift_l1 := BV64 0xffffc0000000%Z.
 Definition _mask_OA_shift_l2 := BV64 0xffffffe00000%Z.
@@ -42,8 +39,7 @@ Definition mask_OA_shift (level : level_t) : u64 :=
   | l2 => _mask_OA_shift_l2
   | l3 => _mask_OA_shift_l3
   | _ => b0 (* Should not happen*)
-  end
-.
+  end.
 
 Definition _map_size_l0 := BV64 0x8000000000%Z. (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
 Definition _map_size_l1 := BV64 0x0040000000%Z. (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
@@ -283,7 +279,7 @@ Definition traverse_pgt_from_root
   casemate_model_result :=
   traverse_pgt_from
     root
-    (root_val root) pa0
+    (owner_val root) pa0
     l0
     stage
     visitor_cb
@@ -303,7 +299,7 @@ Fixpoint traverse_pgt_rec
   (* If the state is failed, there is no point in going on *)
   | _, Error _ _ _ => res
   | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q, _ =>
-    let res := Mupdate_state (traverse_pgt_from baddr (root_val baddr) pa0 l0 stage visitor_cb) res in
+    let res := Mupdate_state (traverse_pgt_from baddr (owner_val baddr) pa0 l0 stage visitor_cb) res in
     traverse_pgt_rec tid visitor_cb stage q res
   end
 .

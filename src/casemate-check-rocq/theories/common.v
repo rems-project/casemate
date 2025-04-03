@@ -1,6 +1,5 @@
 Require Export String Cmap.cmap Zmap.zmap stdpp.gmap.
 Require Export stdpp.bitvector.bitvector.
- 
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 Require Export Recdef.
@@ -126,7 +125,7 @@ Inductive sm_owner_t :=
 Global Instance sm_owner_t_eq_decision : EqDecision sm_owner_t.
   Proof. solve_decision. Qed.
 
-Definition root_val (root : sm_owner_t) : phys_addr_t :=
+Definition owner_val (root : sm_owner_t) : phys_addr_t :=
   match root with
   | Root r => r
   end
