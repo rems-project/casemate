@@ -19,7 +19,7 @@ let u64 sexp =
 
 let mem_write_order = function
   | Atom "plain" -> WMO_plain
-  | Atom "page" -> WMO_page
+  (* | Atom "page" -> WMO_page *)
   | Atom "release" -> WMO_release
   | sexp -> of_sexp_error "bad mem-write mem-order" sexp
 
@@ -245,7 +245,7 @@ let transition sexp =
     {
       cms_src_loc = loc;
       cms_id = int id;
-      cms_thread_identifier = int tid;
+      cms_thread_identifier = u64 tid;
       cms_data = data;
     }
 

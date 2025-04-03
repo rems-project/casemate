@@ -51,7 +51,8 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
         Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.cmr_log
       else Fmt.pr "%a@." pp_logs res.cmr_log;
     if dump_roots then
-      Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots state.cms_roots;
+      Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots
+        state.cms_roots;
     if dump_state then
       Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_casemate_model state;
     (* If we reach an error, we dump the transition *)

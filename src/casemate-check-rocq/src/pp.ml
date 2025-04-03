@@ -21,7 +21,7 @@ let pp_transition_data ppf = function
       Fmt.pf ppf "W%s %a %a"
         (match typ with
         | WMO_release -> "rel"
-        | WMO_page -> "page"
+        (* | WMO_page -> "page" *)
         | WMO_plain -> "")
         p0xZ addr p0xZ value
   | CMSD_TRANS_HW_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
@@ -48,8 +48,8 @@ let pp_location ppf = function
   | None -> Fmt.pf ppf "unknown location"
 
 let pp_transition ppf trans =
-  Fmt.pf ppf "@[ID: %d;@ CPU: %d;@ %a@ at@ %a@]" trans.cms_id
-    trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
+  Fmt.pf ppf "@[ID: %d;@ CPU: %a;@ %a@ at@ %a@]" trans.cms_id
+    p0xZ trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
     trans.cms_src_loc
 
 let pp_error ppf = function
@@ -76,7 +76,7 @@ let pp_error ppf = function
   | CME_root_already_exists -> Fmt.pf ppf "CME_root_already_exists"
   | CME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | CME_double_lock_acquire (i, j) ->
-      Fmt.pf ppf "locking error, locked owned by %i, used by %i" i j
+      Fmt.pf ppf "locking error, locked owned by %a, used by %a" p0xZ i p0xZ j
   | CME_transition_without_lock i ->
       Fmt.pf ppf
         "Tried to take make a step without owning the lock at address: %a" p0xZ
@@ -93,10 +93,12 @@ let pp_error ppf = function
         addr
   | CME_parent_invalidated addr ->
       Fmt.pf ppf "Address %a's parent was invalidated" p0xZ addr
-  | CME_owned_pte_accessed_by_other_thread (str, addr) ->
-      Fmt.pf ppf "Private PTE %a was accessed by other thread in function %s"
-        p0xZ addr str
+  | CME_owned_pte_accessed_by_other_thread addr ->
+      Fmt.pf ppf "Location %a owned by a thread but accessed by another" p0xZ
+        addr
   | CME_addr_id_error str -> Fmt.pf ppf "%s" str
+  | CME_owner_not_associated ->
+      Fmt.pf ppf "must have associated location with an owner"
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -169,19 +171,19 @@ let pp_level_t ppf = function
   | L3 -> Fmt.pf ppf "L3"
   | Lerror -> Fmt.pf ppf "error"
 
-let pp_ghost_exploded_descriptor ppf desc =
+let pp_entry_exploded_descriptor ppf desc =
   Fmt.pf ppf
     "@[<v>{ region: [%a - %a];@ level: %a;@ stage: %a;@ owner: %a;@ kind: %a;@ \
      state: %a }@]"
-    p0xZ desc.ged_ia_region.range_start p0xZ
-    Z.(add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ
-    desc.ged_owner pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
+    p0xZ desc.eed_ia_region.range_start p0xZ
+    Z.(add desc.eed_ia_region.range_start desc.eed_ia_region.range_size)
+    pp_level_t desc.eed_level pp_entry_stage_t desc.eed_stage p0xZ
+    desc.eed_owner pp_pte_rec desc.eed_pte_kind pp_sm_pte_state desc.eed_state
 
 let pp_sm_location ppf sl =
   Fmt.pf ppf "@[<v>val: %a%a@]" p0xZ sl.sl_val
     (fun ppf -> function
-      | Some pte -> Fmt.pf ppf "@\nPTE: %a" pp_ghost_exploded_descriptor pte
+      | Some pte -> Fmt.pf ppf "@\nPTE: %a" pp_entry_exploded_descriptor pte
       | None -> ())
     sl.sl_pte
 
@@ -215,7 +217,7 @@ let pp_lock_entry ppf (root, addr, state) =
   match state with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
   | Some x ->
-      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x.ls_tid
+      Fmt.pf ppf "%a -> %a locked by %a%s" p0xZ root p0xZ addr p0xZ x.ls_tid
         (match x.ls_write_authorization with
         | WA_AUTHORIZED -> "; authorized to write"
         | WA_UNAUTHORIZED -> "; unauthorized to write")

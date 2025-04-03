@@ -146,19 +146,19 @@ Definition deconstruct_pte
   (level : level_t)
   (root : sm_owner_t)
   (stage : entry_stage_t) :
-  ghost_exploded_descriptor :=
+  entry_exploded_descriptor :=
   let pte_kind := deconstruct_pte_kind desc level in
   {|
-    ged_ia_region :=
+    eed_ia_region :=
       {|
         range_start := partial_ia; (* It is already aligned *)
         range_size := map_size level (* The mapped (or partially mapped) region only depends on the level *)
       |};
-    ged_level := level;
-    ged_stage := stage;
-    ged_pte_kind := pte_kind;
-    ged_state := initial_state cpu_id pte_kind;
-    ged_owner := root;
+    eed_level := level;
+    eed_stage := stage;
+    eed_pte_kind := pte_kind;
+    eed_state := initial_state cpu_id pte_kind;
+    eed_owner := root;
   |}.
 
 (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
@@ -228,17 +228,17 @@ with traverse_pgt_from_offs
               match location.(sl_pte) with
               | Some pte => pte
               | None => (* 0 is a placeholder, we do not use it afterwards *)
-                deconstruct_pte (TID 0) partial_ia location.(sl_val) level root stage
+                deconstruct_pte (TID b0) partial_ia location.(sl_val) level root stage
               end
             in
             let res :=
               (* if it is a valid descriptor, recursively call pgt_traversal_from, otherwise, continue *)
-              match exploded_desc.(ged_pte_kind) with
+              match exploded_desc.(eed_pte_kind) with
               | PTER_PTE_KIND_TABLE table_data =>
                 (* If it is a page table descriptor, we we traverse the sub-page table *)
                 let rec_table_start := table_data.(next_level_table_addr) in
-                let next_partial_ia := exploded_desc.(ged_ia_region).(range_start) pa+
-                    (((PA i) pa* exploded_desc.(ged_ia_region).(range_size))) in
+                let next_partial_ia := exploded_desc.(eed_ia_region).(range_start) pa+
+                    (((PA i) pa* exploded_desc.(eed_ia_region).(range_size))) in
                 (* recursive call: explore sub-pgt *)
                 traverse_pgt_from_aux
                   root
@@ -298,8 +298,8 @@ Definition traverse_pgt_from_root
     cm
 .
 
-(* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux
+(* Traverse all page tables starting with a root in roots *)
+Fixpoint traverse_pgt_rec
   (tid : option thread_identifier)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (stage : entry_stage_t)
@@ -312,12 +312,12 @@ Fixpoint traverse_si_pgt_aux
   | _, Error _ _ _ => res
   | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q, _ =>
     let res := Mupdate_state (traverse_pgt_from baddr (root_val baddr) pa0 l0 stage visitor_cb) res in
-    traverse_si_pgt_aux tid visitor_cb stage q res
+    traverse_pgt_rec tid visitor_cb stage q res
   end
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt
+Definition traverse_pgt
   (tid : option thread_identifier)
   (cm : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
@@ -328,15 +328,15 @@ Definition traverse_si_pgt
     | S1 => cm.(cms_roots).(cmr_s1)
     end
   in
-  traverse_si_pgt_aux tid visitor_cb stage roots (Mreturn cm).
+  traverse_pgt_rec tid visitor_cb stage roots (Mreturn cm).
 
 Definition traverse_all_pgt
   (thread : option thread_identifier)
   (cm : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result) :=
-  match traverse_si_pgt thread cm visitor_cb S1 with
+  match traverse_pgt thread cm visitor_cb S1 with
   | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
-    let res := traverse_si_pgt thread cm visitor_cb S2 in
+    let res := traverse_pgt thread cm visitor_cb S2 in
     res <| cmr_log := res.(cmr_log) ++ logs |>
   | err => err
   end.
@@ -392,7 +392,7 @@ Definition mark_not_writable_cb
     | None =>
         match location.(sl_pte) with
         | Some desc =>
-          let new_desc := desc <| ged_state := SPS_STATE_PTE_NOT_WRITABLE |> in
+          let new_desc := desc <| eed_state := SPS_STATE_PTE_NOT_WRITABLE |> in
           let new_location := location <| sl_pte := Some new_desc |> in
           let new_cm := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(cms_memory) in
           Mreturn (ctx.(ptc_state) <| cms_memory := new_cm |>)

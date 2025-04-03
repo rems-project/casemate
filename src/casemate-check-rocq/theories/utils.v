@@ -87,15 +87,16 @@ Definition b1023 := BV64 1023.
 (** Addresses **)
 
 Inductive thread_identifier :=
-  | TID : nat -> thread_identifier
+  | TID : u64 -> thread_identifier
 .
-Definition thread_identifier_to_nat (tid : thread_identifier) :=
-  match tid with 
-  | TID tid => tid
-  end.
 
 Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
+
+Definition thread_identifier_to_val (tid : thread_identifier) : u64 :=
+  match tid with
+  | TID val => val
+  end.
 
 Inductive phys_addr_t :=
   | PA : u64 -> phys_addr_t.
@@ -103,9 +104,9 @@ Inductive phys_addr_t :=
 Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
   Proof. solve_decision. Qed.
 
-Definition phys_addr_val (root : phys_addr_t) : u64 :=
-  match root with
-  | PA r => r
+Definition phys_addr_val (phys_addr : phys_addr_t) : u64 :=
+  match phys_addr with
+  | PA val => val
   end.
 
 Definition pa_plus (a b : phys_addr_t) : phys_addr_t :=

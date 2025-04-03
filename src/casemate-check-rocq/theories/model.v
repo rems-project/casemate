@@ -48,13 +48,13 @@ Inductive sm_pte_state :=
   | SPS_STATE_PTE_NOT_WRITABLE
 .
 
-Record ghost_addr_range := {
+Record addr_range := {
   range_start : phys_addr_t;
   range_size : phys_addr_t;
 }.
 
 Record map_data_t := {
-  oa_region : ghost_addr_range;
+  oa_region : addr_range;
 }.
 
 Inductive level_t :=
@@ -95,24 +95,24 @@ Inductive pte_rec :=
   | PTER_PTE_KIND_INVALID
 .
 
-Record ghost_exploded_descriptor := mk_ghost_exploded_descriptor {
-  ged_ia_region : ghost_addr_range;
-  ged_level : level_t;
-  ged_stage : entry_stage_t;
-  ged_pte_kind : pte_rec;
-  ged_state : sm_pte_state;
+Record entry_exploded_descriptor := mk_entry_exploded_descriptor {
+  eed_ia_region : addr_range;
+  eed_level : level_t;
+  eed_stage : entry_stage_t;
+  eed_pte_kind : pte_rec;
+  eed_state : sm_pte_state;
   (* address of the root of the PTE *)
-  ged_owner : sm_owner_t;
+  eed_owner : sm_owner_t;
 }.
-#[export] Instance eta_ghost_exploded_descriptor : Settable _ :=
-  settable! mk_ghost_exploded_descriptor <ged_ia_region; ged_level; ged_stage; ged_pte_kind; ged_state; ged_owner>.
+#[export] Instance eta_entry_exploded_descriptor : Settable _ :=
+  settable! mk_entry_exploded_descriptor <eed_ia_region; eed_level; eed_stage; eed_pte_kind; eed_state; eed_owner>.
 
 
 Record sm_location := mk_sm_location {
   (* sl_initialised : bool; *)
   sl_phys_addr : phys_addr_t;
   sl_val : u64;
-  sl_pte : option ghost_exploded_descriptor;
+  sl_pte : option entry_exploded_descriptor;
   sl_thread_owner : option thread_identifier;
 }.
 #[export] Instance eta_sm_location : Settable _ :=
@@ -136,7 +136,7 @@ Record cm_thrd_ctxt := {
   current_s2 : sm_owner_t;
 }.
 
-Definition casemate_model_thrd_ctxt := list cm_thrd_ctxt.
+Definition casemate_model_thrd_ctxt := cmap cm_thrd_ctxt.
 
 (* Map of pgtable root to lock that owns it *)
 Definition casemate_model_lock_owner_map := zmap u64.
@@ -170,23 +170,26 @@ Record casemate_model_roots := mk_cm_roots {
 }.
 #[export] Instance eta_casemate_model_roots : Settable _ := settable! mk_cm_roots <cmr_s1; cmr_s2>.
 
-Definition retrieve_roots_for_stage
-  (stage : entry_stage_t)
-  (cm_roots : casemate_model_roots) :
-  list cm_root :=
-  match stage with
-  | S1 => cm_roots.(cmr_s1)
-  | S2 => cm_roots.(cmr_s2)
-  end.
-
 Definition retrieve_root_for_baddr
-  (roots : list cm_root)
+  (stage : entry_stage_t)
+  (cm_roots : casemate_model_roots)
   (root_addr : sm_owner_t) : option cm_root :=
+  let roots := 
+    match stage with
+    | S1 => cm_roots.(cmr_s1)
+    | S2 => cm_roots.(cmr_s2)
+    end in 
   find (fun elem => bool_decide (elem.(r_baddr) = root_addr)) roots.
 
 Definition retrieve_root_for_id
-  (roots : list cm_root)
+  (stage : entry_stage_t)
+  (cm_roots : casemate_model_roots)
   (addr_id : addr_id_t) : option cm_root :=
+  let roots := 
+    match stage with
+    | S1 => cm_roots.(cmr_s1)
+    | S2 => cm_roots.(cmr_s2)
+    end in
   find (fun elem => bool_decide (elem.(r_id) = addr_id)) roots.
 
 Definition update_root_for_baddr
@@ -229,6 +232,15 @@ Definition update_cms_root_for_id
     cms_roots <| cmr_s2 := new_roots |>
   end.
 
+Definition insert_cms_root
+  (stage : entry_stage_t)
+  (root : cm_root)
+  (cms_roots : casemate_model_roots) : casemate_model_roots :=
+  match stage with
+  | S2 => cms_roots <| cmr_s2 := root :: cms_roots.(cmr_s2) |>
+  | S1 => cms_roots <| cmr_s1 := root :: cms_roots.(cmr_s1) |>
+  end.
+
 Record casemate_model_state := mk_casemate_model_state {
   cms_roots : casemate_model_roots;
   cms_memory : casemate_model_memory;
@@ -265,9 +277,6 @@ Definition get_lock_of_owner
   (cm : casemate_model_state) : option u64 :=
   lookup (phys_addr_val (root_val owner)) cm.(cms_lock_addr).
 
-
-Infix "!!" := get_location (at level 20).
-
 Definition is_loc_thread_owned
   (cpu : thread_identifier)
   (location : sm_location)
@@ -278,17 +287,25 @@ Definition is_loc_thread_owned
   | _, _ => false
   end.
 
+Infix "!!" := get_location (at level 20).
+
 Definition is_pte_well_locked
   (cpu : thread_identifier)
-  (pte : ghost_exploded_descriptor)
+  (pte : entry_exploded_descriptor)
   (cm : casemate_model_state) : bool :=
-  match get_lock_of_owner pte.(ged_owner) cm with
+  match get_lock_of_owner pte.(eed_owner) cm with
   | None => false
   | Some addr =>
     match lookup addr cm.(cms_lock_state) with
     | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
+  end.
+
+Definition cm_roots_for_other_stage (stage : entry_stage_t) (cm : casemate_model_state) :=
+  match stage with
+  | S1 => cm.(cms_roots).(cmr_s2)
+  | S2 => cm.(cms_roots).(cmr_s1)
   end.
 
 Definition should_visit
@@ -309,7 +326,32 @@ Definition current_thread_context
   (tid : thread_identifier)
   (cm : casemate_model_state) : 
   option cm_thrd_ctxt :=
-  nth_opt (thread_identifier_to_nat tid) cm.(cms_thrd_ctxt).
+  let val := thread_identifier_to_val tid in
+  lookup val cm.(cms_thrd_ctxt).
+
+Definition update_current_thread_context
+  (tid : thread_identifier)
+  (stage : entry_stage_t)
+  (assoc_root_baddr : sm_owner_t)
+  (cm : casemate_model_state) :
+  casemate_model_state :=
+  let idx := thread_identifier_to_val tid in
+  let new_thrd_ctxt := 
+    match current_thread_context tid cm with
+    | Some thrd_ctxt =>
+      match stage with
+      | S1 => {| current_s1 := assoc_root_baddr; current_s2 := thrd_ctxt.(current_s2) |}
+      | S2 => {| current_s1 := thrd_ctxt.(current_s2); current_s2 := assoc_root_baddr|}
+      end
+    | None => 
+      match stage with (* TODO: pa0 to None? *)
+      | S1 => {| current_s1 := assoc_root_baddr; current_s2 := Root pa0 |}
+      | S2 => {| current_s1 := Root pa0; current_s2 := assoc_root_baddr|}
+      end
+    end in
+  let val := thread_identifier_to_val tid in
+  let new_cms_thrd_ctxt := insert val new_thrd_ctxt cm.(cms_thrd_ctxt) in
+  cm <| cms_thrd_ctxt := new_cms_thrd_ctxt |>.
 
 Definition current_thread_context_root
   (tid : thread_identifier)
@@ -322,8 +364,7 @@ Definition current_thread_context_root
       | S1 => thrd_ctxt.(current_s1)
       | S2 => thrd_ctxt.(current_s2)
       end in
-    let roots := retrieve_roots_for_stage stage cm.(cms_roots) in
-    retrieve_root_for_baddr roots root_addr
+    retrieve_root_for_baddr stage cm.(cms_roots) root_addr
   | None => None
   end.
 
@@ -336,25 +377,6 @@ Definition get_current_vttbr
   (tid : thread_identifier)
   (cm : casemate_model_state) : option cm_root :=
   current_thread_context_root tid S2 cm.
-
-Definition update_current_thread_context
-  (tid : thread_identifier)
-  (stage : entry_stage_t)
-  (assoc_root : sm_owner_t)
-  (cm : casemate_model_state) :
-  casemate_model_state :=
-  match current_thread_context tid cm with
-  | Some thrd_ctxt =>
-    let new_thrd_ctxt := 
-      match stage with
-      | S1 => {| current_s1 := assoc_root; current_s2 := thrd_ctxt.(current_s2) |}
-      | S2 => {| current_s1 := thrd_ctxt.(current_s2); current_s2 := assoc_root|}
-      end in
-    let idx := thread_identifier_to_nat tid in
-    let new_cms_thrd_ctxt := list_insert idx new_thrd_ctxt cm.(cms_thrd_ctxt) in
-    cm <| cms_thrd_ctxt := new_cms_thrd_ctxt |>
-  | None => cm
-  end.
 
 Inductive violation_type :=
   | VT_valid_on_invalid_unclean
@@ -378,8 +400,9 @@ Inductive casemate_model_error :=
   | CME_unimplemented
   | CME_internal_error : internal_error_type -> casemate_model_error
   | CME_parent_invalidated : phys_addr_t -> casemate_model_error
-  | CME_owned_pte_accessed_by_other_thread : string -> phys_addr_t -> casemate_model_error
-  | CME_addr_id_error : string -> casemate_model_error
+  | CME_owned_pte_accessed_by_other_thread : phys_addr_t -> casemate_model_error
+  | CME_addr_id_error : string -> casemate_model_error (* TODO: add error cases as inductive types *)
+  | CME_owner_not_associated
 .
 
 Record casemate_model_result := mk_casemate_model_result {

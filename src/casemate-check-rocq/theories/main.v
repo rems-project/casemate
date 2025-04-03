@@ -16,7 +16,7 @@ Definition cm_init := {|
   cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
   cms_memory := ∅;
   cms_initialised := ∅;
-  cms_thrd_ctxt := [];
+  cms_thrd_ctxt := ∅;
   cms_lock_addr := ∅;
   cms_lock_state := ∅;
 |}.
