@@ -115,14 +115,28 @@ Record owner_locks := {
   ol_locks : unit;
 }.
 
+Record cm_root := {
+  r_baddr : sm_owner_t;
+  r_id : addr_id_t;
+  r_refcount : u64;
+}.
+
+Record thrd_ctxt := {
+  current_s1 : sm_owner_t;
+  current_s2 : sm_owner_t;
+}.
+  
 (* The memory state is a map from address to casemate model location *)
 Definition casemate_model_memory := cmap sm_location.
 
 (* The initialised memory is stored here *)
 Definition casemate_model_initialised := zmap unit.
 
-(* the map from root to lock address *)
-Definition casemate_model_lock_addr := zmap u64.
+(* per-CPU thread-local context *)
+Definition casemate_model_thrd_ctxt := list thrd_ctxt.
+
+(* Map of pgtable root to lock that owns it *)
+Definition casemate_model_lock_owner_map := zmap u64.
 
 Inductive write_authorization :=
   | write_authorized
@@ -148,17 +162,19 @@ Record casemate_model_state := mk_casemate_model_state {
   cms_roots : casemate_model_roots;
   cms_memory : casemate_model_memory;
   cms_initialised : casemate_model_initialised;
-  cms_lock_addr : casemate_model_lock_addr;
+  cms_thrd_ctxt : casemate_model_thrd_ctxt;
+  cms_lock_addr : casemate_model_lock_owner_map;
   cms_lock_state : casemate_model_lock_state_map
 }.
 #[export] Instance eta_casemate_model_state : Settable _ := 
   settable! mk_casemate_model_state 
-    <cms_roots; cms_memory; cms_initialised; cms_lock_addr; cms_lock_state>.
+    <cms_roots; cms_memory; cms_initialised; cms_thrd_ctxt; cms_lock_addr; cms_lock_state>.
 
 Definition cms_init := {|
   cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
   cms_memory := ∅;
   cms_initialised := ∅;
+  cms_thrd_ctxt := [];
   cms_lock_addr := ∅;
   cms_lock_state := ∅;
 |}.    
