@@ -1,13 +1,4 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
-Require Export utils.
+Require Export common.
 
 Inductive LVS :=
   | LVS_unguarded
@@ -253,6 +244,15 @@ Record casemate_model_state := mk_casemate_model_state {
   settable! mk_casemate_model_state
     <cms_roots; cms_memory; cms_initialised; cms_thrd_ctxt; cms_lock_addr; cms_lock_state>.
 
+Definition cm_init := {|
+  cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
+  cms_memory := ∅;
+  cms_initialised := ∅;
+  cms_thrd_ctxt := ∅;
+  cms_lock_addr := ∅;
+  cms_lock_state := ∅;
+|}.    
+
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
   match st.(cms_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
   | Some _ => true
@@ -275,7 +275,7 @@ Definition get_location
 Definition get_lock_of_owner
   (owner : sm_owner_t)
   (cm : casemate_model_state) : option u64 :=
-  lookup (phys_addr_val (root_val owner)) cm.(cms_lock_addr).
+  lookup (phys_addr_val (owner_val owner)) cm.(cms_lock_addr).
 
 Definition is_loc_thread_owned
   (cpu : thread_identifier)
@@ -378,14 +378,20 @@ Definition get_current_vttbr
   (cm : casemate_model_state) : option cm_root :=
   current_thread_context_root tid S2 cm.
 
-Inductive violation_type :=
-  | VT_valid_on_invalid_unclean
-  | VT_valid_on_valid
-  | VT_release_unclean
+Inductive bbm_violation :=
+  | BBM_valid_on_invalid_unclean
+  | BBM_valid_on_valid
+  | BBM_release_unclean
+.
+
+Inductive addr_id_violation :=
+  | AID_root_already_associated
+  | AID_TTBR0_EL2_reserved_zero
+  | AID_duplicate_addr_id
 .
 
 Inductive casemate_model_error :=
-  | CME_bbm_violation : violation_type -> phys_addr_t -> casemate_model_error
+  | CME_bbm_violation : bbm_violation -> phys_addr_t -> casemate_model_error
   | CME_not_a_pte : string -> phys_addr_t -> casemate_model_error
   | CME_inconsistent_read
   | CME_uninitialised : string -> phys_addr_t -> casemate_model_error
@@ -395,14 +401,14 @@ Inductive casemate_model_error :=
   | CME_root_already_exists
   | CME_unaligned_write
   | CME_double_lock_acquire : thread_identifier -> thread_identifier -> casemate_model_error
-  | CME_transition_without_lock : phys_addr_t -> casemate_model_error
+  | CME_write_without_lock : phys_addr_t -> casemate_model_error
   | CME_write_without_authorization : phys_addr_t -> casemate_model_error
   | CME_unimplemented
   | CME_internal_error : internal_error_type -> casemate_model_error
   | CME_parent_invalidated : phys_addr_t -> casemate_model_error
   | CME_owned_pte_accessed_by_other_thread : phys_addr_t -> casemate_model_error
-  | CME_addr_id_error : string -> casemate_model_error (* TODO: add error cases as inductive types *)
-  | CME_owner_not_associated
+  | CME_addr_id_error : addr_id_violation -> casemate_model_error (* TODO: add error cases as inductive types *)
+  | CME_owner_not_associated_with_a_root
 .
 
 Record casemate_model_result := mk_casemate_model_result {
@@ -445,14 +451,12 @@ Definition Mupdate_state
     let new_st := updater cm in
     new_st <| cmr_log := new_st.(cmr_log) ++ logs |>
   | e => e
-  end
-.
+  end.
 
 Definition insert_location
   (loc : sm_location)
   (cm : casemate_model_state) : casemate_model_state :=
-  (cm <| cms_memory := <[ loc.(sl_phys_addr) := loc ]> cm.(cms_memory) |>)
-.
+  (cm <| cms_memory := <[ loc.(sl_phys_addr) := loc ]> cm.(cms_memory) |>).
 
 Definition Minsert_location
   (loc : sm_location)
@@ -462,5 +466,4 @@ Definition Minsert_location
   | {| cmr_log := logs; cmr_data := Ok _ _ cm |} =>
     {| cmr_log := logs; cmr_data := Ok _ _ (insert_location loc cm) |}
   | e => e
-  end
-.
+  end.

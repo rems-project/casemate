@@ -1,12 +1,4 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
+Require Import common.
 Require Import model.
 Require Import pgtable.
 
@@ -20,55 +12,12 @@ Inductive Regime :=
 .
 
 Inductive Shareability := 
-  | Shareability_NSH
-  | Shareability_ISH 
-  | Shareability_OSH
+  | NSH
+  | ISH 
+  | OSH
 .
 
-(** TLBI *)
-(* Inductive TLBIOp :=
-  | TLBIOp_DALL
-  | TLBIOp_DASID
-  | TLBIOp_DVA
-  | TLBIOp_IALL
-  | TLBIOp_IASID
-  | TLBIOp_IVA
-  | TLBIOp_ALL
-  | TLBIOp_ASID
-  | TLBIOp_IPAS2
-  | TLBIOp_VAA
-  | TLBIOp_VA
-  | TLBIOp_VMALL
-  | TLBIOp_VMALLS12
-  | TLBIOp_RIPAS2
-  | TLBIOp_RVAA
-  | TLBIOp_RVA
-  | TLBIOp_RPA
-  | TLBIOp_PAALL
-. *)
-
 Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last.
-
-(* Record TLBIRecord  := {
-  TLBIRecord_op : TLBIOp;
-  (* TLBIRecord_from_aarch64 : bool; *)
-  (* TLBIRecord_security : SecurityState; *)
-  TLBIRecord_regime : Regime;
-  (* TLBIRecord_vmid : bits 16; *)
-  (* TLBIRecord_asid : bits 16; *)
-  TLBIRecord_level : TLBILevel;
-  (* TLBIRecord_attr : TLBIMemAttr; *)
-  (* TLBIRecord_ipaspace : PASpace; *)
-  TLBIRecord_address : phys_addr_t;
-  (* TLBIRecord_end_address_name : u64; *)
-  (* TLBIRecord_tg : bits 2; *)
-}.
-
-
-Record TLBI := {
-  TLBI_rec : TLBIRecord;
-  TLBI_shareability : Shareability;
-}. *)
 
 Inductive TLBI_stage_kind :=
   | TLBI_OP_stage1
@@ -146,7 +95,7 @@ Definition decode_tlbi_shootdown (td : trans_tlbi_data) : bool :=
 	| TLBI_vmalle1is => true
 	| TLBI_alle1is => true
 	| TLBI_vmalle1 => false
-  | TLBI_vae2 => false (* TODO: missing kind in C *)
+  | TLBI_vae2 => false (* WARN: not in C *)
 	| TLBI_vale2is => true
 	| TLBI_vae2is => true
 	| TLBI_ipas2e1is => true
@@ -176,7 +125,6 @@ Definition decode_tlbi_by_addr (td : trans_tlbi_data) : TLBI_op_by_addr_data :=
   let level_hint := 
     if (level b<? b4) then None 
     else Some (bv_and_64 level b3) in
-
   {|
     TOBAD_page := PA page;
     TOBAD_last_level_only := last_level_only;
@@ -425,7 +373,7 @@ Definition step_write_on_invalid_unclean
   casemate_model_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
-    (Merror (CME_bbm_violation VT_valid_on_invalid_unclean loc.(sl_phys_addr)))
+    (Merror (CME_bbm_violation BBM_valid_on_invalid_unclean loc.(sl_phys_addr)))
   else
     Mreturn (cm <|cms_memory := <[loc.(sl_phys_addr) := loc <|sl_val := val|> ]> cm.(cms_memory) |>).
 
@@ -474,7 +422,7 @@ Definition step_write_valid_on_valid
       end
   | Some true =>
     (* Changing the descriptor is illegal *)
-    Merror (CME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr))
+    Merror (CME_bbm_violation BBM_valid_on_valid loc.(sl_phys_addr))
   end.
 
 Definition step_write_invalid_on_valid
@@ -531,7 +479,7 @@ Definition drop_write_authorization
   (pte : entry_exploded_descriptor)
   (cm : casemate_model_state) : casemate_model_result :=
   match get_lock_of_owner pte.(eed_owner) cm with
-  | None => Merror CME_owner_not_associated
+  | None => Merror CME_owner_not_associated_with_a_root
   | Some lock_addr =>
     match lookup lock_addr cm.(cms_lock_state) with
     | Some {| ls_tid := lock_owner; ls_write_authorization := auth |} =>
@@ -554,8 +502,8 @@ Definition drop_write_authorization
           Mreturn (cm <| cms_lock_state := insert lock_addr new_lock_state cm.(cms_lock_state)|>)
         end
       else
-        Merror (CME_transition_without_lock addr)
-    | None => Merror (CME_transition_without_lock addr)
+        Merror (CME_write_without_lock addr)
+    | None => Merror (CME_write_without_lock addr)
     end
   end.
 
@@ -831,7 +779,7 @@ Fixpoint reset_write_authorizations_aux
   match roots with
   | [] => cm
   | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q =>
-    match lookup (phys_addr_val (root_val baddr)) cm.(cms_lock_addr) with
+    match lookup (phys_addr_val (owner_val baddr)) cm.(cms_lock_addr) with
     | Some lock_addr =>
       let new_st :=
         match lookup lock_addr cm.(cms_lock_state) with
@@ -1176,7 +1124,7 @@ Definition step_msr
 
   (* TTBR0_EL2 in non-VHE mode has a Res0 ASID *)
   if negb (check_ttbr0_el2_asid md addr_id) then
-    Merror (CME_addr_id_error "TTBR0_EL2 ASID is reserved 0")
+    Merror (CME_addr_id_error AID_TTBR0_EL2_reserved_zero)
   else
     match retrieve_root_for_baddr stage cm.(cms_roots) baddr with
     | Some assoc_root =>
@@ -1185,15 +1133,15 @@ Definition step_msr
         context_switch tid addr_id stage md cm
       else
         (* see if that root is already associated with a different (VM/AS)ID *)
-        Merror (CME_addr_id_error "root already associated with an (VM/AS)ID")
+        Merror (CME_addr_id_error AID_root_already_associated)
     | None =>
       let res :=
         match retrieve_root_for_id stage cm.(cms_roots) addr_id with
         | Some assoc_root =>
           if negb (bool_decide (assoc_root.(r_baddr) = baddr)) then
-            Merror (CME_addr_id_error "duplicate (VM/AS)ID")
+            Merror (CME_addr_id_error AID_duplicate_addr_id)
           else if negb (bool_decide (assoc_root.(r_id) = addr_id)) then
-            Merror (CME_addr_id_error "root already associated with an (VM/AS)ID")
+            Merror (CME_addr_id_error AID_root_already_associated)
           else try_register_root tid addr_id cm baddr stage
         | None => try_register_root tid addr_id cm baddr stage
         end in
@@ -1210,7 +1158,7 @@ Definition step_hint_set_root_lock
   (addr : phys_addr_t)
   (cm : casemate_model_state) :
   casemate_model_result :=
-    Mreturn (cm <| cms_lock_addr := insert (phys_addr_val (root_val root)) (phys_addr_val addr) cm.(cms_lock_addr)|>).
+    Mreturn (cm <| cms_lock_addr := insert (phys_addr_val (owner_val root)) (phys_addr_val addr) cm.(cms_lock_addr)|>).
 
 Function set_owner_root
   (phys : phys_addr_t)
@@ -1242,8 +1190,8 @@ Function set_owner_root
       let new_loc := location <| sl_pte := new_pte |> in
       let new_state := cm <|cms_memory := <[ location.(sl_phys_addr) := new_loc ]> cm.(cms_memory) |> in
       set_owner_root phys root new_state logs (offs - 1)
-    end
-.
+    end.
+
 Set Warnings "-funind-cannot-build-inversion -funind-cannot-define-graph".
 Proof. lia. Qed.
 Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
@@ -1257,12 +1205,11 @@ Definition step_release_cb (ctx : pgtable_traverse_context) : casemate_model_res
     | Some desc =>
       match desc.(eed_state) with
       | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
-          Merror (CME_bbm_violation VT_release_unclean ctx.(ptc_addr))
+          Merror (CME_bbm_violation BBM_release_unclean ctx.(ptc_addr))
       | _ => Mreturn ctx.(ptc_state)
       end
     end
   end.
-
 
 Fixpoint remove (x : sm_owner_t) (l : list sm_owner_t) : list sm_owner_t :=
   match l with
@@ -1286,7 +1233,7 @@ Definition try_unregister_root
   (cpu : thread_identifier)
   (cm : casemate_model_state) :
   casemate_model_result :=
-  match cm !! root_val addr with
+  match cm !! owner_val addr with
   | None => Merror (CME_internal_error IET_unexpected_none)
   | Some loc =>
     match loc.(sl_pte) with
@@ -1308,15 +1255,15 @@ Definition step_release_table
   (addr : sm_owner_t)
   (cm : casemate_model_state) :
   casemate_model_result :=
-  match cm !! root_val addr with
-  | None => Merror (CME_uninitialised "release"%string (root_val addr))
+  match cm !! owner_val addr with
+  | None => Merror (CME_uninitialised "release"%string (owner_val addr))
   | Some location =>
     match location.(sl_pte) with
-    | None => Merror (CME_not_a_pte "release"%string (root_val addr))
+    | None => Merror (CME_not_a_pte "release"%string (owner_val addr))
     | Some desc =>
       let new_st := traverse_pgt_from
         addr
-        (root_val desc.(eed_owner))
+        (owner_val desc.(eed_owner))
         desc.(eed_ia_region).(range_start)
         desc.(eed_level)
         desc.(eed_stage)
@@ -1338,7 +1285,7 @@ Definition step_hint_set_pte_thread_owner
     match location.(sl_pte) with
     | None => Merror (CME_not_a_pte "set_pte_thread_owner"%string phys)
     | Some _ =>
-      let thread_owner := TID (phys_addr_val (root_val val)) in
+      let thread_owner := TID (phys_addr_val (owner_val val)) in
       Mreturn (cm <| cms_memory :=
         (<[ location.(sl_phys_addr) := location <| sl_thread_owner := Some thread_owner |> ]> cm.(cms_memory))
       |> )
@@ -1354,7 +1301,7 @@ Definition step_hint
   match hd.(thd_hint_kind) with
   | GHOST_HINT_SET_ROOT_LOCK =>
     (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
-    step_hint_set_root_lock (Root hd.(thd_location)) (root_val hd.(thd_value)) cm
+    step_hint_set_root_lock (Root hd.(thd_location)) (owner_val hd.(thd_value)) cm
     (* AFAIK, this only affects the internal locking discipline of the C casemate model and does nothing on the Coq version *)
   | GHOST_HINT_SET_OWNER_ROOT =>
     (* When ownership is transferred *)

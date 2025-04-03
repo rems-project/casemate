@@ -1,25 +1,7 @@
-(** Casemate *)
-Require Import String.
-Require stdpp.bitvector.bitvector.
-Require Import Cmap.cmap.
-Require Import Zmap.zmap.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
-
+(** Casemate - Entrypoint *)
 Require Export transition.
 Require Export model.
 Require Export pgtable.
-
-Definition cm_init := {|
-  cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
-  cms_memory := ∅;
-  cms_initialised := ∅;
-  cms_thrd_ctxt := ∅;
-  cms_lock_addr := ∅;
-  cms_lock_state := ∅;
-|}.
 
 Definition step
   (trans : casemate_model_step)
@@ -60,9 +42,9 @@ Fixpoint apply_steps
   | h :: t =>
     match step h cm with
     | {| cmr_log := logs_next; cmr_data := Ok _ _ st_next |} =>
-        apply_steps t (logs_next ++ logs) st_next
+      apply_steps t (logs_next ++ logs) st_next
     | {| cmr_log := logs_next; cmr_data := Error _ _ f |} =>
-        {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
+      {| cmr_log := logs_next ++ logs; cmr_data := Error _ _ f |}
     end
   end.
 

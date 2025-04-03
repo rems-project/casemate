@@ -1,9 +1,9 @@
-Require Import String.
-Require stdpp.bitvector.bitvector.
-From RecordUpdate Require Import RecordSet.
-Import RecordSetNotations.
-Require Import stdpp.gmap.
-Require Import Recdef.
+Require Export String Cmap.cmap Zmap.zmap stdpp.gmap.
+Require Export stdpp.bitvector.bitvector.
+
+From RecordUpdate Require Export RecordSet.
+Export RecordSetNotations.
+Require Export Recdef.
 
 (* This is to prevent non boolean values from being used as boolean values *)
 Notation "'if' C 'then' A 'else' B" :=
@@ -126,7 +126,7 @@ Inductive sm_owner_t :=
 Global Instance sm_owner_t_eq_decision : EqDecision sm_owner_t.
   Proof. solve_decision. Qed.
 
-Definition root_val (root : sm_owner_t) : phys_addr_t :=
+Definition owner_val (root : sm_owner_t) : phys_addr_t :=
   match root with
   | Root r => r
   end.
