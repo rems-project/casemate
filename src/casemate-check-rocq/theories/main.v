@@ -51,6 +51,6 @@ Fixpoint steps
 Definition run_model
   (transitions : list casemate_model_step) :
   casemate_model_result :=
-  let res := steps transitions [] cm_init in
+  let res := steps transitions [] cms_init in
   res <| cmr_log := rev res.(cmr_log) |>
 .

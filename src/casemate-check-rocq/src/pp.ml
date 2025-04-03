@@ -4,12 +4,16 @@ let p0xZ ppf z = Fmt.pf ppf "0x%Lx" (Big_int_Z.int64_of_big_int z)
 let pp_u64 = p0xZ
 let pp_phys_addr_t = p0xZ
 
-type tLBIOp = [%import: Coq_executable_casemate.tLBIOp] [@@deriving show]
+(* type tLBIOp = [%import: Coq_executable_casemate.tLBIOp] [@@deriving show] *)
 type regime = [%import: Coq_executable_casemate.regime] [@@deriving show]
-type tLBILevel = [%import: Coq_executable_casemate.tLBILevel] [@@deriving show]
-type tLBIRecord = [%import: Coq_executable_casemate.tLBIRecord] [@@deriving show]
-type shareability = [%import: Coq_executable_casemate.shareability] [@@deriving show]
-type tLBI = [%import: Coq_executable_casemate.tLBI] [@@deriving show]
+(* type tLBILevel = [%import: Coq_executable_casemate.tLBILevel] [@@deriving show] *)
+
+(* type tLBIRecord = [%import: Coq_executable_casemate.tLBIRecord] [@@deriving show] *)
+
+(* type shareability = [%import: Coq_executable_casemate.shareability]
+   [@@deriving show] *)
+
+(* type tLBI = [%import: Coq_executable_casemate.tLBI] [@@deriving show] *)
 
 let pp_transition_data ppf = function
   | CMSD_TRANS_HW_MEM_WRITE
@@ -17,19 +21,19 @@ let pp_transition_data ppf = function
       Fmt.pf ppf "W%s %a %a"
         (match typ with
         | WMO_release -> "rel"
-        | WMO_page -> "page"
+        (* | WMO_page -> "page" *)
         | WMO_plain -> "")
         p0xZ addr p0xZ value
   | CMSD_TRANS_HW_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R %a (=%a)" p0xZ addr p0xZ value
-  | CMSD_TRANS_HW_BARRIER _ -> Fmt.pf ppf "barrier"
+  | CMSD_TRANS_HW_BARRIER _ -> Fmt.pf ppf "barrier" (* TODO: better printing *)
   | CMSD_TRANS_HW_MSR { tmd_sysreg = reg; tmd_val = value } ->
       Fmt.pf ppf "MSR %s %a"
         (match reg with
         | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
         | SYSREG_VTTBR -> "SYSREG_VTTBR")
         p0xZ value
-  | CMSD_TRANS_HW_TLBI data -> Fmt.pf ppf "TLBI %a" pp_tLBI data
+  | CMSD_TRANS_HW_TLBI _ -> Fmt.pf ppf "TLBI" (* TODO: better printing *)
   | CMSD_TRANS_ABS_MEM_INIT { tid_addr = addr; tid_size = size } ->
       Fmt.pf ppf "INIT %a size %a" p0xZ addr p0xZ size
   | CMSD_TRANS_ABS_MEMSET
@@ -40,13 +44,12 @@ let pp_transition_data ppf = function
   | CMSD_TRANS_HINT _ -> Fmt.pf ppf "Hint"
 
 let pp_location ppf = function
-  | Some loc ->
-      Fmt.pf ppf "@[%s:%d@ in@ %s@]" loc.sl_file loc.sl_lineno loc.sl_func
+  | Some loc -> Fmt.pf ppf "@[%s:%d@]" loc.sl_file loc.sl_lineno
   | None -> Fmt.pf ppf "unknown location"
 
 let pp_transition ppf trans =
-  Fmt.pf ppf "@[ID: %d;@ CPU: %d;@ %a@ at@ %a@]" trans.cms_id
-    trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
+  Fmt.pf ppf "@[ID: %d;@ CPU: %a;@ %a@ at@ %a@]" trans.cms_id
+    p0xZ trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
     trans.cms_src_loc
 
 let pp_error ppf = function
@@ -73,7 +76,7 @@ let pp_error ppf = function
   | CME_root_already_exists -> Fmt.pf ppf "CME_root_already_exists"
   | CME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | CME_double_lock_acquire (i, j) ->
-      Fmt.pf ppf "locking error, locked owned by %i, used by %i" i j
+      Fmt.pf ppf "locking error, locked owned by %a, used by %a" p0xZ i p0xZ j
   | CME_transition_without_lock i ->
       Fmt.pf ppf
         "Tried to take make a step without owning the lock at address: %a" p0xZ
@@ -90,9 +93,12 @@ let pp_error ppf = function
         addr
   | CME_parent_invalidated addr ->
       Fmt.pf ppf "Address %a's parent was invalidated" p0xZ addr
-  | CME_owned_pte_accessed_by_other_thread (str, addr) ->
-      Fmt.pf ppf "Private PTE %a was accessed by other thread in function %s"
-        p0xZ addr str
+  | CME_owned_pte_accessed_by_other_thread addr ->
+      Fmt.pf ppf "Location %a owned by a thread but accessed by another" p0xZ
+        addr
+  | CME_addr_id_error str -> Fmt.pf ppf "%s" str
+  | CME_owner_not_associated ->
+      Fmt.pf ppf "must have associated location with an owner"
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -127,63 +133,65 @@ let pp_step_result :
    the printers by hand.
 *)
 
-type sm_owner_t = [%import: Coq_executable_casemate.sm_owner_t] [@@deriving show]
+type sm_owner_t = [%import: Coq_executable_casemate.sm_owner_t]
+[@@deriving show]
 
-let pp_sm_pte_state ppf state =
-  Fmt.pf ppf
-    (match state with
-    | SPS_STATE_PTE_VALID _ -> "valid"
-    | SPS_STATE_PTE_INVALID_CLEAN _ -> "invalid clean"
-    | SPS_STATE_PTE_INVALID_UNCLEAN unclean_state -> (
-        "unclean "
-        ^^
-        match unclean_state.ai_lis with
-        | LIS_unguarded -> "unguarded"
-        | LIS_dsbed -> "dsbed"
-        | LIS_dsb_tlbi_all -> "dsb_tlbi_all"
-        | LIS_dsb_tlbi_ipa -> "dsb_tlbi_ipa"
-        | LIS_dsb_tlbied -> "dsb_tlbied"
-        | LIS_dsb_tlbi_ipa_dsb -> "dsb_tlbi_ipa_dsb")
-    | SPS_STATE_PTE_NOT_WRITABLE -> "Clean, Not writable")
+(* Printable variants of LIS and sm_pte_state *)
+let pp_lis ppf = function
+  | LIS_unguarded -> Fmt.pf ppf "unguarded"
+  | LIS_dsbed -> Fmt.pf ppf "dsbed"
+  | LIS_dsb_tlbi_all -> Fmt.pf ppf "dsb_tlbi_all"
+  | LIS_dsb_tlbi_ipa -> Fmt.pf ppf "dsb_tlbi_ipa"
+  | LIS_dsb_tlbied -> Fmt.pf ppf "dsb_tlbied"
+  | LIS_dsb_tlbi_ipa_dsb -> Fmt.pf ppf "dsb_tlbi_ipa_dsb"
+
+let pp_sm_pte_state ppf = function
+  | SPS_STATE_PTE_VALID _ -> Fmt.pf ppf "valid"
+  | SPS_STATE_PTE_INVALID_CLEAN _ -> Fmt.pf ppf "invalid clean"
+  | SPS_STATE_PTE_INVALID_UNCLEAN x -> Fmt.pf ppf "unclean (%a)" pp_lis x.ai_lis
+  | SPS_STATE_PTE_NOT_WRITABLE -> Fmt.pf ppf "not writable"
 
 let pp_pte_rec ppf = function
-  | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table: %a" p0xZ t
+  | PTER_PTE_KIND_TABLE t -> Fmt.pf ppf "Table → %a" p0xZ t
   | PTER_PTE_KIND_MAP t ->
-      Fmt.pf ppf "Table: %a-%a" p0xZ t.range_start p0xZ
-        (Z.add t.range_start t.range_size)
+      let start = t.range_start in
+      let size = t.range_size in
+      let finish = Z.add start size in
+      Fmt.pf ppf "Map [%a - %a]" p0xZ start p0xZ finish
   | PTER_PTE_KIND_INVALID -> Fmt.pf ppf "Invalid"
 
 let pp_entry_stage_t ppf = function
-  | S1 -> Fmt.pf ppf "1"
-  | S2 -> Fmt.pf ppf "2"
+  | S1 -> Fmt.pf ppf "S1"
+  | S2 -> Fmt.pf ppf "S2"
 
 let pp_level_t ppf = function
-  | L0 -> Fmt.pf ppf "0"
-  | L1 -> Fmt.pf ppf "1"
-  | L2 -> Fmt.pf ppf "2"
-  | L3 -> Fmt.pf ppf "3"
+  | L0 -> Fmt.pf ppf "L0"
+  | L1 -> Fmt.pf ppf "L1"
+  | L2 -> Fmt.pf ppf "L2"
+  | L3 -> Fmt.pf ppf "L3"
   | Lerror -> Fmt.pf ppf "error"
 
-let pp_ghost_exploded_descriptor ppf desc =
+let pp_entry_exploded_descriptor ppf desc =
   Fmt.pf ppf
-    "{@[<2>@ region: %a-%a;@ level: %a;@ stage: %a;@ owner: %a@ pte kind: %a;@ \
-     state: %a;@ @]}"
-    p0xZ desc.ged_ia_region.range_start p0xZ
-    (Z.add desc.ged_ia_region.range_start desc.ged_ia_region.range_size)
-    pp_level_t desc.ged_level pp_entry_stage_t desc.ged_stage p0xZ
-    desc.ged_owner pp_pte_rec desc.ged_pte_kind pp_sm_pte_state desc.ged_state
+    "@[<v>{ region: [%a - %a];@ level: %a;@ stage: %a;@ owner: %a;@ kind: %a;@ \
+     state: %a }@]"
+    p0xZ desc.eed_ia_region.range_start p0xZ
+    Z.(add desc.eed_ia_region.range_start desc.eed_ia_region.range_size)
+    pp_level_t desc.eed_level pp_entry_stage_t desc.eed_stage p0xZ
+    desc.eed_owner pp_pte_rec desc.eed_pte_kind pp_sm_pte_state desc.eed_state
 
 let pp_sm_location ppf sl =
-  Fmt.pf ppf "@[val: %a@ %a@]" p0xZ sl.sl_val
+  Fmt.pf ppf "@[<v>val: %a%a@]" p0xZ sl.sl_val
     (fun ppf -> function
-      | Some pte -> Fmt.pf ppf "@ %a" pp_ghost_exploded_descriptor pte
-      | _ -> ())
+      | Some pte -> Fmt.pf ppf "@\nPTE: %a" pp_entry_exploded_descriptor pte
+      | None -> ())
     sl.sl_pte
 
 (* TODO: update format *)
 let pp_cm_root ppf _ = Fmt.pf ppf ""
 
-type casemate_model_roots = [%import: Coq_executable_casemate.casemate_model_roots]
+type casemate_model_roots =
+  [%import: Coq_executable_casemate.casemate_model_roots]
 [@@deriving show]
 
 let pp_casemate_model_memory ppf m =
@@ -209,7 +217,7 @@ let pp_lock_entry ppf (root, addr, state) =
   match state with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
   | Some x ->
-      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x.ls_tid
+      Fmt.pf ppf "%a -> %a locked by %a%s" p0xZ root p0xZ addr p0xZ x.ls_tid
         (match x.ls_write_authorization with
         | WA_AUTHORIZED -> "; authorized to write"
         | WA_UNAUTHORIZED -> "; unauthorized to write")
@@ -219,17 +227,17 @@ let pp_casemate_model_locks ppf m =
     Fmt.(list ~sep:comma pp_lock_entry)
     (Zmap.fold
        (fun root addr xs ->
-         (root, addr, Zmap.find_opt addr m.cm_lock_state) :: xs)
-       m.cm_lock_addr [])
+         (root, addr, Zmap.find_opt addr m.cms_lock_state) :: xs)
+       m.cms_lock_addr [])
 
 let pp_casemate_model ppf m =
   Fmt.pf ppf
     "roots:@ @[<2>%a@]@. memory:@ @[<2>%a@]@. zalloc'd:@ @[<2>%a@]@. locks:@ \
      @[<2>%a@]@."
-    pp_casemate_model_roots m.cm_roots pp_casemate_model_memory m.cm_memory
-    pp_casemate_model_initialised m.cm_initialised pp_casemate_model_locks m
+    pp_casemate_model_roots m.cms_roots pp_casemate_model_memory m.cms_memory
+    pp_casemate_model_initialised m.cms_initialised pp_casemate_model_locks m
 
 let pp_state state = Fmt.(result ~ok:pp_casemate_model ~error:pp_error) state
 
 let pp_tr ppf tr =
-  Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Red string) "TRANS" pp_transition tr
+  Fmt.pf ppf "%a: @[%a@]" Fmt.(styled `Green string) "TRANS" pp_transition tr

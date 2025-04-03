@@ -74,6 +74,7 @@ Definition b0 := BV64 0.
 Definition b1 := BV64 1.
 Definition b2 := BV64 2.
 Definition b3 := BV64 3.
+Definition b4 := BV64 4.
 Definition b7 := BV64 7.
 Definition b8 := BV64 8.
 Definition b12 := BV64 12.
@@ -86,11 +87,16 @@ Definition b1023 := BV64 1023.
 (** Addresses **)
 
 Inductive thread_identifier :=
-  | Thread_identifier : nat -> thread_identifier
+  | TID : u64 -> thread_identifier
 .
 
 Global Instance thread_identifier_eq_decision : EqDecision thread_identifier.
   Proof. solve_decision. Qed.
+
+Definition thread_identifier_to_val (tid : thread_identifier) : u64 :=
+  match tid with
+  | TID val => val
+  end.
 
 Inductive phys_addr_t :=
   | PA : u64 -> phys_addr_t.
@@ -98,9 +104,9 @@ Inductive phys_addr_t :=
 Global Instance phys_addr_t_eq_decision : EqDecision phys_addr_t.
   Proof. solve_decision. Qed.
 
-Definition phys_addr_val (root : phys_addr_t) : u64 :=
-  match root with
-  | PA r => r
+Definition phys_addr_val (phys_addr : phys_addr_t) : u64 :=
+  match phys_addr with
+  | PA val => val
   end.
 
 Definition pa_plus (a b : phys_addr_t) : phys_addr_t :=
@@ -142,7 +148,7 @@ Inductive addr_id_t :=
 Global Instance addr_id_t_eq_decision : EqDecision addr_id_t.
   Proof. solve_decision. Qed.
 
-Inductive result (A B: Type): Type :=
+Inductive result (A B: Type) : Type :=
   | Ok (a: A)
   | Error (b: B)
 .
@@ -159,3 +165,20 @@ Inductive internal_error_type :=
   | IET_unexpected_none
   | IET_no_write_authorization
 .
+
+Fixpoint nth_opt {A : Type} (n : nat) (l : list A) {struct l} : option A :=
+  match n, l with
+  | O, x :: l' => Some x
+  | O, _ => None
+  | S m, nil => None
+  | S m, x :: t => nth_opt m t
+  end.
+
+Fixpoint idx_of {A : Type} (f : A -> bool) (acc : nat) (l : list A) {struct l} : nat :=
+  match l with
+  | nil => acc
+  | x :: l' => if (f x) then acc else idx_of f (acc + 1) l'
+  end.
+
+Definition index_of {A : Type} (f : A -> bool) (l : list A) : nat :=
+  idx_of f 0 l.

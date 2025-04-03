@@ -44,4 +44,4 @@ Set Extraction Flag 2031.
 Set Extraction Output Directory ".".
 
 Set Warnings "-extraction-opaque-accessed -extraction-axiom-to-realize".
-Extraction "coq_executable_casemate.ml" run_model cm_init step.
+Extraction "coq_executable_casemate.ml" run_model cms_init step.
