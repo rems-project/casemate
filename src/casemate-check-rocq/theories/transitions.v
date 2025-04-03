@@ -193,8 +193,8 @@ Record trans_read_data := {
 }.
 
 Record trans_init_data := {
-    tid_addr : phys_addr_t;
-    tid_size : u64;
+  tid_addr : phys_addr_t;
+  tid_size : u64;
 }.
 
 Record trans_memset_data := {
@@ -567,7 +567,7 @@ Function step_write_page
   if Zle_bool offs 0 then
     res
   else
-    let addr := wd.(twd_phys_addr) pa+ (Phys_addr (bv_mul_Z_64 b8 (offs - 1))) in
+    let addr := wd.(twd_phys_addr) pa+ (PA (bv_mul_Z_64 b8 (offs - 1))) in
     let sub_wd :=
       {|
         twd_mo := WMO_plain;
@@ -602,7 +602,7 @@ Definition step_init_aux
   Mupdate_state update st
 .
 
-Definition _step_init_step_size := Phys_addr (bv_shiftl_64 b1 (bv64.BV64 3)).
+Definition _step_init_step_size := PA (bv_shiftl_64 b1 (bv64.BV64 3)).
 
 Fixpoint step_init_all
   (addr : phys_addr_t)
@@ -622,7 +622,7 @@ Definition step_init
   (init_data : trans_init_data)
   (cms : casemate_model_state) :
   casemate_model_result :=
-  step_init_all (Phys_addr (bv_shiftr_64 (phys_addr_val init_data.(tid_addr)) (bv64.BV64 9))) {|cmr_log := nil; cmr_data := Ok _ _ cms|} pa0 (to_nat init_data.(tid_size))
+  step_init_all (PA (bv_shiftr_64 (phys_addr_val init_data.(tid_addr)) (bv64.BV64 9))) {|cmr_log := nil; cmr_data := Ok _ _ cms|} pa0 (to_nat init_data.(tid_size))
 .
 
 
@@ -969,7 +969,7 @@ Fixpoint si_root_exists (root : sm_owner_t) (roots : list sm_owner_t) : bool :=
 Definition _extract_si_root_big_bv := BV64 0xfffffffffffe%Z. (* GENMASK (b47) (b1) *)
 Definition extract_si_root (val : u64) (stage : entry_stage_t) : sm_owner_t :=
   (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (Phys_addr (bv_and_64 val _extract_si_root_big_bv))
+  Root (PA (bv_and_64 val _extract_si_root_big_bv))
 .
 
 Definition register_si_root
@@ -1045,7 +1045,7 @@ Function set_owner_root
   if Zle_bool offs 0 then
     {| cmr_log := logs; cmr_data := Ok _ _ cms |}
   else
-    let addr := phys pa+ (Phys_addr (bv_mul_Z_64 b8 (offs - 1))) in
+    let addr := phys pa+ (PA (bv_mul_Z_64 b8 (offs - 1))) in
     match cms !! addr with
       | None =>
         {|
@@ -1152,7 +1152,7 @@ Definition step_hint_set_pte_thread_owner
       match location.(sl_pte) with
         | None => Merror (CME_not_a_pte "set_pte_thread_owner"%string phys)
         | Some _ =>
-          let thread_owner := Thread_identifier (to_nat (phys_addr_val (root_val val))) in
+          let thread_owner := TID (phys_addr_val (root_val val)) in
           Mreturn (cms <| cms_memory :=
             (<[ location.(sl_phys_addr) := location <| sl_thread_owner := Some thread_owner |> ]> cms.(cms_memory))
           |> )

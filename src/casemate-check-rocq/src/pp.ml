@@ -45,8 +45,8 @@ let pp_location ppf = function
   | None -> Fmt.pf ppf "unknown location"
 
 let pp_transition ppf trans =
-  Fmt.pf ppf "@[ID: %d;@ CPU: %d;@ %a@ at@ %a@]" trans.cms_id
-    trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
+  Fmt.pf ppf "@[ID: %d;@ CPU: %a;@ %a@ at@ %a@]" trans.cms_id
+    p0xZ trans.cms_thread_identifier pp_transition_data trans.cms_data pp_location
     trans.cms_src_loc
 
 let pp_error ppf = function
@@ -73,7 +73,7 @@ let pp_error ppf = function
   | CME_root_already_exists -> Fmt.pf ppf "CME_root_already_exists"
   | CME_unaligned_write -> Fmt.pf ppf "unaligned write"
   | CME_double_lock_acquire (i, j) ->
-      Fmt.pf ppf "locking error, locked owned by %i, used by %i" i j
+      Fmt.pf ppf "locking error, locked owned by %a, used by %a" p0xZ i p0xZ j
   | CME_transition_without_lock i ->
       Fmt.pf ppf
         "Tried to take make a step without owning the lock at address: %a" p0xZ
@@ -206,7 +206,7 @@ let pp_lock_entry ppf (root, addr, state) =
   match state with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
   | Some x ->
-      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x.ls_tid
+      Fmt.pf ppf "%a -> %a locked by %a%s" p0xZ root p0xZ addr p0xZ x.ls_tid
       (match x.ls_write_authorization with
       | Write_authorized -> "; authorized to write"
       | Write_unauthorized -> "; unauthorized to write")

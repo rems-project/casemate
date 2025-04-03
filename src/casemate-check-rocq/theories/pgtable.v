@@ -52,17 +52,17 @@ Definition _map_size_l3 := BV64 0x0000001000%Z. (* bv_shiftl (BV64 4) (BV64 10) 
 
 Definition map_size (level : level_t) : phys_addr_t :=
   match level with
-  | l0 => Phys_addr _map_size_l0 (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
-  | l1 => Phys_addr _map_size_l1 (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
-  | l2 => Phys_addr _map_size_l2 (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
-  | l3 => Phys_addr _map_size_l3 (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
+  | l0 => PA _map_size_l0 (* bv_shiftl b512     (BV64 30) *) (* 512 Go *)
+  | l1 => PA _map_size_l1 (* bv_shiftl (b1)     (BV64 30) *) (* 1 Go *)
+  | l2 => PA _map_size_l2 (* bv_shiftl (b2)     (BV64 20) *) (* 2 Mo *)
+  | l3 => PA _map_size_l3 (* bv_shiftl (BV64 4) (BV64 10) *) (* 4 Ko *)
   | _ => pa0  (* Should not happen*)
   end
 .
 
 Definition _align_4k_big_bv := BV64 0xfffffffffffffc00%Z. (* bv_not b1023 *)
 Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
-  Phys_addr (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
+  PA (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
 .
 
 Definition is_desc_table (descriptor : u64) (level : level_t) :=
@@ -73,7 +73,7 @@ Definition is_desc_table (descriptor : u64) (level : level_t) :=
 .
 
 Definition extract_table_address (pte_val : u64) : phys_addr_t :=
-  Phys_addr (bv_and_64 pte_val PTE_BITS_ADDRESS).
+  PA (bv_and_64 pte_val PTE_BITS_ADDRESS).
 
 Definition extract_output_address (pte_val : u64) (level : level_t) :=
   bv_and_64 pte_val (mask_OA_shift level).
@@ -168,7 +168,7 @@ with traverse_pgt_from_offs
       match mon with
       | {| cmr_log := _; cmr_data := Error _ _ _ |} => mon (* If it fails, it fails *)
       | {| cmr_log := _; cmr_data := Ok _ _ st |} as mon =>
-        let addr := table_start pa+ (Phys_addr (b8 b* i)) in
+        let addr := table_start pa+ (PA (b8 b* i)) in
         let location := st !! addr in
         let visitor_state_updater s := (* We construct the context, we don't know if the location exists but the visitor might create it *)
           visitor_cb
@@ -194,7 +194,7 @@ with traverse_pgt_from_offs
               match location.(sl_pte) with
               | Some pte => pte
               | None => (* 0 is a placeholder, we do not use it afterwards *)
-                deconstruct_pte (Thread_identifier 0) partial_ia location.(sl_val) level root stage
+                deconstruct_pte (TID b0) partial_ia location.(sl_val) level root stage
               end
             in
             let mon :=
@@ -204,7 +204,7 @@ with traverse_pgt_from_offs
                 (* If it is a page table descriptor, we we traverse the sub-page table *)
                 let rec_table_start := table_data.(next_level_table_addr) in
                 let next_partial_ia := exploded_desc.(eed_ia_region).(range_start) pa+
-                    (((Phys_addr i) pa* exploded_desc.(eed_ia_region).(range_size))) in
+                    (((PA i) pa* exploded_desc.(eed_ia_region).(range_size))) in
                 (* recursive call: explore sub-pgt *)
                 traverse_pgt_from_aux
                   root 

@@ -144,7 +144,7 @@ let transition sexp =
     | List [Atom "id"; id] -> int id
     | sexp -> of_sexp_error "bad id" sexp
   and tid = match tid with
-    | List [Atom "tid"; tid] -> int tid
+    | List [Atom "tid"; tid] -> u64 tid
     | sexp -> of_sexp_error "bad tid" sexp
   and loc = match tl with
     | [List [Atom "src"; Atom _loc]] -> None
