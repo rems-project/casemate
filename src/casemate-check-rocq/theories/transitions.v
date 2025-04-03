@@ -454,21 +454,24 @@ Definition drop_write_authorisation_of_lock
   | None => Mreturn cms
   | Some addr_lock =>
     match lookup addr_lock cms.(cms_lock_state) with
-    | Some lock_owner =>
+    | Some {| ls_tid := lock_owner; ls_write_authorization := auth |} =>
       if bool_decide (lock_owner = cpu) then
         match wmo with
         | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
-          match lookup addr_lock cms.(cms_lock_authorization) with
-          | None => Merror (CME_internal_error IET_no_write_authorization)
-          | Some write_authorized => Mreturn (cms <| cms_lock_authorization := insert addr_lock write_unauthorized cms.(cms_lock_authorization)|>)
-          | Some write_unauthorized =>
+          match auth with
+          | write_authorized => 
+            let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
+            Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
+          | write_unauthorized =>
             if (is_desc_valid descriptor) || is_valid_state pte.(eed_state) then
               Merror (CME_write_without_authorization addr)
             else
-              Mreturn (cms <| cms_lock_authorization := insert addr_lock write_unauthorized cms.(cms_lock_authorization)|>)
+              let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
+              Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
           end
-        | WMO_release => (* drop the authorization*)
-          Mreturn (cms <| cms_lock_authorization := insert addr_lock write_unauthorized cms.(cms_lock_authorization)|>)
+          | WMO_release => (* drop the authorization *)
+            let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
+            Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
         end
       else
         Merror (CME_transition_without_lock addr)
@@ -775,10 +778,11 @@ Fixpoint reset_write_authorizations_aux
       let new_st :=
         match lookup lock_addr cms.(cms_lock_state) with
         | None => cms
-        | Some thread =>
+        | Some {| ls_tid := thread; ls_write_authorization := _ |} =>
           if bool_decide (thread = tid) then
-            (cms <| cms_lock_authorization := 
-                insert lock_addr write_authorized cms.(cms_lock_authorization) |>)
+            let new_lock_state := {| ls_tid := tid; ls_write_authorization := write_authorized |} in
+            (cms <| cms_lock_state :=
+                insert lock_addr new_lock_state cms.(cms_lock_state) |>)
           else
             cms
         end
@@ -1189,10 +1193,10 @@ Definition step_lock
   (cms : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val lock_data.(tld_addr)) cms.(cms_lock_state) with
-  | None =>(* lock and authorize to write to that page-table *)
-      Mreturn (cms <| cms_lock_state := insert (phys_addr_val lock_data.(tld_addr)) cpu cms.(cms_lock_state) |>
-                  <| cms_lock_authorization := insert (phys_addr_val lock_data.(tld_addr)) write_authorized cms.(cms_lock_authorization)|>)
-  | Some thread => Merror (CME_double_lock_acquire cpu thread)
+  | None =>(* lock and give the lock write_authorization to write the page-table *)
+    let lock_state := {| ls_tid := cpu; ls_write_authorization := write_authorized |} in
+    Mreturn (cms <| cms_lock_state := insert (phys_addr_val lock_data.(tld_addr)) lock_state cms.(cms_lock_state) |>)
+  | Some {| ls_tid := thread; ls_write_authorization := _ |} => Merror (CME_double_lock_acquire cpu thread)
   end
 .
 
@@ -1202,7 +1206,7 @@ Definition step_unlock
   (cms : casemate_model_state)
 : casemate_model_result :=
   match lookup (phys_addr_val lock_data.(tld_addr)) cms.(cms_lock_state) with
-  | Some thread =>
+  | Some {| ls_tid := thread; ls_write_authorization := _ |} =>
     if bool_decide (thread = cpu) then
       Mreturn (cms <| cms_lock_state := delete (phys_addr_val lock_data.(tld_addr)) cms.(cms_lock_state) |>)
     else

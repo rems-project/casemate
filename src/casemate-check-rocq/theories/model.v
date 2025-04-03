@@ -124,15 +124,18 @@ Definition casemate_model_initialised := zmap unit.
 (* the map from root to lock address *)
 Definition casemate_model_lock_addr := zmap u64.
 
-(* the map from lock address to thread that acquired it if any *)
-Definition casemate_model_lock_state := zmap thread_identifier.
-
 Inductive write_authorization :=
   | write_authorized
   | write_unauthorized
 .
 
-Definition casemate_model_lock_write_authorization := zmap write_authorization.
+(* the map from lock address to the thread that acquired it and the lock authorization if any *)
+Record lock_state := {
+  ls_tid : thread_identifier;
+  ls_write_authorization : write_authorization;
+}.
+
+Definition casemate_model_lock_state_map := zmap lock_state.
 
 (* Storing roots for PTE walkthrough (we might need to distinguish S1 and S2 roots) *)
 Record casemate_model_roots := mk_pte_roots {
@@ -146,12 +149,11 @@ Record casemate_model_state := mk_casemate_model_state {
   cms_memory : casemate_model_memory;
   cms_initialised : casemate_model_initialised;
   cms_lock_addr : casemate_model_lock_addr;
-  cms_lock_state : casemate_model_lock_state;
-  cms_lock_authorization : casemate_model_lock_write_authorization
+  cms_lock_state : casemate_model_lock_state_map
 }.
 #[export] Instance eta_casemate_model_state : Settable _ := 
   settable! mk_casemate_model_state 
-    <cms_roots; cms_memory; cms_initialised; cms_lock_addr; cms_lock_state; cms_lock_authorization>.
+    <cms_roots; cms_memory; cms_initialised; cms_lock_addr; cms_lock_state>.
 
 Definition cms_init := {|
   cms_roots := {| cmr_s1 := []; cmr_s2 := []; |};
@@ -159,7 +161,6 @@ Definition cms_init := {|
   cms_initialised := ∅;
   cms_lock_addr := ∅;
   cms_lock_state := ∅;
-  cms_lock_authorization := ∅;
 |}.    
 
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
@@ -209,7 +210,7 @@ Definition is_pte_well_locked
   | None => false
   | Some addr =>
     match lookup addr cms.(cms_lock_state) with
-    | Some lock_owner => bool_decide (lock_owner = cpu)
+    | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
     | None => false
     end
   end
