@@ -202,15 +202,14 @@ let pp_casemate_model_initialised ppf m =
     Fmt.(list ~sep:comma p0xZ)
     (Zmap.fold (fun x () xs -> Big_int_Z.shift_left_big_int x 12 :: xs) m [])
 
-let pp_lock_entry ppf (root, addr, status, auth) =
-  match status with
+let pp_lock_entry ppf (root, addr, state) =
+  match state with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
   | Some x ->
-      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x
-        (match auth with
-        | None -> ""
-        | Some Write_authorized -> "; authorized to write"
-        | Some Write_unauthorized -> "; unauthorized to write")
+      Fmt.pf ppf "%a -> %a locked by %d%s" p0xZ root p0xZ addr x.ls_tid
+      (match x.ls_write_authorization with
+      | Write_authorized -> "; authorized to write"
+      | Write_unauthorized -> "; unauthorized to write")
 
 let pp_casemate_model_locks ppf m =
   Fmt.pf ppf "@[<2>{ %a }@]"
@@ -219,8 +218,7 @@ let pp_casemate_model_locks ppf m =
        (fun root addr xs ->
          ( root,
            addr,
-           Zmap.find_opt addr m.cms_lock_state,
-           Zmap.find_opt addr m.cms_lock_authorization )
+           Zmap.find_opt addr m.cms_lock_state)
          :: xs)
        m.cms_lock_addr [])
 
