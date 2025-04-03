@@ -159,8 +159,7 @@ Definition deconstruct_pte
     ged_pte_kind := pte_kind;
     ged_state := initial_state cpu_id pte_kind;
     ged_owner := root;
-  |}
-.
+  |}.
 
 (* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
     the number of recursive calls is bounded. *)

@@ -959,7 +959,7 @@ Definition should_perform_tlbi
             match retrieve_root_for_baddr roots ptc.(ptc_root) with
             | Some pte_root =>
               match get_current_vttbr cpu_id ptc.(ptc_state) with
-              | Some vttbr => Some (negb (bool_decide (pte_root.(r_id) = vttbr.(r_id))))
+              | Some vttbr => Some (bool_decide (pte_root.(r_id) = vttbr.(r_id)))
               | None => Some true
               end
             | None => Some true
@@ -969,7 +969,7 @@ Definition should_perform_tlbi
             match retrieve_root_for_baddr roots ptc.(ptc_root) with
             | Some pte_root =>
               match __get_tlbi_asid td with
-              | Some asid => Some (negb (bool_decide (pte_root.(r_id) = asid)))
+              | Some asid => Some (bool_decide (pte_root.(r_id) = asid))
               | None => Some true
               end
             | None => Some true
@@ -983,7 +983,7 @@ Definition should_perform_tlbi
           match retrieve_root_for_baddr roots ptc.(ptc_root) with
           | Some pte_root =>
             match get_current_vttbr cpu_id ptc.(ptc_state) with
-            | Some vttbr => Some (negb (bool_decide (pte_root.(r_id) = vttbr.(r_id))))
+            | Some vttbr => Some (bool_decide (pte_root.(r_id) = vttbr.(r_id)))
             | None => Some true
             end
           | None => Some true
@@ -993,7 +993,7 @@ Definition should_perform_tlbi
           match retrieve_root_for_baddr roots ptc.(ptc_root) with
           | Some pte_root =>
             match __get_tlbi_asid td with
-            | Some asid => Some (negb (bool_decide (pte_root.(r_id) = asid)))
+            | Some asid => Some (bool_decide (pte_root.(r_id) = asid))
             | None => Some true
             end
           | None => Some true
