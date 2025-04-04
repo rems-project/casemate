@@ -1,1 +1,3 @@
--R _build/default/theories Casemate
+-R _build/default/theories simplified
+-R _build/default/cmap Cmap
+-R _build/default/zmap Zmap

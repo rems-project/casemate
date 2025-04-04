@@ -1,5 +1,5 @@
 (coq.theory
- (name Casemate)
+ (name simplified)
  (flags :standard)
- (synopsis "Casemate written in Rocq")
- (theories RecordUpdate stdpp stdpp.bitvector))
+ (synopsis "simplified")
+ (theories RecordUpdate stdpp stdpp.bitvector Cmap Zmap))
