@@ -4,16 +4,16 @@ LOG_DIR=./logs
 all:
 	dune build
 
-run-all:
+cm-test-ex:
 	for log_file in $(EXAMPLES_DIR)/*.log; do \
 	    echo "Processing '$$log_file'..."; \
-	    dune exec casemate -- --dump-state=true --dump-roots=true --dump-trans=true "$$log_file"; \
+	    dune exec casemate -- "$$log_file"; \
 	done
 
-sm-test:
+cm-test:
 	dune exe parser ${trace}
 
-sm-coverage:
+cm-coverage:
 	dune exe parser --instrument-with bisect_ppx --force ${trace} && bisect-ppx-report html
 
 clean:
