@@ -846,7 +846,7 @@ static void check_write_is_authorized(struct sm_location *loc, struct ghost_hw_s
 
 	/* if synchronisation is disabled, then cannot check write authorization
 	 * as it comes from the synchronisation itself */
-	if (!opts()->check_opts.check_synchronisation)
+	if (!opts()->check_opts.check_synchronisation || !opts()->check_opts.check_authorization)
 		return;
 
 	// if the location is owned by a given thread, just test if it is this one

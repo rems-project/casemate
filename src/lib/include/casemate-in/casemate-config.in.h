@@ -43,6 +43,11 @@ struct casemate_checker_options {
 	bool check_synchronisation;
 
 	/**
+	 * @check_authorization: check that write-authorizations are respected.
+	 */
+	bool check_authorization;
+
+	/**
 	 * @enable_printing: print out the current state of the
 	 * @print_opts: logging to perform.
 	 */
@@ -56,6 +61,7 @@ struct casemate_checker_options {
 		.promote_TLBI_nsh = false, \
 		.promote_TLBI_by_id = false, \
 		.check_synchronisation = true, \
+		.check_authorization = true, \
 		.enable_printing = false, \
 		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
