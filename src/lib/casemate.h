@@ -530,15 +530,15 @@ struct location_set {
 	u64 len;
 };
 
-#define casemate_model_MAX_LOCKS 8
+#define CASEMATE_MAX_LOCKS 8
 
 /**
  * struct lock_owner_map - Map of pgtable root to lock that owns it.
  */
 struct lock_owner_map {
 	u64 len;
-	sm_owner_t owner_ids[casemate_model_MAX_LOCKS];
-	gsm_lock_addr_t *locks[casemate_model_MAX_LOCKS];
+	sm_owner_t owner_ids[CASEMATE_MAX_LOCKS];
+	gsm_lock_addr_t *locks[CASEMATE_MAX_LOCKS];
 };
 
 /**
@@ -568,8 +568,8 @@ struct lock_state {
  */
 struct lock_state_map {
 	u64 len;
-	gsm_lock_addr_t *address[casemate_model_MAX_LOCKS];
-	struct lock_state locker[casemate_model_MAX_LOCKS];
+	gsm_lock_addr_t *address[CASEMATE_MAX_LOCKS];
+	struct lock_state locker[CASEMATE_MAX_LOCKS];
 };
 
 /**
