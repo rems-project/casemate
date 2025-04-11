@@ -22,6 +22,7 @@ bool SHOULD_PRINT_DIFF = false;
 bool SHOULD_PRINT_ONLY_UNCLEANS = true;
 bool SHOULD_CHECK = true;
 bool SHOULD_CHECK_LOCKS = true;
+bool SHOULD_CHECK_AUTH = true;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
@@ -112,6 +113,7 @@ static void print_help_and_quit(void)
 	printf(
 		"Usage: \n"
 		"  -R --racy      	do not check locks/synchronisation are respected\n"
+		"  -A --no-auth  	do not check write-authorization\n"
 		"  -t --trace    	print trace record for each step\n"
 		"  -c            	condensed trace format\n"
 		"  -d --diff     	show diffs of state\n"
@@ -142,11 +144,12 @@ void common_read_argv(int argc, char **argv)
 		{"color",      no_argument, 0,  7 },
 		{"help",       no_argument, 0,  8 },
 		{"racy",       no_argument, 0,  'R' },
+		{"no-auth",   no_argument, 0,  'A' },
 		{0,            0,           0,  0 }
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptqdhUR", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptqdhURA", long_options, 0)) != - 1) {
 		switch (c) {
 		case 0:
 		case 'p':
@@ -186,6 +189,10 @@ void common_read_argv(int argc, char **argv)
 
 		case 'R':
 			SHOULD_CHECK_LOCKS = false;
+			break;
+
+		case 'A':
+			SHOULD_CHECK_AUTH = false;
 			break;
 
 		case 6:
@@ -298,6 +305,7 @@ void common_init(int argc, char **argv)
 
 	opts.check_opts.enable_printing = SHOULD_PRINT_DIFF | SHOULD_PRINT_STATE;
 	opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
+	opts.check_opts.check_authorization = SHOULD_CHECK_AUTH;
 	opts.check_opts.print_opts = CM_PRINT_NONE;
 	if (SHOULD_PRINT_ONLY_UNCLEANS)
 		opts.check_opts.print_opts |= CM_PRINT_ONLY_UNCLEAN;

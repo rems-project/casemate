@@ -1,0 +1,10 @@
+(mem-init (id 0) (tid 0) (address 0xaaaac17b5000) (size 0x1000) (src "examples/tests/bad_no_write_auth.c:20"))
+(mem-init (id 1) (tid 0) (address 0xaaaac17b6000) (size 0x1000) (src "examples/tests/bad_no_write_auth.c:21"))
+(hint (id 2) (tid 0) (kind set_root_lock) (location 0xaaaac17b5000) (value 0xaaaac17b7000) (src "examples/tests/bad_no_write_auth.c:22"))
+(hint (id 3) (tid 0) (kind set_owner_root) (location 0xaaaac17b6000) (value 0xaaaac17b5000) (src "examples/tests/bad_no_write_auth.c:23"))
+(mem-write (id 4) (tid 0) (mem-order plain) (address 0xaaaac17b5000) (value 0xaaaac17b6003) (src "examples/tests/bad_no_write_auth.c:26"))
+(sysreg-write (id 5) (tid 0) (sysreg vttbr_el2) (value 0xaaaac17b5000) (src "examples/tests/bad_no_write_auth.c:29"))
+(lock (id 6) (tid 0) (address 0xaaaac17b7000) (src "examples/tests/bad_no_write_auth.c:31"))
+(mem-write (id 7) (tid 0) (mem-order plain) (address 0xaaaac17b6000) (value 0x1) (src "examples/tests/bad_no_write_auth.c:32"))
+(mem-write (id 8) (tid 0) (mem-order plain) (address 0xaaaac17b6008) (value 0x1) (src "examples/tests/bad_no_write_auth.c:33"))
+! Wrote plain without authorization

@@ -21,6 +21,7 @@ build-objs += good_bbm_stage1
 build-objs += bad_no_bbm_stage1
 build-objs += bad_overlap_ASID
 build-objs += bad_EL2_ASID
+build-objs += bad_no_write_auth
 
 list-build-objs:
 	@echo $(build-objs)
