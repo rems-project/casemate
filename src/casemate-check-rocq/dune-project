@@ -1,6 +1,6 @@
 (lang dune 3.8)
 
-(name simplified)
+(name casemate_model)
 
 (using coq 0.8)
 
