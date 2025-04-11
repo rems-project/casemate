@@ -63,7 +63,7 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 	}
 
 	i = the_ghost_state->locks.len++;
-	ghost_assert(i < casemate_model_MAX_LOCKS);
+	ghost_assert(i < CASEMATE_MAX_LOCKS);
 	the_ghost_state->locks.owner_ids[i] = root;
 	the_ghost_state->locks.locks[i] = lock;
 }
@@ -1560,7 +1560,7 @@ static void __step_lock(gsm_lock_addr_t *lock_addr)
 		}
 	}
 	// If the lock is not yet in the map, we append it
-	ghost_assert(len < casemate_model_MAX_LOCKS);
+	ghost_assert(len < CASEMATE_MAX_LOCKS);
 
 	the_ghost_state->lock_state.address[len] = lock_addr;
 	the_ghost_state->lock_state.locker[len].id = cpu_id();
