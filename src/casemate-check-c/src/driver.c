@@ -126,6 +126,7 @@ void *initialise_casemate(void)
 	/* TODO: for now ... */
 	opts.check_opts.promote_TLBI_by_id = true;
 	opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
+	opts.check_opts.check_authorization = SHOULD_CHECK_AUTH;
 
 	opts.enable_tracing = SHOULD_TRACE;
 
