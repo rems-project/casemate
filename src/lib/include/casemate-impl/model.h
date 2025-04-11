@@ -5,7 +5,7 @@
 #include <casemate-impl/options.h>
 
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)
-#define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT - 1, 0)
+#define BLOB_OFFSET_MASK GENMASK(BLOB_SHIFT, 0)
 #define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
 #define OFFSET_IN_BLOB(x) ((x) & BLOB_OFFSET_MASK)
 #define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
