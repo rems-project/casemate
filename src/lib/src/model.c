@@ -573,21 +573,20 @@ void free_root(struct roots *roots, struct root *root)
 {
 	ghost_assert(root != NULL);
 
-	u64 len = roots->len;
-	for (int i = 0; i < len; i++) {
+	for (int i = 0; i < roots->len; i++) {
 		/* remove exactly this root object */
 		if (&roots->roots[i] == root) {
-			len = roots->len--;
-
-			/* last slot: just free it */
-			if (i == len) {
-				return;
-			}
-
 			/* swap old last slot in */
-			roots->roots[i] = roots->roots[len];
+			if (i < roots->len - 1)
+				roots->roots[i] = roots->roots[roots->len - 1];
+
+			roots->len--;
+			return;
 		}
 	}
+
+	/* should never be trying to free a root that does not exist */
+	ghost_assert(false);
 }
 
 bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
