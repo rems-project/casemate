@@ -35,21 +35,21 @@
 #define PTE_FIELD_PKVM_OWNER_ID_GUEST (PKVM_ID_GUEST << PTE_FIELD_OWNER_ID_LO)
 
 #define PTE_FIELD_UPPER_ATTRS_LO 59
-#define PTE_FIELD_UPPER_ATTRS_MASK GENMASK(63, 50)
+#define PTE_FIELD_UPPER_ATTRS_MASK BITMASK(63, 50)
 
 #define PTE_FIELD_LOWER_ATTRS_LO 2
-#define PTE_FIELD_LOWER_ATTRS_MASK GENMASK(11, 2)
+#define PTE_FIELD_LOWER_ATTRS_MASK BITMASK(11, 2)
 
 #define PTE_FIELD_ATTRS_MASK (PTE_FIELD_UPPER_ATTRS_MASK | PTE_FIELD_LOWER_ATTRS_MASK)
 
 /* outside of realm security state, bit[55] is IGNORED, so can be used by software */
 #define PTE_FIELD_UPPER_ATTRS_SW_LO 55
-#define PTE_FIELD_UPPER_ATTRS_SW_MASK GENMASK(58, 55)
+#define PTE_FIELD_UPPER_ATTRS_SW_MASK BITMASK(58, 55)
 
-#define PTE_FIELD_TABLE_UPPER_IGNORED_MASK GENMASK(58, 51)
+#define PTE_FIELD_TABLE_UPPER_IGNORED_MASK BITMASK(58, 51)
 #define PTE_FIELD_TABLE_IGNORED_MASK (PTE_FIELD_LOWER_ATTRS_MASK | PTE_FIELD_TABLE_UPPER_IGNORED_MASK)
 
-#define PTE_FIELD_TABLE_NEXT_LEVEL_ADDR_MASK GENMASK(47,12)
+#define PTE_FIELD_TABLE_NEXT_LEVEL_ADDR_MASK BITMASK(47,12)
 
 #define PTE_FIELD_S1_AP2_LO 7
 #define PTE_FIELD_S1_AP2_MASK BIT(7)
@@ -65,10 +65,10 @@
 #define PTE_FIELD_S1_XN_EXEC_NEVER (1UL)
 
 #define PTE_FIELD_S1_ATTRINDX_LO 2
-#define PTE_FIELD_S1_ATTRINDX_MASK GENMASK(4, 2)
+#define PTE_FIELD_S1_ATTRINDX_MASK BITMASK(4, 2)
 
 #define PTE_FIELD_S2_S2AP10_LO 6
-#define PTE_FIELD_S2_S2AP10_MASK GENMASK(7, 6)
+#define PTE_FIELD_S2_S2AP10_MASK BITMASK(7, 6)
 
 #define PTE_FIELD_S2_S2AP0_LO 6
 #define PTE_FIELD_S2_S2AP0_MASK BIT(6)
@@ -81,7 +81,7 @@
 #define PTE_FIELD_S2_S2AP1_NOT_WRITEABLE (0UL)
 
 #define PTE_FIELD_S2_XN_LO 53
-#define PTE_FIELD_S2_XN_MASK GENMASK(54, 53)
+#define PTE_FIELD_S2_XN_MASK BITMASK(54, 53)
 /*
  * S2 XN is actually two bits encoding EL1 and EL0 execution separately.
  * but we assume they're either both allowed (00) or both forbidden (10)
@@ -90,7 +90,7 @@
 #define PTE_FIELD_S2_XN_EXEC_NEVER (0b10UL)
 
 #define PTE_FIELD_S2_MEMATTR_LO 2
-#define PTE_FIELD_S2_MEMATTR_MASK GENMASK(5, 2)
+#define PTE_FIELD_S2_MEMATTR_MASK BITMASK(5, 2)
 
 #define PTE_FIELD_S2_MEMATTR_DEVICE_nGnRE (0b0010UL)
 #define PTE_FIELD_S2_MEMATTR_NORMAL_OUTER_INNER_WRITE_BACK_CACHEABLE (0b1111UL)
@@ -118,19 +118,19 @@ typedef struct {
 
 #define TCR_TG0_LO 14
 #define TCR_TG0_WIDTH 2
-#define TCR_TG0_MASK (GENMASK(TCR_TG0_WIDTH - 1, 0) << TCR_TG0_LO)
+#define TCR_TG0_MASK (BITMASK(TCR_TG0_WIDTH - 1, 0) << TCR_TG0_LO)
 
 #define TCR_EL2_T0SZ_LO 0
 #define TCR_EL2_T0SZ_WIDTH 6
-#define TCR_EL2_T0SZ_MASK (GENMASK(TCR_EL2_T0SZ_WIDTH - 1, 0) << TCR_EL2_T0SZ_LO)
+#define TCR_EL2_T0SZ_MASK (BITMASK(TCR_EL2_T0SZ_WIDTH - 1, 0) << TCR_EL2_T0SZ_LO)
 
 /* outside of realm security state, bit[55] is IGNORED, so can be used by software */
 #define PTE_FIELD_UPPER_ATTRS_SW_LO 55
-#define PTE_FIELD_UPPER_ATTRS_SW_MASK GENMASK(58, 55)
+#define PTE_FIELD_UPPER_ATTRS_SW_MASK BITMASK(58, 55)
 
 /* Technically, MemAttr is not a PTE field, but actually stored in the MAIR_ELx register, but whatever */
 #define MEMATTR_LEN 8
-#define MEMATTR_MASK GENMASK(7,0)
+#define MEMATTR_MASK BITMASK(7,0)
 #define EXTRACT_MEMATTR(MAIR, IDX) (((MAIR) >> ((IDX) * MEMATTR_LEN)) & MEMATTR_MASK)
 #define MEMATTR_FIELD_DEVICE_nGnRE (0b00000100UL)
 #define MEMATTR_FIELD_NORMAL_OUTER_INNER_WRITE_BACK_CACHEABLE (0b11111111)
@@ -167,8 +167,8 @@ struct aal {
 
 #define DUMMY_AAL ((struct aal){.attr_at_level={0}})
 
-#define TTBR_BADDR_MASK	GENMASK(47, 1)
-#define TTBR_ID_MASK GENMASK(63, 48)
+#define TTBR_BADDR_MASK	BITMASK(47, 1)
+#define TTBR_ID_MASK BITMASK(63, 48)
 
 static inline phys_addr_t ttbr_extract_baddr(u64 vttb)
 {
@@ -180,9 +180,9 @@ static inline u64 ttbr_extract_id(u64 ttb)
 	return ttb & TTBR_ID_MASK;
 }
 
-#define TLBI_PAGE_MASK	GENMASK(43, 0)
-#define TLBI_ASID_MASK	GENMASK(63, 48)
-#define TLBI_TTL_MASK	GENMASK(47, 44)
+#define TLBI_PAGE_MASK	BITMASK(43, 0)
+#define TLBI_ASID_MASK	BITMASK(63, 48)
+#define TLBI_TTL_MASK	BITMASK(47, 44)
 
 bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage);
 bool is_desc_valid(u64 descriptor);

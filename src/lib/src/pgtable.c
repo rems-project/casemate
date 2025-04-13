@@ -5,7 +5,7 @@
 
 #define PTE_BIT_VALID BIT(0)
 #define PTE_BIT_TABLE BIT(1)
-#define PTE_BITS_TABLE_POINTER GENMASK(47, 12)
+#define PTE_BITS_TABLE_POINTER BITMASK(47, 12)
 #define PTE_BIT_OA_MSB 47
 
 #define KiB_SHIFT 10ULL
@@ -28,9 +28,9 @@ static const u64 MAP_SIZES[] = {
 // DS is for 52-bit output addressing with FEAT_LPA2, and is zero in the register values we see; I'll hard-code that for now.  Thus, G.b says:
 // - For a level 1 Block descriptor, bits[47:30] are bits[47:30] of the output address. This output address specifies a 1GB block of memory.
 // - For a level 2 Block descriptor, bits[47:21] are bits[47:21] of the output address.This output address specifies a 2MB block of memory.
-#define PTE_FIELD_LVL1_OA_MASK GENMASK(47, 30)
-#define PTE_FIELD_LVL2_OA_MASK GENMASK(47, 21)
-#define PTE_FIELD_LVL3_OA_MASK GENMASK(47, 12)
+#define PTE_FIELD_LVL1_OA_MASK BITMASK(47, 30)
+#define PTE_FIELD_LVL2_OA_MASK BITMASK(47, 21)
+#define PTE_FIELD_LVL3_OA_MASK BITMASK(47, 12)
 
 static u64 PTE_FIELD_OA_MASK[4] = {
 	[1] = PTE_FIELD_LVL1_OA_MASK,
