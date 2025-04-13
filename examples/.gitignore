@@ -34,3 +34,5 @@
 /bad_overlap_ASID
 /bad_overlap_VMID
 /bad_EL2_ASID
+/good_switch
+/good_release_table

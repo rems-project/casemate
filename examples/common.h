@@ -30,6 +30,7 @@ int recv(void);
 #define ID0 0ULL
 #define ID1 1ULL
 #define ID2 2ULL
+#define ID3 3ULL
 
 #define WRITE_ONCE(VAR, VAL) \
 	({	\
