@@ -168,6 +168,7 @@ struct aal {
 #define DUMMY_AAL ((struct aal){.attr_at_level={0}})
 
 #define TTBR_BADDR_MASK	BITMASK(47, 1)
+#define TTBR_ID_LO 48UL
 #define TTBR_ID_MASK BITMASK(63, 48)
 
 static inline phys_addr_t ttbr_extract_baddr(u64 vttb)
@@ -177,7 +178,7 @@ static inline phys_addr_t ttbr_extract_baddr(u64 vttb)
 
 static inline u64 ttbr_extract_id(u64 ttb)
 {
-	return ttb & TTBR_ID_MASK;
+	return (ttb & TTBR_ID_MASK) >> TTBR_ID_LO;
 }
 
 #define TLBI_PAGE_MASK	BITMASK(43, 0)
