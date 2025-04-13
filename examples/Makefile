@@ -13,6 +13,7 @@ build-objs += bad_free_page_without_clean
 build-objs += good_free_page
 build-objs += good_free_tree
 build-objs += good_write_child
+build-objs += good_switch
 build-objs += bad_switch_wrong_vmid
 build-objs += good_bbm_by_VMID
 build-objs += bad_bbm_by_wrong_VMID
@@ -21,6 +22,7 @@ build-objs += good_bbm_stage1
 build-objs += bad_no_bbm_stage1
 build-objs += bad_overlap_ASID
 build-objs += bad_EL2_ASID
+build-objs += good_release_table
 
 list-build-objs:
 	@echo $(build-objs)
