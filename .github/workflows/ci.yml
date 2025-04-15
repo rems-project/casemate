@@ -31,16 +31,22 @@ jobs:
       run: |
         sudo apt update
         sudo apt install build-essential
+        sudo apt install clang-format-15
 
     - name: Configure
       working-directory: rems-project/casemate
       run: |
-        ./configure
+        ./configure --clang-format=clang-format-15
 
     - name: Build all
       working-directory: rems-project/casemate
       run: |
         make
+
+    - name: clang-format
+      working-directory: rems-project/casemate
+      run: |
+        make lint
 
     - name: Run tests
       working-directory: rems-project/casemate
