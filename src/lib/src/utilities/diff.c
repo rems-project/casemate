@@ -57,13 +57,29 @@ struct diff_val {
 		struct gprint_data {
 			gp_print_cb fn;
 			void *obj;
-	 	} gp;
+		} gp;
 	};
 };
-#define TBOOL(value) (struct diff_val){.kind=Tbool, .b=(value)}
-#define TU64(value) (struct diff_val){.kind=Tu64, .n=(value)}
-#define TSTR(value) (struct diff_val){.kind=Tstr, .s=(value)}
-#define TGPRINT(f, value) (struct diff_val){.kind=Tgprint, .gp={.fn=(f), .obj=(value)}}
+#define TBOOL(value) \
+	(struct diff_val) \
+	{ \
+		.kind = Tbool, .b = (value) \
+	}
+#define TU64(value) \
+	(struct diff_val) \
+	{ \
+		.kind = Tu64, .n = (value) \
+	}
+#define TSTR(value) \
+	(struct diff_val) \
+	{ \
+		.kind = Tstr, .s = (value) \
+	}
+#define TGPRINT(f, value) \
+	(struct diff_val) \
+	{ \
+		.kind = Tgprint, .gp = {.fn = (f), .obj = (value) } \
+	}
 #define EMPTY_KEY TSTR(NULL)
 
 struct ghost_diff {
@@ -84,7 +100,7 @@ struct ghost_diff {
 	};
 };
 
-#define DIFF_NONE ((struct ghost_diff){.kind=GHOST_DIFF_NONE})
+#define DIFF_NONE ((struct ghost_diff){ .kind = GHOST_DIFF_NONE })
 #define MAX_CONTAINER_PATH 32
 
 struct diff_container {
@@ -128,7 +144,7 @@ static bool val_equal(struct diff_val lhs, struct diff_val rhs)
 	case Tu64:
 		return lhs.n == rhs.n;
 	case Tstr:
-		if (!lhs.s || !rhs.s)
+		if (! lhs.s || ! rhs.s)
 			return lhs.s == rhs.s;
 		else
 			return streq(lhs.s, rhs.s);
@@ -143,7 +159,7 @@ static bool val_equal(struct diff_val lhs, struct diff_val rhs)
 		int r1 = __put_val_string(lhs, s1);
 		int r2 = __put_val_string(rhs, s2);
 		if (r1 || r2) {
-			ghost_assert(!r1 && !r2);
+			ghost_assert(! r1 && ! r2);
 			return false;
 		}
 		ret = streq(buf1, buf2);
@@ -179,15 +195,13 @@ static void __put_val(struct diff_val val, u64 indent)
 	}
 }
 
-
-
 static void __put_dirty_string(char *s, bool *dirty, bool negate)
 {
 	while (*s) {
 		char c = *s++;
 		bool d = *dirty++;
 
-		if (!d)
+		if (! d)
 			ghost_printf("%c", c);
 		else if (negate)
 			ghost_printf("%s%c%s", GHOST_WHITE_ON_MAGENTA, c, GHOST_NORMAL);
@@ -197,11 +211,12 @@ static void __put_dirty_string(char *s, bool *dirty, bool negate)
 }
 
 #define GHOST_STRING_DUMP_LEN 256
-static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val lhs, struct diff_val rhs)
+static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val lhs,
+				   struct diff_val rhs)
 {
-	char lhs_s[GHOST_STRING_DUMP_LEN] = {0};
-	char rhs_s[GHOST_STRING_DUMP_LEN] = {0};
-	bool dirty[GHOST_STRING_DUMP_LEN] = {false};
+	char lhs_s[GHOST_STRING_DUMP_LEN] = { 0 };
+	char rhs_s[GHOST_STRING_DUMP_LEN] = { 0 };
+	bool dirty[GHOST_STRING_DUMP_LEN] = { false };
 
 	char *lhs_buf = side_effect()->sprint_create_buffer(lhs_s, GHOST_STRING_DUMP_LEN);
 	char *rhs_buf = side_effect()->sprint_create_buffer(rhs_s, GHOST_STRING_DUMP_LEN);
@@ -212,7 +227,6 @@ static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val 
 	side_effect()->sprint_destroy_buffer(lhs_buf);
 	side_effect()->sprint_destroy_buffer(rhs_buf);
 
-
 	// now, we find those that differ
 	// TODO: do something more clever, and find inserted/removed text.
 	//       so far, everything is constant-width and consistent so it's ok
@@ -222,12 +236,12 @@ static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val 
 	}
 
 	ghost_printf("\n");
-	ghost_print_indent(NULL, node->depth*4);
+	ghost_print_indent(NULL, node->depth * 4);
 	ghost_printf("-");
 	__put_dirty_string(lhs_s, dirty, true);
 
 	ghost_printf("\n");
-	ghost_print_indent(NULL, node->depth*4);
+	ghost_print_indent(NULL, node->depth * 4);
 	ghost_printf("+");
 	__put_dirty_string(rhs_s, dirty, false);
 }
@@ -238,7 +252,7 @@ static void __ghost_print_diff(struct diff_container *node, struct ghost_diff *d
 	case GHOST_DIFF_NONE:
 		break;
 	case GHOST_DIFF_PM:
-		ghost_print_indent(NULL, node->depth*4);
+		ghost_print_indent(NULL, node->depth * 4);
 
 		if (diff->pm.add)
 			ghost_printf(GHOST_WHITE_ON_GREEN "+");
@@ -258,7 +272,7 @@ static void __ghost_print_diff(struct diff_container *node, struct ghost_diff *d
 static int __put_key(struct diff_container *node, struct diff_val key)
 {
 	if (! val_equal(key, EMPTY_KEY)) {
-		ghost_print_indent(NULL, node->depth*4);
+		ghost_print_indent(NULL, node->depth * 4);
 		__put_val(key, 0);
 		ghost_printf(":");
 
@@ -280,10 +294,11 @@ static struct ghost_diff diff_pair(struct diff_val lhs, struct diff_val rhs)
 
 	return (struct ghost_diff){
 		.kind = GHOST_DIFF_PAIR,
-		.pair = (struct diff_pair_data){
-			.lhs = lhs,
-			.rhs = rhs,
-		},
+		.pair =
+			(struct diff_pair_data){
+				.lhs = lhs,
+				.rhs = rhs,
+			},
 	};
 }
 
@@ -291,10 +306,11 @@ static struct ghost_diff diff_pm(bool add, struct diff_val val)
 {
 	return (struct ghost_diff){
 		.kind = GHOST_DIFF_PM,
-		.pm = (struct diff_pm_data){
-			.add = add,
-			.val = val,
-		},
+		.pm =
+			(struct diff_pm_data){
+				.add = add,
+				.val = val,
+			},
 	};
 }
 
@@ -308,11 +324,12 @@ static void __attach(struct diff_container *node, struct diff_val key, struct gh
 
 		// print out the part of the path we've not printed before.
 		for (int i = node->clean_prefix; i < node->depth; i++) {
-			ghost_print_indent(NULL, i*4);
+			ghost_print_indent(NULL, i * 4);
 			__put_val(node->path[i], 0);
 			ghost_printf(":");
 		};
-		if (node->clean_prefix != node->depth && node->nr_subfield_diffs >= MAX_PRINT_DIFF_PER_SUBFIELDS)
+		if (node->clean_prefix != node->depth &&
+		    node->nr_subfield_diffs >= MAX_PRINT_DIFF_PER_SUBFIELDS)
 			ghost_printf(GHOST_WHITE_ON_YELLOW "<skip diff>" GHOST_NORMAL "\n");
 
 		node->clean_prefix = node->depth;
@@ -337,7 +354,7 @@ static void ghost_diff_enter_subfield_val(struct diff_container *container, stru
 
 static void ghost_diff_enter_subfield(struct diff_container *container, const char *name)
 {
-	container->path[container->depth++] = TSTR((char*)name);
+	container->path[container->depth++] = TSTR((char *)name);
 }
 
 static void ghost_diff_pop_subfield(struct diff_container *container)
@@ -376,7 +393,9 @@ int gp_track_cm_loc(void *arg, struct sm_location *loc)
 #define TSMLOC_TRACK(LOC) TGPRINT((gp_print_cb)gp_track_cm_loc, (LOC))
 #define TSMBLOB(BLOB) TGPRINT((gp_print_cb)gp_print_cm_blob_noindent, (BLOB))
 
-static void one_way_diff_blob_slots(struct diff_container *container, struct casemate_memory_blob *b1, struct casemate_memory_blob *b2, bool add)
+static void one_way_diff_blob_slots(struct diff_container *container,
+				    struct casemate_memory_blob *b1,
+				    struct casemate_memory_blob *b2, bool add)
 {
 	bool saw_unclean = false;
 
@@ -385,19 +404,22 @@ static void one_way_diff_blob_slots(struct diff_container *container, struct cas
 		struct sm_location *loc2 = &b2->slots[i];
 
 		// only show the diffs if one side is unclean
-		if (loc1->state.kind == STATE_PTE_INVALID_UNCLEAN || loc2->state.kind == STATE_PTE_INVALID_UNCLEAN) {
+		if (loc1->state.kind == STATE_PTE_INVALID_UNCLEAN ||
+		    loc2->state.kind == STATE_PTE_INVALID_UNCLEAN) {
 			if (loc1->is_pte && loc2->is_pte)
-				ghost_diff_attach(container, diff_pair(TSMLOC(loc1), TSMLOC(loc2)));
+				ghost_diff_attach(container,
+						  diff_pair(TSMLOC(loc1), TSMLOC(loc2)));
 			else if (loc1->is_pte)
 				ghost_diff_attach(container, diff_pm(add, TSMLOC_TRACK(loc1)));
 			else if (loc2->is_pte)
-				ghost_diff_attach(container, diff_pm(!add, TSMLOC_TRACK(loc2)));
+				ghost_diff_attach(container, diff_pm(! add, TSMLOC_TRACK(loc2)));
 			saw_unclean = true;
 		}
 	}
 }
 
-static void one_way_diff_blobs(struct diff_container *container, struct casemate_model_memory *m1, struct casemate_model_memory *m2, bool add, bool skip_eq)
+static void one_way_diff_blobs(struct diff_container *container, struct casemate_model_memory *m1,
+			       struct casemate_model_memory *m2, bool add, bool skip_eq)
 {
 	bool found;
 	for (u64 bi = 0; bi < m1->nr_allocated_blobs; bi++) {
@@ -408,16 +430,17 @@ static void one_way_diff_blobs(struct diff_container *container, struct casemate
 			found = true;
 
 			// only in one direction should we try diff the blobs themselves
-			if (!skip_eq) {
+			if (! skip_eq) {
 				one_way_diff_blob_slots(container, b1, b2, add);
 			}
-		} else if (!should_print_unclean_only() || blob_unclean(b1)) {
+		} else if (! should_print_unclean_only() || blob_unclean(b1)) {
 			ghost_diff_attach(container, diff_pm(add, TSMBLOB(b1)));
 		}
 	}
 }
 
-static void ghost_diff_sm_mem(struct diff_container *node, struct casemate_model_memory *m1, struct casemate_model_memory *m2)
+static void ghost_diff_sm_mem(struct diff_container *node, struct casemate_model_memory *m1,
+			      struct casemate_model_memory *m2)
 {
 	ghost_diff_enter_subfield(node, "mem");
 	one_way_diff_blobs(node, m1, m2, false, false);
@@ -425,7 +448,8 @@ static void ghost_diff_sm_mem(struct diff_container *node, struct casemate_model
 	ghost_diff_pop_subfield(node);
 }
 
-static void one_way_diff_roots(struct diff_container *container, struct roots *lhs, struct roots *rhs, bool add)
+static void one_way_diff_roots(struct diff_container *container, struct roots *lhs,
+			       struct roots *rhs, bool add)
 {
 	bool found;
 	for (u64 i = 0; i < lhs->len; i++) {
@@ -439,21 +463,23 @@ static void one_way_diff_roots(struct diff_container *container, struct roots *l
 		}
 
 		// something was removed
-		if (!found)
+		if (! found)
 			ghost_diff_attach(container, diff_pm(add, TU64(lhs_root->baddr)));
 
 		// ID was changed
 		if (found && lhs_root->id != rhs_root->id) {
 			ghost_diff_enter_subfield_val(container, TU64(lhs_root->baddr));
 			ghost_diff_enter_subfield(container, "id");
-			ghost_diff_attach(container, diff_pair(TU64(lhs_root->id), TU64(rhs_root->id)));
+			ghost_diff_attach(container,
+					  diff_pair(TU64(lhs_root->id), TU64(rhs_root->id)));
 			ghost_diff_pop_subfield(container);
 			ghost_diff_pop_subfield(container);
 		}
 	}
 }
 
-static void ghost_diff_sm_roots(struct diff_container *node, const char *name, struct roots *roots1, struct roots *roots2)
+static void ghost_diff_sm_roots(struct diff_container *node, const char *name,
+				struct roots *roots1, struct roots *roots2)
 {
 	ghost_diff_enter_subfield(node, name);
 	// roots are unordered
@@ -462,7 +488,8 @@ static void ghost_diff_sm_roots(struct diff_container *node, const char *name, s
 	ghost_diff_pop_subfield(node);
 }
 
-static void ghost_diff_sm_state(struct diff_container *node, struct casemate_model_state *s1, struct casemate_model_state *s2)
+static void ghost_diff_sm_state(struct diff_container *node, struct casemate_model_state *s1,
+				struct casemate_model_state *s2)
 {
 	ghost_diff_field(node, "base", diff_pair(TU64(s1->base_addr), TU64(s2->base_addr)));
 	ghost_diff_field(node, "size", diff_pair(TU64(s1->size), TU64(s2->size)));
@@ -483,10 +510,11 @@ static struct diff_container container(void)
 	return n;
 }
 
-void ghost_diff_and_print_sm_state(struct casemate_model_state *s1, struct casemate_model_state *s2)
+void ghost_diff_and_print_sm_state(struct casemate_model_state *s1,
+				   struct casemate_model_state *s2)
 {
 	struct diff_container node = container();
 	ghost_diff_sm_state(&node, s1, s2);
-	if (!node.saw_diff)
+	if (! node.saw_diff)
 		ghost_printf("<identical>");
 }

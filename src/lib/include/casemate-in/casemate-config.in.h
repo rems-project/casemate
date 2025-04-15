@@ -15,8 +15,7 @@ typedef enum {
 	CM_PRINT_ALL_CONDENSED = CM_PRINT_ALL | CM_PRINT_ONLY_UNCLEAN,
 } casemate_print_opts_t;
 
-#define CASEMATE_DEFAULT_PRINT_OPTS \
-	CM_PRINT_NONE
+#define CASEMATE_DEFAULT_PRINT_OPTS CM_PRINT_NONE
 
 struct casemate_checker_options {
 	/**
@@ -34,7 +33,6 @@ struct casemate_checker_options {
 	 */
 	bool promote_TLBI_by_id;
 
-
 	/**
 	 * @check_synchronisation: check that locks are respected.
 	 *
@@ -51,13 +49,11 @@ struct casemate_checker_options {
 };
 
 #define CASEMATE_DEFAULT_CHECK_OPTS \
-	(struct casemate_checker_options){ \
-		.promote_DSB_nsh = false, \
-		.promote_TLBI_nsh = false, \
-		.promote_TLBI_by_id = false, \
-		.check_synchronisation = true, \
-		.enable_printing = false, \
-		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
+	(struct casemate_checker_options) \
+	{ \
+		.promote_DSB_nsh = false, .promote_TLBI_nsh = false, \
+		.promote_TLBI_by_id = false, .check_synchronisation = true, \
+		.enable_printing = false, .print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
 
 struct casemate_log_options {
@@ -73,9 +69,9 @@ struct casemate_log_options {
 };
 
 #define CASEMATE_DEFAULT_LOG_OPTS \
-	(struct casemate_log_options){ \
-		.log_format_version = 1, \
-		.condensed_format = false, \
+	(struct casemate_log_options) \
+	{ \
+		.log_format_version = 1, .condensed_format = false, \
 	}
 
 /**
@@ -116,13 +112,11 @@ struct casemate_options {
 };
 
 #define CASEMATE_DEFAULT_OPTS \
-	(struct casemate_options){ \
-		.enable_tracing = false, \
-		.enable_checking = false, \
-		.track_watchpoints = false, \
+	(struct casemate_options) \
+	{ \
+		.enable_tracing = false, .enable_checking = false, .track_watchpoints = false, \
 		.log_opts = CASEMATE_DEFAULT_LOG_OPTS, \
-		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, \
-		.enable_safety_checks = false, \
+		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, .enable_safety_checks = false, \
 	}
 
 enum ghost_sysreg_kind {
@@ -134,8 +128,8 @@ enum ghost_sysreg_kind {
 };
 
 struct casemate_model_step;
-typedef int (*vprintf_cb)(void* arg, const char *format, va_list ap);
-typedef void* (*sprint_make_buf_cb)(char* arg, u64 n);
+typedef int (*vprintf_cb)(void *arg, const char *format, va_list ap);
+typedef void *(*sprint_make_buf_cb)(char *arg, u64 n);
 typedef void (*sprint_free_buf_cb)(void *buf);
 typedef void (*abort_cb)(const char *msg);
 typedef u64 (*read_physmem_cb)(u64);
@@ -158,23 +152,20 @@ typedef void (*trace_cb)(const char *record);
  *
  */
 struct ghost_driver {
-  vprintf_cb print;
+	vprintf_cb print;
 	sprint_make_buf_cb sprint_create_buffer;
 	sprint_free_buf_cb sprint_destroy_buffer;
-  abort_cb abort;
+	abort_cb abort;
 	read_physmem_cb read_physmem;
 	read_sysreg_cb read_sysreg;
 	trace_cb trace;
 };
 
 #define CASEMATE_DEFAULT_EMPTY_DRIVER \
-	(struct ghost_driver){ \
-		.print = NULL, \
-		.sprint_create_buffer = NULL, \
-		.halt = NULL, \
-		.read_physmem = NULL, \
-		.read_sysreg = NULL, \
-		.trace = NULL, \
+	(struct ghost_driver) \
+	{ \
+		.print = NULL, .sprint_create_buffer = NULL, .halt = NULL, .read_physmem = NULL, \
+		.read_sysreg = NULL, .trace = NULL, \
 	}
 
 /**

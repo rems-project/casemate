@@ -121,7 +121,7 @@ struct sm_pte_state {
  */
 enum pte_kind {
 	PTE_KIND_TABLE,
-	PTE_KIND_MAP,  /* BLOCK,PAGE */
+	PTE_KIND_MAP, /* BLOCK,PAGE */
 	PTE_KIND_INVALID,
 };
 
@@ -132,7 +132,6 @@ struct addr_range {
 	u64 range_start;
 	u64 range_size;
 };
-
 
 /**
  * enum entry_stage - (optional) stage of translation
@@ -174,7 +173,6 @@ enum entry_memtype_attr {
 	ENTRY_MEMTYPE_UNKNOWN,
 };
 
-
 struct entry_attributes {
 	enum entry_permissions prot;
 	enum entry_memtype_attr memtype;
@@ -185,7 +183,6 @@ struct entry_attributes {
 	 */
 	u64 raw_arch_attrs;
 };
-
 
 /**
  * struct  entry_exploded_descriptor - Cached information about a PTE.

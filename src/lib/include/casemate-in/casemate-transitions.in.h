@@ -15,7 +15,7 @@ enum sm_tlbi_op_stage {
 };
 
 enum sm_tlbi_op_method_kind {
-	TLBI_OP_BY_ALL        = 0, /* TLBI ALL* only */
+	TLBI_OP_BY_ALL = 0, /* TLBI ALL* only */
 	TLBI_OP_BY_INPUT_ADDR = 1, /* by Input-Address */
 	TLBI_OP_BY_ADDR_SPACE = 2, /* by ASID/VMID */
 
@@ -28,7 +28,7 @@ enum sm_tlbi_op_method_kind {
 
 enum sm_tlbi_op_regime_kind {
 	TLBI_REGIME_EL10 = 1, /* EL1&0 regime */
-	TLBI_REGIME_EL2  = 2, /* EL2 regime */
+	TLBI_REGIME_EL2 = 2, /* EL2 regime */
 };
 
 /**
@@ -273,7 +273,8 @@ struct casemate_model_step {
  *
  * NOTE: After this the target must manually initialise the already-existing pagetable memory with steps.
  */
-void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size);
+void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size,
+			       unsigned long sm_virt, u64 sm_size);
 
 /**
  * casemate_model_step() - Take a step in the ghost model.

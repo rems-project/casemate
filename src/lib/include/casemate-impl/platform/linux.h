@@ -9,11 +9,12 @@
 #include <nvhe/ghost/ghost_context.h>
 #include <nvhe/ghost/ghost_asserts.h>
 
-#define GHOST_MODEL_CATCH_FIRE(msg) { \
-	ensure_traced_current_transition(true); \
-	GHOST_WARN(msg); \
-	ghost_assert(false); \
-}
+#define GHOST_MODEL_CATCH_FIRE(msg) \
+	{ \
+		ensure_traced_current_transition(true); \
+		GHOST_WARN(msg); \
+		ghost_assert(false); \
+	}
 
 #define BITMASK(HI, LO) GENMASK(HI, LO)
 

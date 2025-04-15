@@ -3,7 +3,8 @@
 ///////////
 // Memory
 
-void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
+void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size)
+{
 	GHOST_LOG_CONTEXT_ENTER();
 	the_ghost_state->base_addr = phys;
 	the_ghost_state->size = size;
@@ -24,10 +25,10 @@ static bool check_sanity_of_blobs(void)
 	int c = 0;
 
 	for (int i = 1; i < the_ghost_state->memory.nr_allocated_blobs; i++) {
-		if (! (blob_of(&the_ghost_state->memory, i - 1)->phys < blob_of(&the_ghost_state->memory, i)->phys))
+		if (! (blob_of(&the_ghost_state->memory, i - 1)->phys <
+		       blob_of(&the_ghost_state->memory, i)->phys))
 			return false;
 	}
-
 
 	for (int i = 0; i < MAX_BLOBS; i++) {
 		if (the_ghost_state->memory.blobs_backing[i].valid)
@@ -112,7 +113,7 @@ static int get_free_blob(void)
 {
 	for (int i = 0; i < MAX_BLOBS; i++) {
 		struct casemate_memory_blob *this = &the_ghost_state->memory.blobs_backing[i];
-		if (!this->valid)
+		if (! this->valid)
 			return i;
 	}
 
@@ -136,7 +137,7 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	// otherwise, have to grab a new blob and insert it into the table
 	insert_blob_at_end(&the_ghost_state->memory, get_free_blob());
 	this = blob_of(&the_ghost_state->memory, the_ghost_state->memory.nr_allocated_blobs - 1);
-	ghost_assert(!this->valid);
+	ghost_assert(! this->valid);
 
 	// and initialise it.
 	this->valid = true;
@@ -147,7 +148,7 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
 		struct sm_location *slot = &this->slots[i];
 		slot->initialised = false;
-		slot->phys_addr = blob_phys + i*sizeof(u64);
+		slot->phys_addr = blob_phys + i * sizeof(u64);
 	}
 
 	// finally, we bubble it down in the ordered list
@@ -161,7 +162,8 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 bool blob_unclean(struct casemate_memory_blob *blob)
 {
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
-		if (blob->slots[i].is_pte && blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
+		if (blob->slots[i].is_pte &&
+		    blob->slots[i].state.kind == STATE_PTE_INVALID_UNCLEAN)
 			return true;
 	}
 
@@ -204,7 +206,8 @@ static u64 __read_phys(u64 addr, bool pre)
 
 	if (! loc->initialised) {
 		if (side_effect()->read_physmem == NULL)
-			GHOST_MODEL_CATCH_FIRE("saw uninitialised location %p, without read_physmem side-effect instantiated\n");
+			GHOST_MODEL_CATCH_FIRE(
+				"saw uninitialised location %p, without read_physmem side-effect instantiated\n");
 
 		// if not yet initialised
 		// assume the program was well-behaved up until now
@@ -231,7 +234,8 @@ static u64 __read_phys(u64 addr, bool pre)
 	// santity check:
 	// if the model thinks the value is that, make sure the real location has that too
 	// but we only need to check for locations we are supposedly tracking
-	if (loc->is_pte && side_effect()->read_physmem && (phys_val = side_effect()->read_physmem((u64)addr)) != value) {
+	if (loc->is_pte && side_effect()->read_physmem &&
+	    (phys_val = side_effect()->read_physmem((u64)addr)) != value) {
 		GHOST_LOG_CONTEXT_ENTER();
 		GHOST_LOG(value, u64);
 		GHOST_LOG(phys_val, u64);

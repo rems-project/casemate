@@ -36,13 +36,13 @@ void initialise_ghost_driver(struct ghost_driver *d)
 	driver = *d;
 }
 
-void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size)
+void initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u64 size,
+			       unsigned long sm_virt, u64 sm_size)
 {
-
 	lock_sm();
 	GHOST_LOG_CONTEXT_ENTER();
 
-	the_ghost_state = (struct casemate_model_state*)sm_virt;
+	the_ghost_state = (struct casemate_model_state *)sm_virt;
 	the_ghost_state_pre = the_ghost_state + 1;
 	transition_id = 0;
 

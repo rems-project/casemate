@@ -7,7 +7,7 @@
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK BITMASK(BLOB_SHIFT - 1, 0)
 #define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
-#define OFFSET_IN_BLOB(x) ((x) & BLOB_OFFSET_MASK)
+#define OFFSET_IN_BLOB(x) ((x)&BLOB_OFFSET_MASK)
 #define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
 
 /**
@@ -77,11 +77,9 @@ extern u64 transition_id;
  */
 static inline bool is_on_write_transition(u64 p)
 {
-	return (
-		   current_transition.kind == TRANS_HW_STEP
-		&& current_transition.hw_step.kind == HW_MEM_WRITE
-		&& current_transition.hw_step.write_data.phys_addr == p
-	);
+	return (current_transition.kind == TRANS_HW_STEP &&
+		current_transition.hw_step.kind == HW_MEM_WRITE &&
+		current_transition.hw_step.write_data.phys_addr == p);
 }
 
 static inline thread_identifier cpu_id(void)
@@ -131,7 +129,8 @@ extern struct casemate_model_state *the_ghost_state;
 extern struct casemate_model_state *the_ghost_state_pre;
 extern bool is_initialised;
 
-void ghost_diff_and_print_sm_state(struct casemate_model_state *s1, struct casemate_model_state *s2);
+void ghost_diff_and_print_sm_state(struct casemate_model_state *s1,
+				   struct casemate_model_state *s2);
 
 /**
  * step() - Internal step.

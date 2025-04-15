@@ -47,9 +47,10 @@
 #define PTE_FIELD_UPPER_ATTRS_SW_MASK BITMASK(58, 55)
 
 #define PTE_FIELD_TABLE_UPPER_IGNORED_MASK BITMASK(58, 51)
-#define PTE_FIELD_TABLE_IGNORED_MASK (PTE_FIELD_LOWER_ATTRS_MASK | PTE_FIELD_TABLE_UPPER_IGNORED_MASK)
+#define PTE_FIELD_TABLE_IGNORED_MASK \
+	(PTE_FIELD_LOWER_ATTRS_MASK | PTE_FIELD_TABLE_UPPER_IGNORED_MASK)
 
-#define PTE_FIELD_TABLE_NEXT_LEVEL_ADDR_MASK BITMASK(47,12)
+#define PTE_FIELD_TABLE_NEXT_LEVEL_ADDR_MASK BITMASK(47, 12)
 
 #define PTE_FIELD_S1_AP2_LO 7
 #define PTE_FIELD_S1_AP2_MASK BIT(7)
@@ -100,16 +101,33 @@
  *
  * e.g. PTE_EXTRACT(PTE_FIELD_S1_XN, 1 << PTE_FIELD_S1_XN_LO) == 1
  */
-#define PTE_EXTRACT(FIELD_PREFIX, VAL) \
-	(((VAL) & FIELD_PREFIX##_MASK) >> FIELD_PREFIX##_LO)
+#define PTE_EXTRACT(FIELD_PREFIX, VAL) (((VAL)&FIELD_PREFIX##_MASK) >> FIELD_PREFIX##_LO)
 
-static inline bool __s1_is_ro(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S1_AP2, pte) == PTE_FIELD_S1_AP2_READ_ONLY; }
-static inline bool __s1_is_xn(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S1_XN, pte) == PTE_FIELD_S1_XN_EXEC_NEVER; }
+static inline bool __s1_is_ro(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S1_AP2, pte) == PTE_FIELD_S1_AP2_READ_ONLY;
+}
+static inline bool __s1_is_xn(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S1_XN, pte) == PTE_FIELD_S1_XN_EXEC_NEVER;
+}
 
-static inline bool __s2_is_r(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S2_S2AP0, pte) == PTE_FIELD_S2_S2AP0_READABLE; }
-static inline bool __s2_is_w(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S2_S2AP1, pte) == PTE_FIELD_S2_S2AP1_WRITEABLE; }
-static inline bool __s2_is_xn(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S2_XN, pte) == PTE_FIELD_S2_XN_EXEC_NEVER; }
-static inline bool __s2_is_x(u64 pte) { return PTE_EXTRACT(PTE_FIELD_S2_XN, pte) != PTE_FIELD_S2_XN_NOT_EXEC_NEVER; }
+static inline bool __s2_is_r(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S2_S2AP0, pte) == PTE_FIELD_S2_S2AP0_READABLE;
+}
+static inline bool __s2_is_w(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S2_S2AP1, pte) == PTE_FIELD_S2_S2AP1_WRITEABLE;
+}
+static inline bool __s2_is_xn(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S2_XN, pte) == PTE_FIELD_S2_XN_EXEC_NEVER;
+}
+static inline bool __s2_is_x(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_S2_XN, pte) != PTE_FIELD_S2_XN_NOT_EXEC_NEVER;
+}
 
 typedef struct {
 	bool present;
@@ -130,28 +148,26 @@ typedef struct {
 
 /* Technically, MemAttr is not a PTE field, but actually stored in the MAIR_ELx register, but whatever */
 #define MEMATTR_LEN 8
-#define MEMATTR_MASK BITMASK(7,0)
-#define EXTRACT_MEMATTR(MAIR, IDX) (((MAIR) >> ((IDX) * MEMATTR_LEN)) & MEMATTR_MASK)
+#define MEMATTR_MASK BITMASK(7, 0)
+#define EXTRACT_MEMATTR(MAIR, IDX) (((MAIR) >> ((IDX)*MEMATTR_LEN)) & MEMATTR_MASK)
 #define MEMATTR_FIELD_DEVICE_nGnRE (0b00000100UL)
 #define MEMATTR_FIELD_NORMAL_OUTER_INNER_WRITE_BACK_CACHEABLE (0b11111111)
-
 
 static inline ghost_mair_t read_mair(u64 mair)
 {
 	ghost_mair_t attrs;
 	attrs.present = true;
 
-	for (int i = 0 ; i < 8; i++){
+	for (int i = 0; i < 8; i++) {
 		attrs.attrs[i] = EXTRACT_MEMATTR(mair, i);
 	}
 
 	return attrs;
 }
 
-static inline ghost_mair_t no_mair(void) {
-	return (ghost_mair_t){
-		.present = false
-	};
+static inline ghost_mair_t no_mair(void)
+{
+	return (ghost_mair_t){ .present = false };
 }
 
 /* Parsers from concrete to abstract */
@@ -165,9 +181,9 @@ struct aal {
 	u64 attr_at_level[4];
 };
 
-#define DUMMY_AAL ((struct aal){.attr_at_level={0}})
+#define DUMMY_AAL ((struct aal){ .attr_at_level = { 0 } })
 
-#define TTBR_BADDR_MASK	BITMASK(47, 1)
+#define TTBR_BADDR_MASK BITMASK(47, 1)
 #define TTBR_ID_LO 48UL
 #define TTBR_ID_MASK BITMASK(63, 48)
 
@@ -181,15 +197,16 @@ static inline u64 ttbr_extract_id(u64 ttb)
 	return (ttb & TTBR_ID_MASK) >> TTBR_ID_LO;
 }
 
-#define TLBI_PAGE_MASK	BITMASK(43, 0)
-#define TLBI_ASID_MASK	BITMASK(63, 48)
-#define TLBI_TTL_MASK	BITMASK(47, 44)
+#define TLBI_PAGE_MASK BITMASK(43, 0)
+#define TLBI_ASID_MASK BITMASK(63, 48)
+#define TLBI_TTL_MASK BITMASK(47, 44)
 
 bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage);
 bool is_desc_valid(u64 descriptor);
 u64 extract_output_address(u64 desc, u64 level);
 u64 extract_table_address(u64 desc);
-struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage);
+struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level,
+						 entry_stage_t stage);
 struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage);
 
 struct pgtable_traverse_context {
@@ -204,7 +221,7 @@ struct pgtable_traverse_context {
 	u64 root;
 	entry_stage_t stage;
 
-	void* data;
+	void *data;
 };
 
 enum pgtable_traversal_flag {
@@ -214,11 +231,14 @@ enum pgtable_traversal_flag {
 
 typedef void (*pgtable_traverse_cb)(struct pgtable_traverse_context *ctxt);
 
-void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
-void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data);
+void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
+			   entry_stage_t stage, pgtable_traverse_cb visitor_cb,
+			   enum pgtable_traversal_flag flag, void *data);
+void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb,
+		      enum pgtable_traversal_flag flag, void *data);
 
-void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_stage_t stage);
-void add_location_to_unclean_PTE(struct sm_location* loc);
+void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage);
+void add_location_to_unclean_PTE(struct sm_location *loc);
 
 struct pgtable_walk_result {
 	u64 requested_pte;

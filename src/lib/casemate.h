@@ -33,7 +33,6 @@ typedef u64 phys_addr_t;
 
 #endif /* __KVM_NVHE_HYPERVISOR */
 
-
 /* auto-included by Makefile */
 #ifndef CASEMATE_CONFIG_H
 #define CASEMATE_CONFIG_H
@@ -52,8 +51,7 @@ typedef enum {
 	CM_PRINT_ALL_CONDENSED = CM_PRINT_ALL | CM_PRINT_ONLY_UNCLEAN,
 } casemate_print_opts_t;
 
-#define CASEMATE_DEFAULT_PRINT_OPTS \
-	CM_PRINT_NONE
+#define CASEMATE_DEFAULT_PRINT_OPTS CM_PRINT_NONE
 
 struct casemate_checker_options {
 	/**
@@ -71,7 +69,6 @@ struct casemate_checker_options {
 	 */
 	bool promote_TLBI_by_id;
 
-
 	/**
 	 * @check_synchronisation: check that locks are respected.
 	 *
@@ -88,13 +85,11 @@ struct casemate_checker_options {
 };
 
 #define CASEMATE_DEFAULT_CHECK_OPTS \
-	(struct casemate_checker_options){ \
-		.promote_DSB_nsh = false, \
-		.promote_TLBI_nsh = false, \
-		.promote_TLBI_by_id = false, \
-		.check_synchronisation = true, \
-		.enable_printing = false, \
-		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
+	(struct casemate_checker_options) \
+	{ \
+		.promote_DSB_nsh = false, .promote_TLBI_nsh = false, \
+		.promote_TLBI_by_id = false, .check_synchronisation = true, \
+		.enable_printing = false, .print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
 
 struct casemate_log_options {
@@ -110,9 +105,9 @@ struct casemate_log_options {
 };
 
 #define CASEMATE_DEFAULT_LOG_OPTS \
-	(struct casemate_log_options){ \
-		.log_format_version = 1, \
-		.condensed_format = false, \
+	(struct casemate_log_options) \
+	{ \
+		.log_format_version = 1, .condensed_format = false, \
 	}
 
 /**
@@ -153,13 +148,11 @@ struct casemate_options {
 };
 
 #define CASEMATE_DEFAULT_OPTS \
-	(struct casemate_options){ \
-		.enable_tracing = false, \
-		.enable_checking = false, \
-		.track_watchpoints = false, \
+	(struct casemate_options) \
+	{ \
+		.enable_tracing = false, .enable_checking = false, .track_watchpoints = false, \
 		.log_opts = CASEMATE_DEFAULT_LOG_OPTS, \
-		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, \
-		.enable_safety_checks = false, \
+		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, .enable_safety_checks = false, \
 	}
 
 enum ghost_sysreg_kind {
@@ -171,8 +164,8 @@ enum ghost_sysreg_kind {
 };
 
 struct casemate_model_step;
-typedef int (*vprintf_cb)(void* arg, const char *format, va_list ap);
-typedef void* (*sprint_make_buf_cb)(char* arg, u64 n);
+typedef int (*vprintf_cb)(void *arg, const char *format, va_list ap);
+typedef void *(*sprint_make_buf_cb)(char *arg, u64 n);
 typedef void (*sprint_free_buf_cb)(void *buf);
 typedef void (*abort_cb)(const char *msg);
 typedef u64 (*read_physmem_cb)(u64);
@@ -195,23 +188,20 @@ typedef void (*trace_cb)(const char *record);
  *
  */
 struct ghost_driver {
-  vprintf_cb print;
+	vprintf_cb print;
 	sprint_make_buf_cb sprint_create_buffer;
 	sprint_free_buf_cb sprint_destroy_buffer;
-  abort_cb abort;
+	abort_cb abort;
 	read_physmem_cb read_physmem;
 	read_sysreg_cb read_sysreg;
 	trace_cb trace;
 };
 
 #define CASEMATE_DEFAULT_EMPTY_DRIVER \
-	(struct ghost_driver){ \
-		.print = NULL, \
-		.sprint_create_buffer = NULL, \
-		.halt = NULL, \
-		.read_physmem = NULL, \
-		.read_sysreg = NULL, \
-		.trace = NULL, \
+	(struct ghost_driver) \
+	{ \
+		.print = NULL, .sprint_create_buffer = NULL, .halt = NULL, .read_physmem = NULL, \
+		.read_sysreg = NULL, .trace = NULL, \
 	}
 
 /**
@@ -354,7 +344,7 @@ struct sm_pte_state {
  */
 enum pte_kind {
 	PTE_KIND_TABLE,
-	PTE_KIND_MAP,  /* BLOCK,PAGE */
+	PTE_KIND_MAP, /* BLOCK,PAGE */
 	PTE_KIND_INVALID,
 };
 
@@ -365,7 +355,6 @@ struct addr_range {
 	u64 range_start;
 	u64 range_size;
 };
-
 
 /**
  * enum entry_stage - (optional) stage of translation
@@ -407,7 +396,6 @@ enum entry_memtype_attr {
 	ENTRY_MEMTYPE_UNKNOWN,
 };
 
-
 struct entry_attributes {
 	enum entry_permissions prot;
 	enum entry_memtype_attr memtype;
@@ -418,7 +406,6 @@ struct entry_attributes {
 	 */
 	u64 raw_arch_attrs;
 };
-
 
 /**
  * struct  entry_exploded_descriptor - Cached information about a PTE.
@@ -683,7 +670,7 @@ enum sm_tlbi_op_stage {
 };
 
 enum sm_tlbi_op_method_kind {
-	TLBI_OP_BY_ALL        = 0, /* TLBI ALL* only */
+	TLBI_OP_BY_ALL = 0, /* TLBI ALL* only */
 	TLBI_OP_BY_INPUT_ADDR = 1, /* by Input-Address */
 	TLBI_OP_BY_ADDR_SPACE = 2, /* by ASID/VMID */
 
@@ -696,7 +683,7 @@ enum sm_tlbi_op_method_kind {
 
 enum sm_tlbi_op_regime_kind {
 	TLBI_REGIME_EL10 = 1, /* EL1&0 regime */
-	TLBI_REGIME_EL2  = 2, /* EL2 regime */
+	TLBI_REGIME_EL2 = 2, /* EL2 regime */
 };
 
 /**
@@ -941,19 +928,23 @@ struct casemate_model_step {
  *
  * NOTE: After this the target must manually initialise the already-existing pagetable memory with steps.
  */
-void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size, unsigned long sm_virt, u64 sm_size);
+void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size,
+			       unsigned long sm_virt, u64 sm_size);
 
 /**
  * casemate_model_step() - Take a step in the ghost model.
  */
 void casemate_model_step(struct casemate_model_step trans);
 
-
 /* auto-included by Makefile */
 //////////////
 // Step helpers
 
-#define SRC_LOC (struct src_loc){.file=__FILE__, .lineno=__LINE__, .func=__func__}
+#define SRC_LOC \
+	(struct src_loc) \
+	{ \
+		.file = __FILE__, .lineno = __LINE__, .func = __func__ \
+	}
 
 /**
  * casemate_cpu_id() - Return current CPU identifier.
@@ -963,38 +954,45 @@ void casemate_model_step(struct casemate_model_step trans);
 extern u64 casemate_cpu_id(void);
 #define THREAD_ID casemate_cpu_id()
 
-#define casemate_model_step_write(...) __casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)
+#define casemate_model_step_write(...) \
+	__casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc,
+					       enum memory_order_t mo, phys_addr_t phys, u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_MEM_WRITE,
-			.write_data = (struct trans_write_data){
-				.mo = mo,
-				.phys_addr = phys,
-				.val = val,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_MEM_WRITE,
+				.write_data =
+					(struct trans_write_data){
+						.mo = mo,
+						.phys_addr = phys,
+						.val = val,
+					},
 			},
-		},
 	});
 }
 
 #define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, phys_addr_t phys, u64 val)
+static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, phys_addr_t phys,
+					      u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_MEM_READ,
-			.read_data = (struct trans_read_data){
-				.phys_addr = phys,
-				.val = val,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_MEM_READ,
+				.read_data =
+					(struct trans_read_data){
+						.phys_addr = phys,
+						.val = val,
+					},
 			},
-		},
 	});
 }
 
@@ -1005,13 +1003,15 @@ static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, en
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_BARRIER,
-			.barrier_data = (struct trans_barrier_data){
-				.kind = BARRIER_DSB,
-				.dxb_data = kind,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_BARRIER,
+				.barrier_data =
+					(struct trans_barrier_data){
+						.kind = BARRIER_DSB,
+						.dxb_data = kind,
+					},
 			},
-		},
 	});
 }
 
@@ -1022,45 +1022,54 @@ static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_BARRIER,
-			.barrier_data = (struct trans_barrier_data){
-				.kind = BARRIER_ISB,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_BARRIER,
+				.barrier_data =
+					(struct trans_barrier_data){
+						.kind = BARRIER_ISB,
+					},
 			},
-		},
 	});
 }
 
-#define casemate_model_step_tlbi_reg(...) __casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 value)
+#define casemate_model_step_tlbi_reg(...) \
+	__casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc,
+						  enum tlbi_kind kind, u64 value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_TLBI,
-			.tlbi_data = (struct trans_tlbi_data){
-				.tlbi_kind = kind,
-				.value = value,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_TLBI,
+				.tlbi_data =
+					(struct trans_tlbi_data){
+						.tlbi_kind = kind,
+						.value = value,
+					},
 			},
-		},
 	});
 }
 
 #define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
+static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc,
+					      enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_TLBI,
-			.tlbi_data = (struct trans_tlbi_data){
-				.tlbi_kind = kind,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_TLBI,
+				.tlbi_data =
+					(struct trans_tlbi_data){
+						.tlbi_kind = kind,
+					},
 			},
-		},
 	});
 }
 
@@ -1071,69 +1080,81 @@ static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, e
 	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
+static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc,
+					     enum ghost_sysreg_kind sysreg, u64 val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
-		.hw_step = (struct ghost_hw_step){
-			.kind = HW_MSR,
-			.msr_data = (struct trans_msr_data){
-				.sysreg = sysreg,
-				.val = val,
+		.hw_step =
+			(struct ghost_hw_step){
+				.kind = HW_MSR,
+				.msr_data =
+					(struct trans_msr_data){
+						.sysreg = sysreg,
+						.val = val,
+					},
 			},
-		},
 	});
 }
 
 #define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc, enum ghost_hint_kind kind, u64 location, u64 value)
+static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc,
+					      enum ghost_hint_kind kind, u64 location, u64 value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HINT,
-		.hint_step = (struct ghost_hint_step){
-			.kind = kind,
-			.location = location,
-			.value = value,
-		},
+		.hint_step =
+			(struct ghost_hint_step){
+				.kind = kind,
+				.location = location,
+				.value = value,
+			},
 	});
 }
 
 #define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u64 location, u64 size)
+static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u64 location,
+					      u64 size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
-		.abs_step = (struct ghost_abs_step){
-			.kind = GHOST_ABS_INIT,
-			.init_data = (struct trans_init_data){
-				.location = location,
-				.size = size,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_INIT,
+				.init_data =
+					(struct trans_init_data){
+						.location = location,
+						.size = size,
+					},
 			},
-		},
 	});
 }
 
-#define casemate_model_step_memset(...) __casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc, u64 location, u64 value, u64 size)
+#define casemate_model_step_memset(...) \
+	__casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc, u64 location,
+						u64 value, u64 size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
-		.abs_step = (struct ghost_abs_step){
-			.kind = GHOST_ABS_MEMSET,
-			.memset_data = (struct trans_memset_data){
-				.address = location,
-				.size = size,
-				.value = value,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_MEMSET,
+				.memset_data =
+					(struct trans_memset_data){
+						.address = location,
+						.size = size,
+						.value = value,
+					},
 			},
-		},
 	});
 }
 
@@ -1144,31 +1165,34 @@ static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
-		.abs_step = (struct ghost_abs_step){
-			.kind = GHOST_ABS_LOCK,
-			.lock_data = (struct trans_lock_data){
-				.address = address,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_LOCK,
+				.lock_data =
+					(struct trans_lock_data){
+						.address = address,
+					},
 			},
-		},
 	});
 }
 
-#define casemate_model_step_unlock(...) __casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+#define casemate_model_step_unlock(...) \
+	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
 static inline void __casemate_model_step_unlock(u64 tid, struct src_loc src_loc, u64 address)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
-		.abs_step = (struct ghost_abs_step){
-			.kind = GHOST_ABS_UNLOCK,
-			.lock_data = (struct trans_lock_data){
-				.address = address,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_UNLOCK,
+				.lock_data =
+					(struct trans_lock_data){
+						.address = address,
+					},
 			},
-		},
 	});
 }
-
-
 
 #endif /* CASEMATE_H */
