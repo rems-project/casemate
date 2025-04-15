@@ -26,7 +26,8 @@ struct parser {
 
 #define parse_error(P, FMT, ...) \
 	do { \
-		fprintf(stderr, "! parse error at line%u col%u: " FMT "\n", (P)->line, (P)->column,##__VA_ARGS__); \
+		fprintf(stderr, "! parse error at line%u col%u: " FMT "\n", (P)->line, \
+			(P)->column, ##__VA_ARGS__); \
 		assert(false); \
 	} while (0)
 
@@ -110,7 +111,6 @@ void accept_EOF(struct parser *p)
 		parse_error(p, "expected EOF, got '%c'", (char)r);
 }
 
-
 /////////
 // Helpers
 
@@ -126,11 +126,7 @@ bool is_bracket(char c)
 
 bool is_hex(char c)
 {
-	return (
-		   ('0' <= c && c <= '9')
-		|| ('a' <= c && c <= 'f')
-		|| ('A' <= c && c <= 'F')
-	);
+	return (('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F'));
 }
 
 int hexchar_to_i(char c)
@@ -150,7 +146,7 @@ int hextoi(const char *s, u64 *out)
 	char c;
 
 	while ((c = *s++)) {
-		if (!is_hex(c))
+		if (! is_hex(c))
 			return -1;
 		*out *= 16;
 		*out += hexchar_to_i(c);
@@ -239,7 +235,7 @@ u64 next_hex(struct parser *p)
 	r = hextoi(word, &h);
 	if (r < 0)
 		parse_error(p, "expected hex integer, but got '%s'", word);
-	free((void*)word);
+	free((void *)word);
 	return h;
 }
 
@@ -249,7 +245,7 @@ u64 next_decimal(struct parser *p)
 	const char *word;
 	word = next_word(p);
 	r = atoi(word);
-	free((void*)word);
+	free((void *)word);
 	return r;
 }
 
@@ -300,18 +296,13 @@ bool parse_kv_or_v_head(struct parser *p, const char *k)
 		r; \
 	})
 
-#define PARSE_KV_DECIMAL(P, KEY) \
-	PARSE_KV_WITH(P, KEY, u64, next_decimal)
+#define PARSE_KV_DECIMAL(P, KEY) PARSE_KV_WITH(P, KEY, u64, next_decimal)
 
-#define PARSE_KV_HEX(P, KEY) \
-	PARSE_KV_WITH(P, KEY, u64, next_hex)
+#define PARSE_KV_HEX(P, KEY) PARSE_KV_WITH(P, KEY, u64, next_hex)
 
-#define PARSE_KV_WORD(P, KEY) \
-	PARSE_KV_WITH(P, KEY, const char*, next_word)
+#define PARSE_KV_WORD(P, KEY) PARSE_KV_WITH(P, KEY, const char *, next_word)
 
-#define PARSE_KV_ENUM(P, KEY, MAP) \
-	PARSE_KV_WITH(P, KEY, int, next_enum, &(MAP))
-
+#define PARSE_KV_ENUM(P, KEY, MAP) PARSE_KV_WITH(P, KEY, int, next_enum, &(MAP))
 
 void parse_common_fields(struct parser *p)
 {
@@ -363,7 +354,10 @@ struct enum_map barrier_map = {
 	},
 };
 
-#define DXB_KIND(K) {#K, DxB_##K}
+#define DXB_KIND(K) \
+	{ \
+#K, DxB_##K \
+	}
 struct enum_map barrier_dxb_map = {
 	.count = 3,
 	.name = "barrier_dxb_kind",
@@ -383,7 +377,10 @@ void parse_barrier_tail(struct parser *p)
 	}
 }
 
-#define TLBI_ENTRY(k) {#k, TLBI_##k}
+#define TLBI_ENTRY(k) \
+	{ \
+#k, TLBI_##k \
+	}
 struct enum_map tlbi_map = {
 	.count = 8,
 	.name = "tlbi_kind",
@@ -533,7 +530,7 @@ void *make_parser(FILE *f, struct casemate_model_step *step)
 	p->column = 0;
 	p->lookahead_c = '\0';
 	p->out = step;
-	return (void*)p;
+	return (void *)p;
 }
 
 bool parser_at_EOF(void *arg)

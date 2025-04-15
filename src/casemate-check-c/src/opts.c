@@ -24,26 +24,26 @@ const char *trace_file_name = NULL;
 
 static void print_help_and_quit(void)
 {
-	printf(
-		"Usage: \n"
-		" ./casemate-check TRACE_FILE_NAME [OPTIONS]\n"
-		"\n"
-		"Options:\n"
-		"  -R --racy      	do not check locks/synchronisation are respected\n"
-		"  -t --trace     	print trace record for each step\n"
-		"  -T --no-trace  	do not print trace record for each step\n"
-		"  -c             	condensed trace format\n"
-		"  -d --diff      	show diffs of state\n"
-		"  -U --all        	show all (including unclean) locations in states/diffs\n"
-		"  -p --print     	print state out at each step\n"
-		"  -C --dry-run   	do not run checks\n"
-		"  -q             	quiet, do not print state, or trace steps, or show error messages\n"
-		"  --color        	print with ANSI escape color codes\n"
-		"  -a --no-color  	ascii-only, no ANSI escape color codes\n"
-		"  -D --debug     	debug mode\n"
-		"  -W<addr>       	watch this address\n"
-		"  -h             	print this usage and exit\n"
-		"  -V --version   	print casemate and casemate-chck versions\n"
+	printf( //
+		"Usage: \n" //
+		" ./casemate-check TRACE_FILE_NAME [OPTIONS]\n" //
+		"\n" //
+		"Options:\n" //
+		"  -R --racy      	do not check locks/synchronisation are respected\n" //
+		"  -t --trace     	print trace record for each step\n" //
+		"  -T --no-trace  	do not print trace record for each step\n" //
+		"  -c             	condensed trace format\n" //
+		"  -d --diff      	show diffs of state\n" //
+		"  -U --all        	show all (including unclean) locations in states/diffs\n" //
+		"  -p --print     	print state out at each step\n" //
+		"  -C --dry-run   	do not run checks\n" //
+		"  -q             	quiet, do not print state, or trace steps, or show error messages\n" //
+		"  --color        	print with ANSI escape color codes\n" //
+		"  -a --no-color  	ascii-only, no ANSI escape color codes\n" //
+		"  -D --debug     	debug mode\n" //
+		"  -W<addr>       	watch this address\n" //
+		"  -h             	print this usage and exit\n" //
+		"  -V --version   	print casemate and casemate-chck versions\n" //
 	);
 	exit(0);
 }
@@ -58,29 +58,30 @@ int hextoi(const char *s, u64 *out);
 
 void parse_opts(int argc, char **argv)
 {
-	if (!isatty(STDOUT_FILENO)) {
+	if (! isatty(STDOUT_FILENO)) {
 		COLOR = false;
 	}
 
 	static struct option long_options[] = {
-		{"print",      no_argument, 0,  'p' },
-		{"quiet",      no_argument, 0,  'q' },
-		{"trace",      no_argument, 0,  't' },
-		{"no-trace",   no_argument, 0,  'T' },
-		{"diff",       no_argument, 0,  'd' },
-		{"all",        no_argument, 0,  'U' },
-		{"dry-run",    no_argument, 0,  'C' },
-		{"racy",       no_argument, 0,  'R' },
-		{"no-color",  no_argument, 0,  'a' },
-		{"color",     no_argument, 0,  'G' },
-		{"debug",      no_argument, 0,  'D' },
-		{"help",       no_argument, 0,  'h' },
-		{"version",    no_argument, 0,  'V' },
-		{0,            0,           0,  0 }
+		//
+		{ "print", no_argument, 0, 'p' }, //
+		{ "quiet", no_argument, 0, 'q' }, //
+		{ "trace", no_argument, 0, 't' }, //
+		{ "no-trace", no_argument, 0, 'T' }, //
+		{ "diff", no_argument, 0, 'd' }, //
+		{ "all", no_argument, 0, 'U' }, //
+		{ "dry-run", no_argument, 0, 'C' }, //
+		{ "racy", no_argument, 0, 'R' }, //
+		{ "no-color", no_argument, 0, 'a' }, //
+		{ "color", no_argument, 0, 'G' }, //
+		{ "debug", no_argument, 0, 'D' }, //
+		{ "help", no_argument, 0, 'h' }, //
+		{ "version", no_argument, 0, 'V' }, //
+		{ 0, 0, 0, 0 } //
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptTqdhUDRVW:", long_options, 0)) != - 1) {
+	while ((c = getopt_long(argc, argv, "acptTqdhUDRVW:", long_options, 0)) != -1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -113,7 +114,6 @@ void parse_opts(int argc, char **argv)
 			SHOULD_PRINT_ONLY_UNCLEANS = false;
 			break;
 
-
 		case 'C':
 			SHOULD_CHECK = false;
 			break;
@@ -125,11 +125,13 @@ void parse_opts(int argc, char **argv)
 		case 'W': {
 			u64 val;
 			if (optarg[0] != '0' || optarg[1] != 'x') {
-				fprintf(stderr, "-W expects hex argument in the form 0x... not '%s'\n", optarg);
+				fprintf(stderr,
+					"-W expects hex argument in the form 0x... not '%s'\n",
+					optarg);
 				exit(1);
 			}
 			assert(optarg && optarg[0] == '0' && optarg[1] == 'x');
-			assert(!hextoi(optarg+2, &val));
+			assert(! hextoi(optarg + 2, &val));
 			casemate_watch_location(val);
 			SHOULD_TRACK_ONLY_WATCHPOINTS = true;
 			break;
@@ -160,7 +162,7 @@ void parse_opts(int argc, char **argv)
 		}
 	}
 
-	for (; optind < argc; optind++){
+	for (; optind < argc; optind++) {
 		optarg = argv[optind];
 
 		if (trace_file_name) {
@@ -171,7 +173,7 @@ void parse_opts(int argc, char **argv)
 		trace_file_name = optarg;
 	}
 
-	if (!trace_file_name) {
+	if (! trace_file_name) {
 		fprintf(stderr, "! must pass a log file\n");
 		exit(1);
 	}

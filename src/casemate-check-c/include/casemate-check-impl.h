@@ -20,9 +20,9 @@ extern bool DEBUG;
 extern const char *trace_file_name;
 
 #define TRACE(FMT, ...) \
-  if (DEBUG) { \
-    fprintf(stderr, "[TRACE] %s:%u: " FMT "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
-  }
+	if (DEBUG) { \
+		fprintf(stderr, "[TRACE] %s:%u: " FMT "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+	}
 
 void parse_opts(int argc, char **argv);
 
