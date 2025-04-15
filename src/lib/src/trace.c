@@ -5,17 +5,17 @@
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
-#define ID_STRING(x) [x]=#x
+#define ID_STRING(x) [x] = #x
 
 static const char *tlbi_kind_names[] = {
-	[TLBI_vmalls12e1] = "vmalls12e1",
-	[TLBI_vmalls12e1is] = "vmalls12e1is",
-	[TLBI_vmalle1is] = "vmalle1is",
-	[TLBI_alle1is] = "alle1is",
-	[TLBI_vmalle1] = "vmalle1",
-	[TLBI_vale2is] = "vale2is",
-	[TLBI_vae2is] = "vae2is",
-	[TLBI_ipas2e1is] = "ipas2e1is",
+	[TLBI_vmalls12e1] = "vmalls12e1", //
+	[TLBI_vmalls12e1is] = "vmalls12e1is", //
+	[TLBI_vmalle1is] = "vmalle1is", //
+	[TLBI_alle1is] = "alle1is", //
+	[TLBI_vmalle1] = "vmalle1", //
+	[TLBI_vale2is] = "vale2is", //
+	[TLBI_vae2is] = "vae2is", //
+	[TLBI_ipas2e1is] = "ipas2e1is", //
 };
 
 static const char *sysreg_names[] = {
@@ -40,11 +40,11 @@ static const char *barrier_kind_names[] = {
 };
 
 static const char *hw_step_names[] = {
-	[HW_MEM_WRITE] = "mem-write",
-	[HW_MEM_READ] = "mem-read",
-	[HW_BARRIER] = "barrier",
-	[HW_TLBI] = "tlbi",
-	[HW_MSR] = "sysreg-write",
+	[HW_MEM_WRITE] = "mem-write", //
+	[HW_MEM_READ] = "mem-read", //
+	[HW_BARRIER] = "barrier", //
+	[HW_TLBI] = "tlbi", //
+	[HW_MSR] = "sysreg-write", //
 };
 
 static const char *abs_step_names[] = {
@@ -217,7 +217,8 @@ static int record_common_src_field(struct string_builder *buf, struct src_loc *l
 	return 0;
 }
 
-static int record_common_required_fields(struct string_builder *buf, struct casemate_model_step *trans)
+static int record_common_required_fields(struct string_builder *buf,
+					 struct casemate_model_step *trans)
 {
 	TRY_PUT_KV("id", sb_putn(buf, trans->seq_id));
 	TRY_PUT(' ');
@@ -250,7 +251,8 @@ static int record_prefix(struct string_builder *buf, struct casemate_model_step 
 	return 0;
 }
 
-static int record_common_optional_fields(struct string_builder *buf, struct casemate_model_step *trans)
+static int record_common_optional_fields(struct string_builder *buf,
+					 struct casemate_model_step *trans)
 {
 	TRY_PUT_KV("src", record_common_src_field(buf, &trans->src_loc));
 	return 0;

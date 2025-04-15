@@ -49,7 +49,6 @@ static u64 read_start_level(u64 tcr)
 	return (48 - ia_bits) / 9;
 }
 
-
 static u64 discover_start_level(entry_stage_t stage)
 {
 	if (stage == ENTRY_STAGE2) {
@@ -75,11 +74,11 @@ static u64 discover_page_size(entry_stage_t stage)
 	tg0 = (tcr & TCR_TG0_MASK) >> TCR_TG0_LO;
 
 	if (tg0 == 0) {
-		return 4*1024;
+		return 4 * 1024;
 	} else if (tg0 == 1) {
-		return 64*1024;
+		return 64 * 1024;
 	} else if (tg0 == 2) {
-		return 16*1024;
+		return 16 * 1024;
 	} else {
 		unreachable();
 	}
@@ -151,7 +150,8 @@ u64 extract_table_address(u64 desc)
  * @level: the level this PTE is at in the table.
  * @next_level_aal: the attrs-at-level so far, for re-constructing hierarchical permissions.
  */
-static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mair, u64 desc, u8 level, struct aal next_level_aal)
+static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mair, u64 desc,
+					   u8 level, struct aal next_level_aal)
 {
 	// first fill in the permissions
 	enum entry_permissions perms;
@@ -165,11 +165,11 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 		perms = ENTRY_PERM_R;
 
 		/* If not read-only, also has W */
-		if (!ro)
+		if (! ro)
 			perms |= ENTRY_PERM_W;
 
 		/* If not e(x)-(n)ever, also has X */
-		if (!xn)
+		if (! xn)
 			perms |= ENTRY_PERM_X;
 
 		break;
@@ -187,12 +187,12 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 		if (w)
 			perms |= ENTRY_PERM_W;
 
-		if (!xn)
+		if (! xn)
 			perms |= ENTRY_PERM_X;
 
 		/* check for bad encoding, and overrule anything we did if we find one */
 		if (__s2_is_x(desc))
-		 	perms = ENTRY_PERM_UNKNOWN;
+			perms = ENTRY_PERM_UNKNOWN;
 
 		break;
 	}
@@ -218,7 +218,7 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 		u64 attr_idx = PTE_EXTRACT(PTE_FIELD_S1_ATTRINDX, desc);
 		// mair must be read_mair(...) not no_mair() if asking for Stage 2
 		ghost_assert(mair.present);
-		switch(mair.attrs[attr_idx]) {
+		switch (mair.attrs[attr_idx]) {
 		case MEMATTR_FIELD_DEVICE_nGnRE:
 			memtype_attr = ENTRY_MEMTYPE_DEVICE;
 			break;
@@ -257,7 +257,8 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 	};
 }
 
-struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage)
+struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 level,
+						 entry_stage_t stage)
 {
 	struct entry_exploded_descriptor deconstructed;
 
@@ -267,7 +268,6 @@ struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 	};
 	deconstructed.level = level;
 	deconstructed.stage = stage;
-
 
 	if (! is_desc_valid(desc)) {
 		deconstructed.kind = PTE_KIND_INVALID;
@@ -292,12 +292,15 @@ struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 			mair = read_mair(side_effect()->read_sysreg(SYSREG_MAIR_EL2));
 		else
 			mair = no_mair();
-		deconstructed.map_data.attrs = parse_attrs(stage, mair, desc, (u8)level, DUMMY_AAL);
+		deconstructed.map_data.attrs =
+			parse_attrs(stage, mair, desc, (u8)level, DUMMY_AAL);
 		return deconstructed;
 	}
 }
 
-void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
+void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
+			   entry_stage_t stage, pgtable_traverse_cb visitor_cb,
+			   enum pgtable_traversal_flag flag, void *data)
 {
 	struct pgtable_traverse_context ctxt;
 
@@ -319,13 +322,14 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		GHOST_LOG_CONTEXT_ENTER_INNER("loop");
 		GHOST_LOG_INNER("loop", i, u32);
 
-		pte_phys = table_start + i*sizeof(u64);
+		pte_phys = table_start + i * sizeof(u64);
 		GHOST_LOG_INNER("loop", pte_phys, u64);
 
 		loc = location(pte_phys);
 
 		// If the location is owned by another thread, then don't keep going
-		if (flag == NO_READ_UNLOCKED_LOCATIONS && loc->thread_owner >= 0 && loc->thread_owner != cpu_id()) {
+		if (flag == NO_READ_UNLOCKED_LOCATIONS && loc->thread_owner >= 0 &&
+		    loc->thread_owner != cpu_id()) {
 			GHOST_LOG_CONTEXT_EXIT_INNER("loop");
 			break;
 		}
@@ -333,9 +337,8 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		desc = read_phys(pte_phys);
 		GHOST_LOG_INNER("loop", desc, u64);
 
-
 		/* this pte maps a region of MAP_SIZES[level] starting from here */
-		pte_ia = partial_ia + i*MAP_SIZES[level];
+		pte_ia = partial_ia + i * MAP_SIZES[level];
 
 		ctxt.loc = loc;
 		ctxt.descriptor = desc;
@@ -349,15 +352,8 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		switch (ctxt.exploded_descriptor.kind) {
 		case PTE_KIND_TABLE:
 			traverse_pgtable_from(
-				root,
-				ctxt.exploded_descriptor.table_data.next_level_table_addr,
-				pte_ia,
-				level+1,
-				stage,
-				visitor_cb,
-				flag,
-				data
-			);
+				root, ctxt.exploded_descriptor.table_data.next_level_table_addr,
+				pte_ia, level + 1, stage, visitor_cb, flag, data);
 			break;
 		case PTE_KIND_MAP:
 		case PTE_KIND_INVALID:
@@ -369,7 +365,8 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb, enum pgtable_traversal_flag flag, void *data)
+void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor_cb,
+		      enum pgtable_traversal_flag flag, void *data)
 {
 	u64 start_level;
 	GHOST_LOG_CONTEXT_ENTER();
@@ -387,7 +384,7 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-void add_location_to_unclean_PTE(struct sm_location* loc)
+void add_location_to_unclean_PTE(struct sm_location *loc)
 {
 	// Check that the location is not already in the set
 	for (int i = 0; i < the_ghost_state->unclean_locations.len; i++) {
@@ -401,13 +398,12 @@ void add_location_to_unclean_PTE(struct sm_location* loc)
 	ghost_assert(the_ghost_state->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
 	the_ghost_state->unclean_locations.locations[the_ghost_state->unclean_locations.len] =
 		loc;
-	the_ghost_state->unclean_locations.len ++;
-
-
+	the_ghost_state->unclean_locations.len++;
 }
 
-static struct pgtable_traverse_context construct_context_from_pte(struct sm_location *loc, void *data) {
-
+static struct pgtable_traverse_context construct_context_from_pte(struct sm_location *loc,
+								  void *data)
+{
 	// Check that the location is consistent and well-locked
 	u64 desc = read_phys(loc->phys_addr);
 
@@ -424,7 +420,7 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 	return ctx;
 }
 
-void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_stage_t stage)
+void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage)
 {
 	struct sm_location *loc;
 	u64 *len = &the_ghost_state->unclean_locations.len;
@@ -441,8 +437,6 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_
 			if (stage != loc->descriptor.stage)
 				break;
 
-
-
 		// We rebuild the context from the descriptor of the location
 		ctx = construct_context_from_pte(loc, data);
 		visitor_cb(&ctx);
@@ -452,7 +446,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_
 			// Take the last location of the list and put it in the current cell
 			(*len)--;
 			the_ghost_state->unclean_locations.locations[i] =
-					the_ghost_state->unclean_locations.locations[*len];
+				the_ghost_state->unclean_locations.locations[*len];
 			// decrement i to run on the current cell
 			i--;
 		}
@@ -461,7 +455,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void* data, entry_
 
 static void finder_cb(struct pgtable_traverse_context *ctxt)
 {
-	struct pgtable_walk_result *result = (struct pgtable_walk_result*)ctxt->data;
+	struct pgtable_walk_result *result = (struct pgtable_walk_result *)ctxt->data;
 	if (ctxt->loc->phys_addr == result->requested_pte) {
 		result->found = true;
 		result->root = ctxt->root;
@@ -479,7 +473,8 @@ struct pgtable_walk_result find_pte(struct sm_location *loc)
 
 	ghost_assert(loc->initialised && loc->is_pte);
 
-	traverse_pgtable(loc->owner, loc->descriptor.stage, finder_cb, NO_READ_UNLOCKED_LOCATIONS, &result);
+	traverse_pgtable(loc->owner, loc->descriptor.stage, finder_cb, NO_READ_UNLOCKED_LOCATIONS,
+			 &result);
 
 	return result;
 }
@@ -490,7 +485,8 @@ struct pgtable_walk_result find_pte(struct sm_location *loc)
 struct sm_pte_state initial_state(u64 partial_ia, u64 desc, u64 level, entry_stage_t stage)
 {
 	struct sm_pte_state state;
-	struct entry_exploded_descriptor deconstructed = deconstruct_pte(partial_ia, desc, level, stage);
+	struct entry_exploded_descriptor deconstructed =
+		deconstruct_pte(partial_ia, desc, level, stage);
 	switch (deconstructed.kind) {
 	case PTE_KIND_INVALID:
 		state.kind = STATE_PTE_INVALID;

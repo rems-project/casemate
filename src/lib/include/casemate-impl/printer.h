@@ -38,8 +38,8 @@ struct string_builder {
 };
 
 #define DEFINE_STRING_BUFFER(VAR, LEN) \
-	char __##VAR##__buf[LEN] = {0}; \
-	struct string_builder VAR = {.out = __##VAR##__buf, .cur = __##VAR##__buf, .rem=LEN}
+	char __##VAR##__buf[LEN] = { 0 }; \
+	struct string_builder VAR = { .out = __##VAR##__buf, .cur = __##VAR##__buf, .rem = LEN }
 
 int sb_putc(struct string_builder *buf, const char c);
 int sb_puts(struct string_builder *buf, const char *s);
@@ -49,40 +49,35 @@ int sb_putd(struct string_builder *buf, s64 n);
 int sb_putx(struct string_builder *buf, u32 x);
 int sb_putxn(struct string_builder *buf, u64 x, u32 n);
 
-
 #define TRY(X) \
-	do { int __ret = (X); \
-	     if (__ret) return __ret; } while (0)
-
-#define TRY_PUT(c) \
-	TRY(sb_putc(buf, (c)))
-
-#define TRY_PUTS(s) \
-	TRY(sb_puts(buf, (s)))
-
-#define TRY_PUTn(n) \
-	TRY(sb_putn(buf, (n)))
-
-#define TRY_PUTd(d) \
-	TRY(sb_putd(buf, (d)))
-
-#define TRY_PUTxn(x,n) \
-	TRY(sb_putxn(buf, (x), (n)))
-
-
-#define TRY_PUT_KV(k,v) \
 	do { \
-		if (!should_trace_condensed()) { \
+		int __ret = (X); \
+		if (__ret) \
+			return __ret; \
+	} while (0)
+
+#define TRY_PUT(c) TRY(sb_putc(buf, (c)))
+
+#define TRY_PUTS(s) TRY(sb_puts(buf, (s)))
+
+#define TRY_PUTn(n) TRY(sb_putn(buf, (n)))
+
+#define TRY_PUTd(d) TRY(sb_putd(buf, (d)))
+
+#define TRY_PUTxn(x, n) TRY(sb_putxn(buf, (x), (n)))
+
+#define TRY_PUT_KV(k, v) \
+	do { \
+		if (! should_trace_condensed()) { \
 			TRY_PUT('('); \
 			TRY(sb_puts(buf, (k))); \
 			TRY_PUT(' '); \
 		} \
 		TRY((v)); \
-		if (!should_trace_condensed()) { \
+		if (! should_trace_condensed()) { \
 			TRY_PUT(')'); \
 		} \
 	} while (0)
-
 
 void put_trans(void *arg);
 #define GHOST_transprinter put_trans

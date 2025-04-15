@@ -5,7 +5,8 @@
 
 #if defined(__AARCH64__)
 
-void __atomic_cas(volatile u64 *va, u64 old, u64 new) {
+void __atomic_cas(volatile u64 *va, u64 old, u64 new)
+{
 	/* atomic test and update
 	 * equivalent to an atomic:
 	 * <while (*va != old); *va = new>;
@@ -35,8 +36,7 @@ void __atomic_cas(volatile u64 *va, u64 old, u64 new) {
 		"sev\n"
 		:
 		: [va] "r"(va), [val] "r"(new), [old] "r"(old)
-		: "memory", "x0", "x1"
-	);
+		: "memory", "x0", "x1");
 }
 
 ///////////
@@ -46,7 +46,7 @@ struct mutex {
 	u64 locked;
 };
 
-struct mutex sm_lock = {.locked = 0};
+struct mutex sm_lock = { .locked = 0 };
 
 void init_sm_lock(void)
 {
@@ -76,7 +76,6 @@ void init_sm_lock(void)
 {
 	mtx_init(&sm_lock, mtx_plain);
 }
-
 
 void lock_sm(void)
 {
