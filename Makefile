@@ -73,6 +73,8 @@ checks: check-examples check-rocq
 
 lint:
 	$(call lint_subdir,src/lib)
+	$(call lint_subdir,src/casemate-check-c)
 
 fmt:
 	$(call fmt_subdir,src/lib)
+	$(call fmt_subdir,src/casemate-check-c)
