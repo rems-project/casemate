@@ -1,11 +1,11 @@
 #ifndef CASEMATE_ASSERTS_H
 #define CASEMATE_ASSERTS_H
 
-#ifndef __KVM_NVHE_HYPERVISOR__
 #include <casemate-impl/options.h>
 #include <casemate-impl/printer.h>
 #include <casemate-impl/model.h>
 
+#ifndef CONFIG_HAS_ASSERT
 #define ghost_assert(expr) \
 	if (!(expr)) { \
 		GHOST_WARN(#expr); \
@@ -32,18 +32,6 @@
 	ghost_assert(false); \
 	__builtin_unreachable(); \
 } while (0);
-
-#else
-
-#include <nvhe/ghost/ghost_context.h>
-#include <nvhe/ghost/ghost_asserts.h>
-
-#define GHOST_MODEL_CATCH_FIRE(msg) { \
-	ensure_traced_current_transition(true); \
-	GHOST_WARN(msg); \
-	ghost_assert(false); \
-}
-
-#endif
+#endif /* CONFIG_HAS_ASSERT */
 
 #endif /* CASEMATE_ASSERTS_H */
