@@ -1,4 +1,4 @@
-.PHONY: build clean
+.PHONY: build clean fmt lint
 
 build-objs += src/opts.o
 build-objs += src/parser.o
@@ -22,3 +22,13 @@ $(root)/casemate-check: $(check-obj)
 clean:
 	$(call run_clean,$(src)/src,rm -f $(build-objs))
 	$(call run_clean,$(check-obj),rm -f $(check-obj))
+
+fmt:
+	$(call run_cmd,FMT,clang-format,\
+		$(CLANG-FORMAT) -i $$(find $(src) -iname '*.[ch]') \
+	)
+
+lint:
+	$(call run_cmd,LINT,clang-format,\
+		$(CLANG-FORMAT) --dry-run -Werror $$(find $(src) -iname '*.[ch]') \
+	)

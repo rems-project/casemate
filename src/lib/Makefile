@@ -1,5 +1,5 @@
 
-.PHONY: build clean headers
+.PHONY: build clean headers fmt lint
 
 build-objs += casemate.h
 build-objs += casemate.o
@@ -33,7 +33,6 @@ headers-deps += include/casemate-in/casemate-helpers.in.h
 headers-deps += include/casemate-in/casemate-state.in.h
 headers-deps += include/casemate-in/casemate-ghost-types.in.h
 headers-deps += include/casemate-in/casemate-transitions.in.h
-headers-deps += include/casemate-in/casemate-version.in.h
 headers-deps += include/casemate-in/casemate.out.h
 headers-objs += casemate.h
 headers: $(addprefix $(src)/,$(headers-objs))
@@ -54,3 +53,13 @@ clean:
 	$(call run_clean,$(src)/includes, $(src)/include/casemate.h)
 	$(call run_clean,$(src)/src/, $(addprefix $(src)/,$(casemate-obj) $(patsubst %.o,%.o.cmd,$(casemate-obj))))
 	$(call run_clean,$(src)/casemate.o, $(src)/casemate.o)
+
+fmt:
+	$(call run_cmd,FMT,clang-format,\
+		$(CLANG-FORMAT) -i $$(find $(src) -iname '*.[ch]') \
+	)
+
+lint:
+	$(call run_cmd,LINT,clang-format,\
+		$(CLANG-FORMAT) --dry-run -Werror $$(find $(src) -iname '*.[ch]') \
+	)
