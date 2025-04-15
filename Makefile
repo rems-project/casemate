@@ -1,6 +1,7 @@
 .PHONY: build clean
 .PHONY: checks example-traces
 .PHONY: casemate casemate-check casemate-lib
+.PHONY: fmt lint
 .PHONY: help
 
 all: casemate examples
@@ -33,6 +34,14 @@ define clean_subdir
   $(call build_subdir,CLEAN,$1,clean)
 endef
 
+define fmt_subdir
+  $(call build_subdir,FMT,$1,fmt)
+endef
+
+define lint_subdir
+  $(call build_subdir,LINT,$1,lint)
+endef
+
 # building
 
 $(subdirs): config.mk
@@ -55,3 +64,9 @@ example-traces:
 
 checks:
 	$(call build_subdir,RUN,examples,checks)
+
+lint:
+	$(call lint_subdir,src/lib)
+
+fmt:
+	$(call fmt_subdir,src/lib)

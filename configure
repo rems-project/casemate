@@ -8,6 +8,7 @@ cc='clang'
 ld='ld'
 objdump='objdump'
 objcopy='objcopy'
+clang_format='clang-format'
 
 casemate_o="${libdir}/casemate.o"
 casemate_h="${libdir}/casemate.h"
@@ -30,6 +31,7 @@ usage() {
   echo " --ld=LD                 linker";
   echo " --arch=ARCH             machine architecture (aarch64 or x86)";
   echo " --[no-]clangd           force enable/disable clangd targets";
+  echo " --clang-format=CC       formatter";
   echo " --force                 overrule checks";
 }
 
@@ -69,6 +71,9 @@ while [[ "$1" = -* ]]; do
         ;;
     --no-clangd)
         clangd=
+        ;;
+    --clang-format)
+        clang_format="$arg"
         ;;
     --force)
       force=1
@@ -135,6 +140,8 @@ LD = ${ld}
 OBJDUMP = ${objdump}
 OBJCOPY = ${objcopy}
 ARCH = ${arch_name}
+
+CLANG-FORMAT = ${clang_format}
 
 CFLAGS = -Wall -MD -g -gdwarf-4 -D__${arch_name}__
 LDFLAGS =
