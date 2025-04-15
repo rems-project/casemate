@@ -2,6 +2,7 @@
 .PHONY: checks example-traces check-examples check-rocq
 .PHONY: casemate casemate-check casemate-lib
 .PHONY: fmt lint
+.PHONY: dump-config
 .PHONY: help
 
 all: casemate examples

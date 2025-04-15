@@ -37,6 +37,7 @@ jobs:
       working-directory: rems-project/casemate
       run: |
         ./configure --clang-format=clang-format-15
+        make dump-config
 
     - name: Build all
       working-directory: rems-project/casemate

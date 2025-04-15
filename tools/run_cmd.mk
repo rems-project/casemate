@@ -44,3 +44,13 @@ $(call run_cmd,COPY,$2, \
 		cp $1 $2 \
 	)
 endef
+
+binary-targets := CC LD OBJDUMP OBJCOPY CLANG-FORMAT
+other-configs := ARCH CFLAGS LDFLAGS CLANGD
+
+dump-config:
+	@$(foreach t,$(binary-targets),echo $(t)=$($(t));)
+	@echo
+	@$(foreach t,$(other-configs),echo $(t)=$($(t));)
+	@echo
+	@$(foreach t,$(binary-targets),echo $(t)-VERSION-TEXT='$(shell $($(t)) --version)';)
