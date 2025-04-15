@@ -33,7 +33,7 @@ u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 
 void ghost_cm_abort(const char *msg)
 {
-	if (!QUIET) {
+	if (! QUIET) {
 		if (COLOR)
 			printf(GHOST_WHITE_ON_RED);
 		printf("! %s", msg);
@@ -49,7 +49,7 @@ struct _string_buffer {
 	int n;
 };
 
-int ghost_cm_print(void* arg, const char *format, va_list ap)
+int ghost_cm_print(void *arg, const char *format, va_list ap)
 {
 	int ret;
 	if (arg != NULL) {
@@ -61,14 +61,14 @@ int ghost_cm_print(void* arg, const char *format, va_list ap)
 		buf->n -= ret;
 		return 0;
 	} else {
-		ret =vprintf(format, ap);
+		ret = vprintf(format, ap);
 		if (ret < 0)
 			return ret;
 		return 0;
 	}
 }
 
-void *ghost_cm_make_buffer(char* arg, u64 n)
+void *ghost_cm_make_buffer(char *arg, u64 n)
 {
 	struct _string_buffer *buf = malloc(sizeof(struct _string_buffer));
 	buf->buf = arg;
