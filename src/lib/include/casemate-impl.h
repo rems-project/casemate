@@ -4,6 +4,9 @@
 /* grab public API */
 #include <casemate.h>
 
+/* include platform-specific thingies */
+#include <casemate-impl/platform.h>
+
 /* grab internal APIs */
 #include <casemate-impl/types.h>
 #include <casemate-impl/string.h>

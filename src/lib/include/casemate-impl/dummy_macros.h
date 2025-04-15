@@ -1,8 +1,7 @@
 #ifndef CASEMATE_DUMMY_MACROS_H
 #define CASEMATE_DUMMY_MACROS_H
 
-#ifndef __KVM_NVHE_HYPERVISOR__
-
+#ifndef CONFIG_HAS_ASSERT
 #define GHOST_LOG_CONTEXT_ENTER()
 #define GHOST_LOG(NAME,TYPE)
 #define GHOST_LOG_CONTEXT_EXIT()
@@ -13,11 +12,6 @@
 #define GHOST_WARN(MSG) { \
 		ghost_printf(GHOST_WHITE_ON_YELLOW "%s" GHOST_NORMAL "\n", MSG); \
 	}
-
-#else
-
-#include <nvhe/ghost/ghost_context.h>
-
 #endif
 
 #endif /* CASEMATE_DUMMY_MACROS_H */

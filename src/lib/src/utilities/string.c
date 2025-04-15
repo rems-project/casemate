@@ -1,6 +1,6 @@
 #include <casemate-impl.h>
 
-#ifndef __KVM_NVHE_HYPERVISOR__
+#ifndef CONFIG_HAS_STRLEN
 u64 strlen(const char *s) {
 	u64 i = 0;
 
@@ -11,7 +11,7 @@ u64 strlen(const char *s) {
 
 	return i;
 }
-#endif /* __KVM_NVHE_HYPERVISOR__ */
+#endif /* CONFIG_HAS_STRLEN */
 
 bool streq(const char *s1, const char *s2) {
 	if (*s1 == '\0')

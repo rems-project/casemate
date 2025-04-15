@@ -116,7 +116,7 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n)
 //////////
 // Printf
 
-#ifndef __KVM_NVHE_HYPERVISOR__
+#ifndef CONFIG_HAS_PRINTF
 int ghost_printf(const char *fmt, ...)
 {
 	int ret;
@@ -132,7 +132,7 @@ int ghost_printf(const char *fmt, ...)
 
 	return ret;
 }
-#endif /* __KVM_NVHE_HYPERVISOR__ */
+#endif /* CONFIG_HAS_PRINTF */
 
 int ghost_fprintf(void *arg, const char *fmt, ...)
 {
