@@ -2,10 +2,11 @@
 # Generates the top-level include/casemate.h
 
 import pathlib
-import argparse
+import subprocess
 
 HERE = pathlib.Path(__file__).parent
 ROOT = HERE.parent
+CM_ROOT = ROOT.parent.parent
 
 INCLUDE = ROOT / 'include'
 
@@ -17,7 +18,9 @@ ghost = (INCLUDE / "casemate-in" / "casemate-ghost-types.in.h").read_text()
 state = (INCLUDE / "casemate-in" / "casemate-state.in.h").read_text()
 transitions = (INCLUDE / "casemate-in" / "casemate-transitions.in.h").read_text()
 config = (INCLUDE / "casemate-in" / "casemate-config.in.h").read_text()
-version = (INCLUDE / "casemate-in" / "casemate-version.in.h").read_text().strip()
+version = (
+    subprocess.run(["./tools/print_version.py"], cwd=CM_ROOT, capture_output=True, text=True).stdout.strip()
+)
 
 def make_header(template):
   return (

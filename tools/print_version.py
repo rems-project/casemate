@@ -6,12 +6,11 @@ import subprocess
 HERE = pathlib.Path(__file__).parent
 CM_ROOT = HERE.parent
 
-LIB_ROOT = CM_ROOT / "src" / "lib"
-CM_VERSION_H = LIB_ROOT / "include" / "casemate-in" / "casemate-version.in.h"
+CM_VERSION_PATH = CM_ROOT / "VERSION"
 
-cm_version = CM_VERSION_H.read_text().strip()
+cm_version = CM_VERSION_PATH.read_text().strip()
 cm_date = subprocess.run(
-    ["git", "log", "-n1", "--pretty=tformat:%as", str(CM_VERSION_H)],
+    ["git", "log", "-n1", "--pretty=tformat:%as", str(CM_VERSION_PATH)],
     check=True,
     capture_output=True,
     text=True,
