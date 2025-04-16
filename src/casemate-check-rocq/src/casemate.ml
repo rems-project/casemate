@@ -2,29 +2,13 @@ module Z0 = Z (* Don't overwrite Zarith *)
 open Rocq_casemate
 open Pp
 
-let strip_prefix ~prefix s =
-  let n = String.length s and pn = String.length prefix in
-  if n < pn then None
-  else if String.sub s 0 pn <> prefix then None
-  else Some (String.sub s pn (n - pn))
-
-let strip_suffix ~suffix s =
-  let n = String.length s and sn = String.length suffix in
-  if n < sn then None
-  else if String.sub s (n - sn) sn <> suffix then None
-  else Some (String.sub s 0 (n - sn))
-
 let parse_line line =
-  let prefix = "\o033[46;37;1m" and suffix = "\o033[0m" in
-  match strip_prefix line ~prefix with
-  | None -> None
-  | Some line' ->
-      match strip_suffix line' ~suffix with
-      | None -> Fmt.invalid_arg "Ill-formed line: %S" line
-      | Some line' ->
-          match Parser.of_line line' with
-          | None -> Fmt.invalid_arg "Parse error: %S" line
-          | res -> res
+  (* ignore the final line with "!" *)
+  if String.length line = 0 || String.get line 0 = '!' then None
+  else
+    match Parser.of_line line with
+    | None -> Fmt.invalid_arg "Parse error: %S" line
+    | res -> res
 
 let transitions ic = Iters.lines ic |> Iters.filter_map parse_line
 
