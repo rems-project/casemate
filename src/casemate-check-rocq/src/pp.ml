@@ -53,9 +53,9 @@ let pp_error ppf = function
   | CME_bbm_violation (violation, addr) ->
       Fmt.pf ppf "@[BBM violation:@ %s %a@]"
         (match violation with
-        | VT_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
-        | VT_valid_on_valid -> "Wrote valid on another valid descriptor"
-        | VT_release_unclean -> "Tried to release a page that was still unclean")
+        | BBM_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
+        | BBM_valid_on_valid -> "Wrote valid on another valid descriptor"
+        | BBM_release_unclean -> "Tried to release a page that was still unclean")
         p0xZ addr
   | CME_not_a_pte (str, addr) ->
       Fmt.pf ppf "Address %a was expected to be a PTE in function %s" p0xZ addr

@@ -6,50 +6,7 @@ Require Import pgtable.
 Inductive Regime := Regime_EL3 | Regime_EL30 | Regime_EL2 | Regime_EL20 | Regime_EL10.
 Inductive Shareability := Shareability_NSH | Shareability_ISH | Shareability_OSH.
 
-(* TLBI *)
-Inductive TLBIOp :=
-  | TLBIOp_DALL
-  | TLBIOp_DASID
-  | TLBIOp_DVA
-  | TLBIOp_IALL
-  | TLBIOp_IASID
-  | TLBIOp_IVA
-  | TLBIOp_ALL
-  | TLBIOp_ASID
-  | TLBIOp_IPAS2
-  | TLBIOp_VAA
-  | TLBIOp_VA
-  | TLBIOp_VMALL
-  | TLBIOp_VMALLS12
-  | TLBIOp_RIPAS2
-  | TLBIOp_RVAA
-  | TLBIOp_RVA
-  | TLBIOp_RPA
-  | TLBIOp_PAALL
-.
-
-Inductive TLBILevel := TLBILevel_Any | TLBILevel_Last.
-
-Record TLBIRecord  := {
-  TLBIRecord_op : TLBIOp;
-  (* TLBIRecord_from_aarch64 : bool; *)
-  (* TLBIRecord_security : SecurityState; *)
-  TLBIRecord_regime : Regime;
-  (* TLBIRecord_vmid : bits 16; *)
-  (* TLBIRecord_asid : bits 16; *)
-  TLBIRecord_level : TLBILevel;
-  (* TLBIRecord_attr : TLBIMemAttr; *)
-  (* TLBIRecord_ipaspace : PASpace; *)
-  TLBIRecord_address : phys_addr_t;
-  (* TLBIRecord_end_address_name : u64; *)
-  (* TLBIRecord_tg : bits 2; *)
-}.
-
-
-Record TLBI := {
-  TLBI_rec : TLBIRecord;
-  TLBI_shareability : Shareability;
-}.
+(** TLBI *)
 
 Inductive TLBI_stage_kind :=
   | TLBI_OP_stage1
@@ -59,13 +16,15 @@ Inductive TLBI_stage_kind :=
 
 Record TLBI_op_by_addr_data := {
   TOBAD_page : phys_addr_t;
-  TOBAD_last_level_only : TLBILevel;
+  TOBAD_level_hint : option u64;
+  TOBAD_last_level_only : bool;
+  TOBAD_asid : option addr_id_t;
 }.
 
 Inductive TLBI_method :=
   | TLBI_by_addr_space : phys_addr_t -> TLBI_method
   | TLBI_by_input_addr : TLBI_op_by_addr_data -> TLBI_method
-  | TLBI_by_addr_all
+  | TLBI_by_all
 .
 
 Record TLBI_intermediate := {
@@ -75,51 +34,120 @@ Record TLBI_intermediate := {
   TI_method : TLBI_method;
 }.
 
-Definition decode_tlbi_stage (td : TLBI) : option TLBI_stage_kind :=
-  match td.(TLBI_rec).(TLBIRecord_op) with
-    | TLBIOp_VA | TLBIOp_VMALL => Some TLBI_OP_stage1
-    | TLBIOp_IPAS2 => Some TLBI_OP_stage2
-    | TLBIOp_VMALLS12 | TLBIOp_ALL => Some TLBI_OP_both_stages
-    | _ => None
-  end
+Inductive tlbi_kind :=
+  | TLBI_vmalls12e1
+  | TLBI_vmalls12e1is
+  | TLBI_vmalle1is
+  | TLBI_alle1is
+  | TLBI_vae2
+  | TLBI_vmalle1
+  | TLBI_vale2is
+  | TLBI_vae2is
+  | TLBI_ipas2e1is
 .
 
-Definition decode_tlbi_shootdown (td : TLBI) : option bool :=
-  match td.(TLBI_shareability) with
-    | Shareability_ISH => Some true
-    | _ => Some true
-  end
-.
+Record trans_tlbi_data := {
+  ttd_tlbi_kind : tlbi_kind;
+  ttd_value : u64
+}.
 
-Definition decode_tlbi_method (td : TLBI) : option TLBI_method :=
-  match td.(TLBI_rec).(TLBIRecord_op) with
-    | TLBIOp_VMALLS12 | TLBIOp_VMALL =>
-      Some TLBI_by_addr_all
-    | TLBIOp_VA | TLBIOp_IPAS2 =>
-      Some (TLBI_by_input_addr
-            {| TOBAD_page := td.(TLBI_rec).(TLBIRecord_address);
-              TOBAD_last_level_only := td.(TLBI_rec).(TLBIRecord_level); |})
-    | TLBIOp_ALL => Some TLBI_by_addr_all
-    | _ => None
-  end
-.
+Definition decode_tlbi_stage (td : trans_tlbi_data) : TLBI_stage_kind :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1 => TLBI_OP_both_stages
+	| TLBI_vmalls12e1is => TLBI_OP_both_stages
+	| TLBI_vmalle1is => TLBI_OP_stage1
+	| TLBI_alle1is => TLBI_OP_stage1
+  | TLBI_vae2 => TLBI_OP_stage1
+	| TLBI_vmalle1 => TLBI_OP_stage1
+	| TLBI_vale2is => TLBI_OP_stage1
+	| TLBI_vae2is => TLBI_OP_stage1
+	| TLBI_ipas2e1is => TLBI_OP_stage2
+  end.
 
-Definition decode_tlbi (td : TLBI) : option TLBI_intermediate :=
+Definition decode_Regime (td : trans_tlbi_data) : Regime :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalle1is
+  | TLBI_vmalle1
+  | TLBI_ipas2e1is
+  | TLBI_vmalls12e1
+  | TLBI_vmalls12e1is
+  | TLBI_alle1is => Regime_EL10
+  | TLBI_vale2is
+  | TLBI_vae2is
+  | TLBI_vae2 => Regime_EL2
+  end.
+
+Definition decode_tlbi_shootdown (td : trans_tlbi_data) : bool :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1 => false
+  | TLBI_vmalls12e1is => true
+  | TLBI_vmalle1is => true
+  | TLBI_alle1is => true
+  | TLBI_vmalle1 => false
+  | TLBI_vae2 => false (* TODO: missing kind in C *)
+  | TLBI_vale2is => true
+  | TLBI_vae2is => true
+  | TLBI_ipas2e1is => true
+  end.
+
+Definition decoded_tlbi_has_asid (td : trans_tlbi_data) : option addr_id_t :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vale2is
+  | TLBI_vae2is => Some (AID (bv_and_64 td.(ttd_value) TLBI_ASID_MASK))
+  | TLBI_vmalls12e1 => None
+  | TLBI_vmalls12e1is => None
+  | TLBI_vmalle1is => None
+  | TLBI_alle1is => None
+  | TLBI_vmalle1 => None
+  | TLBI_vae2 => None
+  | TLBI_ipas2e1is => None
+  end.
+
+Definition decode_tlbi_by_addr (td : trans_tlbi_data) : TLBI_op_by_addr_data :=
+  let page := bv_and_64 td.(ttd_value) TLBI_PAGE_MASK in
+  let last_level_only := 
+    match td.(ttd_tlbi_kind) with
+    | TLBI_vale2is => true
+    | _ => false
+    end in
+  let level := bv_and_64 td.(ttd_value) TLBI_TTL_MASK in
+  let level_hint := 
+    if (level b<? b4) then None 
+    else Some (bv_and_64 level b3) in
+
+  {|
+    TOBAD_page := PA page;
+    TOBAD_last_level_only := last_level_only;
+    TOBAD_level_hint := level_hint;
+    TOBAD_asid := decoded_tlbi_has_asid td;
+  |}.
+
+Definition decode_tlbi_by_space_id (td : trans_tlbi_data) : phys_addr_t := PA b0.
+
+Definition decode_tlbi_method (td : trans_tlbi_data) : TLBI_method :=
+  match td.(ttd_tlbi_kind) with
+  | TLBI_vmalls12e1
+  | TLBI_vmalls12e1is
+  | TLBI_vmalle1is
+  | TLBI_vmalle1 => TLBI_by_addr_space (decode_tlbi_by_space_id td)
+  | TLBI_vale2is
+  | TLBI_vae2
+  | TLBI_vae2is
+  | TLBI_ipas2e1is => TLBI_by_input_addr (decode_tlbi_by_addr td)
+  | TLBI_alle1is => TLBI_by_all
+  end.
+
+Definition decode_tlbi (td : trans_tlbi_data) : TLBI_intermediate :=
   let stage := decode_tlbi_stage td in
+  let regime := decode_Regime td in
   let shootdown := decode_tlbi_shootdown td in
   let method := decode_tlbi_method td in
-  match stage, shootdown, method with
-    | Some stage, Some shootdown, Some method =>
-      Some
-      {|
-        TI_stage := stage;
-        TI_regime := td.(TLBI_rec).(TLBIRecord_regime);
-        TI_shootdown := shootdown;
-        TI_method := method;
-      |}
-    | _, _, _ => None
-  end
-.
+  {|
+    TI_stage := stage;
+    TI_regime := regime;
+    TI_shootdown := shootdown;
+    TI_method := method;
+  |}.
 
 (***************************************)
 (* Barrier *)
@@ -223,7 +251,7 @@ Inductive casemate_model_step_data :=
   | CMSD_TRANS_HW_MEM_WRITE (write_data : trans_write_data)
   | CMSD_TRANS_HW_MEM_READ (read_data : trans_read_data)
   | CMSD_TRANS_HW_BARRIER (dsb_data : Barrier)
-  | CMSD_TRANS_HW_TLBI (tlbi_data : TLBI)
+  | CMSD_TRANS_HW_TLBI (tlbi_data : trans_tlbi_data)
   | CMSD_TRANS_HW_MSR (msr_data : trans_msr_data)
   (* ABS_step *)
   | CMSD_TRANS_ABS_MEM_INIT (init_data : trans_init_data)
@@ -340,7 +368,7 @@ Definition step_write_on_invalid_unclean
   casemate_model_result :=
   (* Only invalid descriptor are allowed *)
   if is_desc_valid val then
-    (Merror (CME_bbm_violation VT_valid_on_invalid_unclean loc.(sl_phys_addr)))
+    (Merror (CME_bbm_violation BBM_valid_on_invalid_unclean loc.(sl_phys_addr)))
   else
     Mreturn (cms <|cms_memory := <[loc.(sl_phys_addr) := loc <|sl_val := val|> ]> cms.(cms_memory) |>)
 .
@@ -391,7 +419,7 @@ Definition step_write_valid_on_valid
         end
     | Some true =>
       (* Changing the descriptor is illegal *)
-      Merror (CME_bbm_violation VT_valid_on_valid loc.(sl_phys_addr))
+      Merror (CME_bbm_violation BBM_valid_on_valid loc.(sl_phys_addr))
   end
 .
 
@@ -442,7 +470,7 @@ Definition is_valid_state (st: sm_pte_state) : bool :=
   end
 .
 
-Definition drop_write_authorisation_of_lock
+Definition drop_write_authorisation
   (cpu : thread_identifier)
   (addr : phys_addr_t)
   (wmo : write_memory_order)
@@ -451,9 +479,9 @@ Definition drop_write_authorisation_of_lock
   (cms : casemate_model_state) :
   casemate_model_result :=
   match get_lock_of_owner pte.(eed_owner) cms with
-  | None => Mreturn cms
-  | Some addr_lock =>
-    match lookup addr_lock cms.(cms_lock_state) with
+  | None => Merror CME_owner_not_associated_with_a_root
+  | Some lock_addr =>
+    match lookup lock_addr cms.(cms_lock_state) with
     | Some {| ls_tid := lock_owner; ls_write_authorization := auth |} =>
       if bool_decide (lock_owner = cpu) then
         match wmo with
@@ -461,17 +489,17 @@ Definition drop_write_authorisation_of_lock
           match auth with
           | write_authorized => 
             let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
-            Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
+            Mreturn (cms <| cms_lock_state := insert lock_addr new_lock_state cms.(cms_lock_state)|>)
           | write_unauthorized =>
             if (is_desc_valid descriptor) || is_valid_state pte.(eed_state) then
               Merror (CME_write_without_authorization addr)
             else
               let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
-              Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
+              Mreturn (cms <| cms_lock_state := insert lock_addr new_lock_state cms.(cms_lock_state)|>)
           end
           | WMO_release => (* drop the authorization *)
             let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
-            Mreturn (cms <| cms_lock_state := insert addr_lock new_lock_state cms.(cms_lock_state)|>)
+            Mreturn (cms <| cms_lock_state := insert lock_addr new_lock_state cms.(cms_lock_state)|>)
         end
       else
         Merror (CME_transition_without_lock addr)
@@ -480,7 +508,7 @@ Definition drop_write_authorisation_of_lock
   end
 .
 
-Definition drop_write_authorisation
+Definition check_write_authorized
   (tid : thread_identifier)
   (wd : trans_write_data)
   (cms : casemate_model_state) :
@@ -497,10 +525,14 @@ Definition drop_write_authorisation
         match location.(sl_pte) with
         | None => Mreturn cms
         | Some pte =>
-          if is_loc_thread_owned tid location cms then
-            Mreturn cms
-          else
-            drop_write_authorisation_of_lock tid addr wmo val pte cms
+          match location.(sl_thread_owner) with
+          | Some thread_owner =>
+            if bool_decide (thread_owner = tid) then
+              Mreturn cms
+            else
+              Merror (CME_owned_pte_accessed_by_other_thread addr)
+          | None => drop_write_authorisation tid addr wmo val pte cms
+          end
         end
     end
 .
@@ -510,12 +542,12 @@ Definition step_write_aux
   (wd : trans_write_data)
   (cms : casemate_model_state) :
   casemate_model_result :=
-  let wmo := wd.(twd_mo) in
+  let mo := wd.(twd_mo) in
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
     then Merror CME_unaligned_write else
-  let new_st := drop_write_authorisation tid wd cms in
+  let new_st := check_write_authorized tid wd cms in
   let write_update s :=
     match s !! addr with
     | Some (loc) =>
@@ -524,11 +556,11 @@ Definition step_write_aux
         (* If we write to a page table, depending on its state, we update them  *)
         match desc.(eed_state) with
         | SPS_STATE_PTE_VALID av =>
-            (step_write_on_valid tid wmo loc val s)
+            (step_write_on_valid tid mo loc val s)
         | SPS_STATE_PTE_INVALID_CLEAN av =>
-            (step_write_on_invalid tid wmo loc val s)
+            (step_write_on_invalid tid mo loc val s)
         | SPS_STATE_PTE_INVALID_UNCLEAN av =>
-            (step_write_on_invalid_unclean tid wmo loc val s)
+            (step_write_on_invalid_unclean tid mo loc val s)
         | SPS_STATE_PTE_NOT_WRITABLE =>
             (Merror (CME_write_on_not_writable addr))
         end
@@ -602,7 +634,7 @@ Definition step_init_aux
   Mupdate_state update st
 .
 
-Definition _step_init_step_size := PA (bv_shiftl_64 b1 (bv64.BV64 3)).
+Definition _step_init_step_size := PA (bv_shiftl_64 b1 b3).
 
 Fixpoint step_init_all
   (addr : phys_addr_t)
@@ -767,32 +799,30 @@ Definition dsb_visitor
 
 Fixpoint reset_write_authorizations_aux
   (tid : thread_identifier)
-  (roots: list sm_owner_t)
-  (cms : casemate_model_state) :
+  (roots: list cm_root)
+  (cm : casemate_model_state) :
   casemate_model_state :=
   match roots with
-  | [] => cms
-  | h :: q =>
-    match lookup (phys_addr_val (root_val h)) cms.(cms_lock_addr) with
+  | [] => cm
+  | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q =>
+    match lookup (phys_addr_val (owner_val baddr)) cm.(cms_lock_addr) with
     | Some lock_addr =>
       let new_st :=
-        match lookup lock_addr cms.(cms_lock_state) with
-        | None => cms
+        match lookup lock_addr cm.(cms_lock_state) with
+        | None => cm
         | Some {| ls_tid := thread; ls_write_authorization := _ |} =>
           if bool_decide (thread = tid) then
             let new_lock_state := {| ls_tid := tid; ls_write_authorization := write_authorized |} in
-            (cms <| cms_lock_state :=
-                insert lock_addr new_lock_state cms.(cms_lock_state) |>)
+            (cm <| cms_lock_state :=
+                insert lock_addr new_lock_state cm.(cms_lock_state) |>)
           else
-            cms
+            cm
         end
       in
       reset_write_authorizations_aux tid q new_st
-    | None => reset_write_authorizations_aux tid q cms
+    | None => reset_write_authorizations_aux tid q cm
     end
-  end
-.
-
+  end.
 
 Definition reset_write_authorizations (tid : thread_identifier) (cms : casemate_model_state) : casemate_model_state :=
   (* Reset the authorizations for both states *)
@@ -818,39 +848,122 @@ Definition is_leaf (kind : pte_rec) : bool :=
   end
 .
 
-Definition is_last_level_only (d : TLBI_op_by_addr_data) : bool :=
-  match d.(TOBAD_last_level_only) with
-    | TLBILevel_Any => false
-    | TLBILevel_Last => true
-  end
-.
+Definition get_tlbi_asid (td : TLBI_intermediate) : option addr_id_t :=
+  match td.(TI_method) with
+  | TLBI_by_input_addr d => d.(TOBAD_asid)
+  | TLBI_by_addr_space (PA addr_id) => Some (AID addr_id)
+  | _ => None
+  end.
 
-Definition should_perform_tlbi (td : TLBI_intermediate) (ptc : pgtable_traverse_context) : option bool :=
-  match ptc.(ptc_loc) with
-    | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
-    | Some loc =>
-      match loc.(sl_pte) with
-        | None => None (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
-        | Some pte_desc =>
-          match td.(TI_method) with
-            | TLBI_by_input_addr d =>
-              let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) b12 in
-              let ia_start := pte_desc.(eed_ia_region).(range_start) in
-              let ia_end := ia_start pa+ pte_desc.(eed_ia_region).(range_size) in
-              if (is_leaf pte_desc.(eed_pte_kind)
-                       && (phys_addr_val ia_start b<=? tlbi_addr)
-                       && (tlbi_addr b<? phys_addr_val ia_end)) then
-                Some false
-              else if ((negb (is_l3 pte_desc.(eed_level))) && is_last_level_only d) then
-                Some false
-              else
-                Some true
-            | TLBI_by_addr_space _ => None
-            | TLBI_by_addr_all => Some true
-          end
+Fixpoint all_children_invalid_iter
+  (idx : u64)
+  (n_children : nat)
+  (table_start : phys_addr_t)
+  (cms : casemate_model_state) : bool :=
+  match n_children with
+  | O => true
+  | S n_children =>
+    let child_addr := table_start pa+ (PA (b8 b* idx)) in
+    match cms !! child_addr with
+    | Some child_loc =>
+      match child_loc.(sl_pte) with
+      | None => false
+      | Some child_pte_desc =>
+        match child_pte_desc.(eed_pte_kind) with
+        | PTER_PTE_KIND_INVALID =>
+          all_children_invalid_iter (idx b+ b1) n_children table_start cms
+        | _ => false
+        end
       end
-  end
-.
+    | None => false
+    end
+  end.
+
+Definition all_children_invalid (pte_desc : entry_exploded_descriptor) (cms : casemate_model_state): bool :=
+  match pte_desc.(eed_pte_kind) with
+  | PTER_PTE_KIND_TABLE table_data =>
+    let table_start := table_data.(next_level_table_addr) in
+    all_children_invalid_iter b0 512 table_start cms
+  | _ => true
+  end.
+
+Definition should_perform_tlbi 
+  (cpu_id : thread_identifier)
+  (td : TLBI_intermediate)
+  (ptc : pgtable_traverse_context) : option bool :=
+  match ptc.(ptc_loc) with
+  | None => None (* does not happen because we call it in tlbi_visitor in which we test that the location is init *)
+  | Some loc =>
+    match loc.(sl_pte) with
+    | None => None (* if the PTE is not initialised, it has not been used; TLBI has no effect *)
+    | Some pte_desc =>
+      match td.(TI_method) with
+      | TLBI_by_input_addr d =>
+        let tlbi_addr := bv_shiftl_64 (phys_addr_val d.(TOBAD_page)) b12 in
+        let ia_start := pte_desc.(eed_ia_region).(range_start) in
+        let ia_end := ia_start pa+ pte_desc.(eed_ia_region).(range_size) in
+
+        (* If the PTE has valid children, the TLBI by VA is not enough *)
+        if (negb (is_leaf pte_desc.(eed_pte_kind)) && negb (all_children_invalid pte_desc ptc.(ptc_state))) then
+          Some false
+
+        (* __should_perform_tlbi_matches_addr *)
+        else if negb ((phys_addr_val ia_start b<=? tlbi_addr)
+                  && (tlbi_addr b<? phys_addr_val ia_end)) then Some false
+        
+        (* __should_perform_tlbi_matches_level *)
+        else if ((negb (is_l3 pte_desc.(eed_level))) && d.(TOBAD_last_level_only)) then
+          Some false
+
+        else
+          (* __should_perform_tlbi_matches_id *)
+          match td.(TI_regime), pte_desc.(eed_stage) with
+          | Regime_EL10, S2 =>
+            match retrieve_root_for_baddr S2 ptc.(ptc_state).(cms_roots) ptc.(ptc_root) with
+            | Some pte_root =>
+              match get_current_vttbr cpu_id ptc.(ptc_state) with
+              | Some vttbr => Some (bool_decide (pte_root.(r_id) = vttbr.(r_id)))
+              | None => Some true
+              end
+            | None => Some true
+            end
+          | Regime_EL2, S1 =>
+            match retrieve_root_for_baddr S1 ptc.(ptc_state).(cms_roots) ptc.(ptc_root) with
+            | Some pte_root =>
+              match get_tlbi_asid td with
+              | Some asid => Some (bool_decide (pte_root.(r_id) = asid))
+              | None => Some true
+              end
+            | None => Some true
+            end
+          | _, _ => Some true
+          end
+      | TLBI_by_addr_space addr_id =>
+        match td.(TI_regime), pte_desc.(eed_stage) with
+        | Regime_EL10, S2 =>
+          match retrieve_root_for_baddr S2 ptc.(ptc_state).(cms_roots) ptc.(ptc_root) with
+          | Some pte_root =>
+            match get_current_vttbr cpu_id ptc.(ptc_state) with
+            | Some vttbr => Some (bool_decide (pte_root.(r_id) = vttbr.(r_id)))
+            | None => Some true
+            end
+          | None => Some true
+          end
+        | Regime_EL2, S1 =>
+          match retrieve_root_for_baddr S1 ptc.(ptc_state).(cms_roots) ptc.(ptc_root) with
+          | Some pte_root =>
+            match get_tlbi_asid td with
+            | Some asid => Some (bool_decide (pte_root.(r_id) = asid))
+            | None => Some true
+            end
+          | None => Some true
+          end
+        | _, _ => Some true
+        end
+      | TLBI_by_all => Some true
+      end
+    end
+  end.
 
 
 Definition step_pte_on_tlbi_after_dsb (td: TLBI_intermediate) : option LIS :=
@@ -880,14 +993,14 @@ Definition step_pte_on_tlbi_after_tlbi_ipa (td: TLBI_intermediate) : option LIS 
 Definition tlbi_visitor
   (cpu_id : thread_identifier)
   (td : TLBI_intermediate)
-  (ptc : pgtable_traverse_context) : 
+  (ptc : pgtable_traverse_context) :
   casemate_model_result :=
   match ptc.(ptc_loc) with
-    | None => (* Cannot do anything if the page is not initialized *)
+    | None => (* Cannot do anything if the page is not initialised *)
       Merror (CME_uninitialised "tlbi_visitor" ptc.(ptc_addr))
     | Some location =>
       (* Test if there is something to do *)
-      match should_perform_tlbi td ptc with
+      match should_perform_tlbi cpu_id td ptc with
         | None => Merror CME_unimplemented
         | Some b =>
           if b then
@@ -932,260 +1045,308 @@ Definition tlbi_visitor
           else (* In the case where the PTE is not affected by the TLBI, we do nothing *)
             {|cmr_log := nil; cmr_data := Ok _ _ ptc.(ptc_state) |}
       end
-  end
-.
+    end.
 
-Definition step_tlbi (tid : thread_identifier) (td : TLBI) (cms : casemate_model_state) : casemate_model_result :=
-  match decode_tlbi td with
-  | None => Merror CME_unimplemented
-  | Some decoded_TLBI =>
-    match td.(TLBI_rec).(TLBIRecord_regime) with
-    | Regime_EL2 =>
-      (* traverse all s1 pages*)
-      traverse_si_pgt (Some tid) cms (tlbi_visitor tid decoded_TLBI) S1
+Definition step_tlbi 
+  (tid : thread_identifier)
+  (td : trans_tlbi_data)
+  (cm : casemate_model_state) :
+  casemate_model_result :=
+  let tlbi := decode_tlbi td in
+  match tlbi.(TI_regime) with
     | Regime_EL10 =>
-      (* traverse s2 pages *)
-      traverse_si_pgt (Some tid) cms (tlbi_visitor tid decoded_TLBI) S2
+      (* TLBIs that hit host/guest tables *)
+      traverse_pgt (Some tid) cm (tlbi_visitor tid tlbi) S2
+    | Regime_EL2 =>
+      (* TLBIs that hit pKVM's own pagetable *)
+      traverse_pgt (Some tid) cm (tlbi_visitor tid tlbi) S1
     | _ =>
-      (* traverse all page tables and add a warning *)
-      let res := traverse_all_pgt (Some tid) cms (tlbi_visitor tid decoded_TLBI) in
-      res <| cmr_log := Warning_unsupported_TLBI :: res.(cmr_log) |>
-    end
-  end
-.
+      Merror CME_unimplemented
+      (* let res := traverse_all_pgt (Some tid) cm (tlbi_visitor tid tlbi) in
+      res <| cmr_log := Warning_unsupported_TLBI :: res.(cmr_log) |> *)
+  end.
 
 
-(******************************************************************************************)
-(*                                  Step MSR                                              *)
-(******************************************************************************************)
+(** MSR *)
 
-Fixpoint si_root_exists (root : sm_owner_t) (roots : list sm_owner_t) : bool :=
+Fixpoint root_exists (root : sm_owner_t) (roots : list cm_root) : bool :=
   match roots with
     | [] => false
-    | t :: q => (bool_decide (t = root)) || (si_root_exists root q)
-  end
-.
+    | t :: q => (bool_decide (t.(r_baddr) = root)) || (root_exists root q)
+  end.
 
-Definition _extract_si_root_big_bv := BV64 0xfffffffffffe%Z. (* GENMASK (b47) (b1) *)
-Definition extract_si_root (val : u64) (stage : entry_stage_t) : sm_owner_t :=
-  (* Does not depends on the S1/S2 level but two separate functions in C, might depend on CPU config *)
-  Root (PA (bv_and_64 val _extract_si_root_big_bv))
-.
-
-Definition register_si_root
+Definition try_register_root
   (tid : thread_identifier)
-  (cms : casemate_model_state) 
-  (root : sm_owner_t)
-  (stage : entry_stage_t) : 
+  (addr_id : addr_id_t)
+  (cm : casemate_model_state)
+  (baddr : sm_owner_t)
+  (stage : entry_stage_t) :
   casemate_model_result :=
-  let other_root_list :=
-    match stage with
-      | S1 => cmr_s2
-      | S2 => cmr_s1
-    end cms.(cms_roots) in
-  (* Check that the root does not already exist in the other root list*)
-  if si_root_exists root other_root_list then Merror CME_root_already_exists  
+  (* Add the root to the list of roots *)
+  let new_root := {| r_baddr := baddr; r_id := addr_id; r_refcount := 0 |} in
+  let new_roots := insert_cms_root stage new_root cm.(cms_roots) in
+  let new_st := cm <| cms_roots := new_roots |> in
+  (* then mark all its children as PTE *)
+  match baddr with
+  | Root r => traverse_pgt_from baddr r pa0 l0 stage (mark_cb tid) new_st
+  end.
+
+Definition check_ttbr0_el2_asid
+  (md : trans_msr_data)
+  (addr_id : addr_id_t) : bool :=
+  (* TTBR0_EL2 in non-VHE mode has a Res0 ASID *)
+  match md.(tmd_sysreg), addr_id with
+  | SYSREG_TTBR_EL2, AID aid => aid b=? b0
+  | SYSREG_VTTBR, _ => true
+  end.
+
+Definition context_switch
+  (tid : thread_identifier)
+  (addr_id : addr_id_t)
+  (stage : entry_stage_t)
+  (md : trans_msr_data)
+  (cm : casemate_model_state) : 
+  casemate_model_result :=
+  (* decrement refcount on current root (if applicable) *)
+  let assoc_root := current_thread_context_root tid stage cm in
+  let decr_cm := 
+    match assoc_root with
+    | Some root =>
+      let new_assoc_root := {| 
+        r_baddr := root.(r_baddr);
+        r_id := root.(r_id);
+        r_refcount := root.(r_refcount) - 1 |} in
+      let new_cms_roots := update_cms_root_for_baddr stage (root.(r_baddr)) new_assoc_root cm.(cms_roots) in
+      cm <| cms_roots := new_cms_roots |>
+    | None => cm
+    end in
+
+  (* and increment refcount on cone we just switched to *)
+  let assoc_root := retrieve_root_for_id stage decr_cm.(cms_roots) addr_id in
+  match assoc_root with
+  | Some root =>
+    let new_assoc_root := {| 
+      r_baddr := root.(r_baddr);
+      r_id := root.(r_id);
+      r_refcount := root.(r_refcount) + 1 |} in
+    let new_cms_roots := update_cms_root_for_id stage (root.(r_id)) new_assoc_root cm.(cms_roots) in
+    let incr_cm := decr_cm <| cms_roots := new_cms_roots |> in
+    (* make it the curent context *)
+    let final_cm := update_current_thread_context tid stage root.(r_baddr) incr_cm in
+    Mreturn final_cm
+  | None => Merror (CME_internal_error IET_unexpected_none)
+  end.
+
+Definition stage_from_ttbr
+  (sysreg : ghost_sysreg_kind) : entry_stage_t :=
+  match sysreg with
+  | SYSREG_TTBR_EL2 => S1
+  | SYSREG_VTTBR => S2
+  end.
+
+Definition step_msr 
+  (tid : thread_identifier)
+  (md : trans_msr_data)
+  (cm : casemate_model_state) : 
+  casemate_model_result :=
+  let stage := stage_from_ttbr md.(tmd_sysreg) in
+  let baddr := ttbr_extract_baddr md.(tmd_val) in
+  let addr_id := ttbr_extract_id md.(tmd_val) in
+
+  (* TTBR0_EL2 in non-VHE mode has a Res0 ASID *)
+  if negb (check_ttbr0_el2_asid md addr_id) then
+    Merror (CME_addr_id_error AID_TTBR0_EL2_reserved_zero)
   else
-    (* Add the root to the list of roots*)
-    let new_roots :=
-      match stage with
-        | S2 => cms.(cms_roots) <| cmr_s2 := root :: cms.(cms_roots).(cmr_s2) |>
-        | S1 => cms.(cms_roots) <| cmr_s1 := root :: cms.(cms_roots).(cmr_s1) |>
+    match retrieve_root_for_baddr stage cm.(cms_roots) baddr with
+    | Some assoc_root =>
+      (* if that root with that id exists already, were just context switching *)
+      if (bool_decide (assoc_root.(r_id) = addr_id)) then
+        context_switch tid addr_id stage md cm
+      else
+        (* see if that root is already associated with a different (VM/AS)ID *)
+        Merror (CME_addr_id_error AID_root_already_associated)
+    | None =>
+      let res :=
+        match retrieve_root_for_id stage cm.(cms_roots) addr_id with
+        | Some assoc_root =>
+          if negb (bool_decide (assoc_root.(r_baddr) = baddr)) then
+            Merror (CME_addr_id_error AID_duplicate_addr_id)
+          else if negb (bool_decide (assoc_root.(r_id) = addr_id)) then
+            Merror (CME_addr_id_error AID_root_already_associated)
+          else try_register_root tid addr_id cm baddr stage
+        | None => try_register_root tid addr_id cm baddr stage
+        end in
+      match res.(cmr_data) with
+      | Ok _ _ cm => context_switch tid addr_id stage md cm
+      | _ => res
       end
-    in
-    let new_st := cms <| cms_roots := new_roots |> in
-    (* then mark all its children as PTE *)
-    match root with
-      | Root r => traverse_pgt_from root r pa0 l0 stage (mark_cb tid) new_st
-    end
-.
+    end.
 
-Definition step_msr (tid : thread_identifier) (md : trans_msr_data) (cms : casemate_model_state) : casemate_model_result :=
-  let stage :=
-    match md.(tmd_sysreg) with
-      | SYSREG_TTBR_EL2 => S1
-      | SYSREG_VTTBR => S2
-    end
-  in
-  let root := extract_si_root md.(tmd_val) stage in
-  (* The value written to TTRB is a root, it might be new. *)
-  let roots :=
-    match stage with
-      | S2 =>  cmr_s2
-      | S1 => cmr_s1
-    end cms.(cms_roots)
-  in
-  if si_root_exists root (match stage with | S2 =>  cmr_s2 | S1 => cmr_s1 end cms.(cms_roots)) then
-    Mreturn cms (* If it is already known to be a root, do nothing, it has already been registered *)
-  else
-    (* Otherwise, register it *)
-    register_si_root tid cms root stage
-.
-
-(******************************************************************************************)
-(*                                  Step hint                                             *)
-(******************************************************************************************)
+(** Hint *)
 
 Definition step_hint_set_root_lock
   (root : sm_owner_t)
   (addr : phys_addr_t)
-  (cms : casemate_model_state) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
-    Mreturn (cms <| cms_lock_addr := insert (phys_addr_val (root_val root)) (phys_addr_val addr) cms.(cms_lock_addr)|>)
-.
+    Mreturn (cm <| cms_lock_addr := insert (phys_addr_val (owner_val root)) (phys_addr_val addr) cm.(cms_lock_addr)|>).
 
 Function set_owner_root
   (phys : phys_addr_t)
   (root : sm_owner_t)
-  (cms : casemate_model_state)
+  (cm : casemate_model_state)
   (logs : list log_element)
-  (offs : Z) 
-  {measure Z.abs_nat offs} : 
+  (offs : Z)
+  {measure Z.abs_nat offs} :
   casemate_model_result :=
   if Zle_bool offs 0 then
-    {| cmr_log := logs; cmr_data := Ok _ _ cms |}
+    {| cmr_log := logs; cmr_data := Ok _ _ cm |}
   else
     let addr := phys pa+ (PA (bv_mul_Z_64 b8 (offs - 1))) in
-    match cms !! addr with
-      | None =>
-        {|
-          cmr_log :=
-            logs;
-            cmr_data := Error _ _ (CME_uninitialised "set_owner_root" addr)
-        |}
-      | Some location =>
-        let new_pte :=
-          match location.(sl_pte) with
-            | None => None
-            | Some pte => Some (pte <| eed_owner := root|>) (* actually change the root *)
-          end
-        in
-        (* Write the change to the global state *)
-        let new_loc := location <| sl_pte := new_pte |> in
-        let new_state := cms <|cms_memory := <[ location.(sl_phys_addr) := new_loc ]> cms.(cms_memory) |> in
-        set_owner_root phys root new_state logs (offs - 1)
-    end
-.
+    match cm !! addr with
+    | None =>
+      {|
+        cmr_log :=
+          logs;
+          cmr_data := Error _ _ (CME_uninitialised "set_owner_root" addr)
+      |}
+    | Some location =>
+      let new_pte :=
+        match location.(sl_pte) with
+        | None => None
+        | Some pte => Some (pte <| eed_owner := root|>) (* actually change the root *)
+        end
+      in
+      (* Write the change to the global state *)
+      let new_loc := location <| sl_pte := new_pte |> in
+      let new_state := cm <|cms_memory := <[ location.(sl_phys_addr) := new_loc ]> cm.(cms_memory) |> in
+      set_owner_root phys root new_state logs (offs - 1)
+    end.
+
 Set Warnings "-funind-cannot-build-inversion -funind-cannot-define-graph".
 Proof. lia. Qed.
 Set Warnings "funind-cannot-build-inversion funind-cannot-define-graph".
 
 Definition step_release_cb (ctx : pgtable_traverse_context) : casemate_model_result :=
-    match ctx.(ptc_loc) with
-    | None => Merror (CME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
-    | Some location =>
-      match location.(sl_pte) with
-        | None => Merror (CME_not_a_pte "release_cb" ctx.(ptc_addr))
-        | Some desc =>
-          match desc.(eed_state) with
-            | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
-                Merror (CME_bbm_violation VT_release_unclean ctx.(ptc_addr))
-            | _ => Mreturn ctx.(ptc_state)
-          end
+  match ctx.(ptc_loc) with
+  | None => Merror (CME_uninitialised "step_release_cb"%string ctx.(ptc_addr))
+  | Some location =>
+    match location.(sl_pte) with
+    | None => Merror (CME_not_a_pte "release_cb" ctx.(ptc_addr))
+    | Some desc =>
+      match desc.(eed_state) with
+      | SPS_STATE_PTE_INVALID_UNCLEAN _ =>
+          Merror (CME_bbm_violation BBM_release_unclean ctx.(ptc_addr))
+      | _ => Mreturn ctx.(ptc_state)
       end
-  end
-.
-
+    end
+  end.
 
 Fixpoint remove (x : sm_owner_t) (l : list sm_owner_t) : list sm_owner_t :=
   match l with
-    | nil => nil
-    | y::tl => if bool_decide (x = y) then remove x tl else y::(remove x tl)
-  end
-.
+  | nil => nil
+  | y :: tl => if bool_decide (x = y) then remove x tl else y::(remove x tl)
+  end.
+
+Fixpoint unregister_root
+  (addr : sm_owner_t)
+  (remaining : list cm_root)
+  (roots : list cm_root) : list cm_root :=
+  match roots with
+  | [] => []
+  | root :: tl =>
+    if bool_decide (root.(r_baddr) = addr) then remaining ++ tl
+    else unregister_root addr (remaining ++ [root]) tl
+  end.
 
 Definition try_unregister_root
   (addr : sm_owner_t)
   (cpu : thread_identifier)
-  (cms : casemate_model_state) :
+  (cm : casemate_model_state) :
   casemate_model_result :=
-  match cms !! root_val addr with
+  match cm !! owner_val addr with
+  | None => Merror (CME_internal_error IET_unexpected_none)
+  | Some loc =>
+    match loc.(sl_pte) with
     | None => Merror (CME_internal_error IET_unexpected_none)
-    | Some loc =>
-      match loc.(sl_pte) with
-        | None => Merror (CME_internal_error IET_unexpected_none)
-        | Some pte =>
-          let new_roots :=
-            match pte.(eed_stage) with
-              | S2 => cms.(cms_roots) <| cmr_s2 := remove addr cms.(cms_roots).(cmr_s2) |>
-              | S1 => cms.(cms_roots) <| cmr_s1 := remove addr cms.(cms_roots).(cmr_s1) |>
-            end
-          in
-          let cms := cms <| cms_roots := new_roots |> in
-          traverse_pgt_from_root addr pte.(eed_stage) (unmark_cb cpu) cms
-      end
-  end
-.
+    | Some pte =>
+      let new_roots :=
+        match pte.(eed_stage) with
+        | S2 => cm.(cms_roots) <| cmr_s2 := unregister_root addr [] cm.(cms_roots).(cmr_s2) |>
+        | S1 => cm.(cms_roots) <| cmr_s1 := unregister_root addr [] cm.(cms_roots).(cmr_s1) |>
+        end
+      in
+      let cm := cm <| cms_roots := new_roots |> in
+      traverse_pgt_from_root addr pte.(eed_stage) (unmark_cb cpu) cm
+    end
+  end.
 
 Definition step_release_table
   (cpu : thread_identifier)
   (addr : sm_owner_t)
-  (cms : casemate_model_state) : 
+  (cm : casemate_model_state) :
   casemate_model_result :=
-  match cms !! root_val addr with
-    | None => Merror (CME_uninitialised "release"%string (root_val addr))
-    | Some location =>
-      match location.(sl_pte) with
-        | None => Merror (CME_not_a_pte "release"%string (root_val addr))
-        | Some desc =>
-          let new_st := traverse_pgt_from
-            addr
-            (root_val desc.(eed_owner))
-            desc.(eed_ia_region).(range_start)
-            desc.(eed_level)
-            desc.(eed_stage)
-            step_release_cb
-            cms in
-          Mupdate_state (try_unregister_root (addr) cpu) new_st
-      end
+  match cm !! owner_val addr with
+  | None => Merror (CME_uninitialised "release"%string (owner_val addr))
+  | Some location =>
+    match location.(sl_pte) with
+    | None => Merror (CME_not_a_pte "release"%string (owner_val addr))
+    | Some desc =>
+      let new_st := traverse_pgt_from
+        addr
+        (owner_val desc.(eed_owner))
+        desc.(eed_ia_region).(range_start)
+        desc.(eed_level)
+        desc.(eed_stage)
+        step_release_cb
+        cm in
+      Mupdate_state (try_unregister_root (addr) cpu) new_st
+    end
   end
 .
 
 Definition step_hint_set_pte_thread_owner
   (phys : phys_addr_t)
   (val : sm_owner_t)
-  (cms : casemate_model_state) :
-  casemate_model_result := 
-  match cms !! phys with
-    | None => Merror (CME_uninitialised "set_pte_thread_owner"%string phys)
-    | Some location =>
-      match location.(sl_pte) with
-        | None => Merror (CME_not_a_pte "set_pte_thread_owner"%string phys)
-        | Some _ =>
-          let thread_owner := TID (phys_addr_val (root_val val)) in
-          Mreturn (cms <| cms_memory :=
-            (<[ location.(sl_phys_addr) := location <| sl_thread_owner := Some thread_owner |> ]> cms.(cms_memory))
-          |> )
-      end
+  (cm : casemate_model_state) :
+  casemate_model_result :=
+  match cm !! phys with
+  | None => Merror (CME_uninitialised "set_pte_thread_owner"%string phys)
+  | Some location =>
+    match location.(sl_pte) with
+    | None => Merror (CME_not_a_pte "set_pte_thread_owner"%string phys)
+    | Some _ =>
+      let thread_owner := TID (phys_addr_val (owner_val val)) in
+      Mreturn (cm <| cms_memory :=
+        (<[ location.(sl_phys_addr) := location <| sl_thread_owner := Some thread_owner |> ]> cm.(cms_memory))
+      |> )
+    end
   end
 .
 
 Definition step_hint
   (cpu : thread_identifier)
   (hd : trans_hint_data)
-  (cms : casemate_model_state)
-: casemate_model_result :=
+  (cm : casemate_model_state) :
+  casemate_model_result :=
   match hd.(thd_hint_kind) with
-    | GHOST_HINT_SET_ROOT_LOCK =>
-      (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
-      step_hint_set_root_lock (Root hd.(thd_location)) (root_val hd.(thd_value)) cms
-      (* AFAIK, this only affects the internal locking discipline of the C casemate model and does nothing on the Coq version *)
-    | GHOST_HINT_SET_OWNER_ROOT =>
-      (* When ownership is transferred *)
-      (* Not sure about the size of the iteration *)
-      set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) cms [] z512
-    | GHOST_HINT_RELEASE_TABLE =>
-      step_release_table cpu (Root hd.(thd_location)) cms
-    | GHOST_HINT_SET_PTE_THREAD_OWNER =>
-      (* Set an owner thread of the PTE to track private ownership *)
-      step_hint_set_pte_thread_owner hd.(thd_location) hd.(thd_value) cms
+  | GHOST_HINT_SET_ROOT_LOCK =>
+    (* The types are weird here because of the order is reversed from SET_OWNER_ROOT (the root is first and the address second) *)
+    step_hint_set_root_lock (Root hd.(thd_location)) (owner_val hd.(thd_value)) cm
+    (* AFAIK, this only affects the internal locking discipline of the C casemate model and does nothing on the Coq version *)
+  | GHOST_HINT_SET_OWNER_ROOT =>
+    (* When ownership is transferred *)
+    (* Not sure about the size of the iteration *)
+    set_owner_root (align_4k hd.(thd_location)) hd.(thd_value) cm [] z512
+  | GHOST_HINT_RELEASE_TABLE =>
+    step_release_table cpu (Root hd.(thd_location)) cm
+  | GHOST_HINT_SET_PTE_THREAD_OWNER =>
+    (* Set an owner thread of the PTE to track private ownership *)
+    step_hint_set_pte_thread_owner hd.(thd_location) hd.(thd_value) cm
   end
 .
 
-
-(******************************************************************************************)
-(*                                  Step lock                                             *)
-(******************************************************************************************)
+(*** Lock *)
 
 Definition step_lock
   (cpu : thread_identifier)

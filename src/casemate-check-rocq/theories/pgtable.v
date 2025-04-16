@@ -65,6 +65,34 @@ Definition align_4k (addr : phys_addr_t) : phys_addr_t :=
   PA (bv_and_64 (phys_addr_val addr) _align_4k_big_bv)
 .
 
+Definition TTBR_BADDR_MASK := GENMASK (BV64 47) (BV64 1).
+Definition TTBR_ID_MASK := GENMASK (BV64 63) (BV64 48).
+
+Definition TLBI_PAGE_MASK := GENMASK (BV64 43) (BV64 0).
+Definition TLBI_ASID_MASK := GENMASK (BV64 63) (BV64 48).
+Definition TLBI_TTL_MASK := GENMASK (BV64 47) (BV64 44).
+
+Definition ttbr_extract_baddr (ttb : u64) : sm_owner_t :=
+  Root (PA (bv_and_64 ttb TTBR_BADDR_MASK)).
+
+Definition ttbr_extract_id (ttb : u64) : addr_id_t :=
+  AID (bv_and_64 ttb TTBR_ID_MASK).
+
+(** States about page tables *)
+
+(* Type used as input of the page table visitor function  *)
+Record pgtable_traverse_context := mk_pgtable_traverse_context {
+  ptc_state: casemate_model_state;
+  ptc_loc: option sm_location;
+  ptc_partial_ia: phys_addr_t;
+  ptc_addr: phys_addr_t;
+  ptc_root: sm_owner_t;
+  ptc_level: level_t;
+  ptc_stage: entry_stage_t;
+}.
+#[export] Instance eta_pgtable_traverse_context : Settable _ :=
+  settable! mk_pgtable_traverse_context <ptc_state; ptc_loc; ptc_partial_ia; ptc_addr; ptc_root; ptc_level; ptc_stage>.
+
 Definition is_desc_table (descriptor : u64) (level : level_t) :=
   match level with
   | l3 => false
@@ -258,7 +286,7 @@ Definition traverse_pgt_from_root
   casemate_model_result :=
   traverse_pgt_from 
     root 
-    (root_val root) 
+    (owner_val root) 
     pa0 
     l0 
     stage 
@@ -266,26 +294,26 @@ Definition traverse_pgt_from_root
     cms
 .
 
-(* Generic function (for s1 and s2) to traverse all page tables starting with root in roots *)
-Fixpoint traverse_si_pgt_aux
-  (th : option thread_identifier)
+(* Traverse all page tables starting with a root in roots *)
+Fixpoint traverse_pgt_rec
+  (tid : option thread_identifier)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (stage : entry_stage_t)
-  (roots : list sm_owner_t)
+  (roots : list cm_root)
   (res : casemate_model_result) :
   casemate_model_result :=
   match roots, res.(cmr_data) with
   | [], _ => res
   (* If the state is failed, there is no point in going on *)
   | _, Error _ _ _ => res
-  | r :: q, _ =>
-    let res := Mupdate_state (traverse_pgt_from r (root_val r) pa0 l0 stage visitor_cb) res in
-    traverse_si_pgt_aux th visitor_cb stage q res
+  | {| r_baddr := baddr; r_id := _; r_refcount := _ |} :: q, _ =>
+    let res := Mupdate_state (traverse_pgt_from baddr (owner_val baddr) pa0 l0 stage visitor_cb) res in
+    traverse_pgt_rec tid visitor_cb stage q res
   end
 .
 
 (* Generic function to traverse all S1 or S2 roots *)
-Definition traverse_si_pgt
+Definition traverse_pgt
   (th : option thread_identifier)
   (cms : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
@@ -297,16 +325,16 @@ Definition traverse_si_pgt
     | S1 => cms.(cms_roots).(cmr_s1)
     end
   in
-  traverse_si_pgt_aux th visitor_cb stage roots (Mreturn cms)
+  traverse_pgt_rec th visitor_cb stage roots (Mreturn cms)
 .
 
 Definition traverse_all_pgt
   (th : option thread_identifier)
   (cms : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result) :=
-  match traverse_si_pgt th cms visitor_cb S1 with
+  match traverse_pgt th cms visitor_cb S1 with
   | {| cmr_log := logs; cmr_data := Ok _ _ cms |} => 
-    let res := traverse_si_pgt th cms visitor_cb S2 in
+    let res := traverse_pgt th cms visitor_cb S2 in
     res <| cmr_log := res.(cmr_log) ++ logs |>
   | err => err
   end
