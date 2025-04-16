@@ -41,121 +41,165 @@ let barrier_kind = function
   | Atom "sy"    -> MBReqDomain_FullSystem
   | sexp         -> of_sexp_error "bad barrier kind" sexp
 
-let tlbi_op = function
-| `DALL     -> TLBIOp_DALL        
-| `DASID    -> TLBIOp_DASID       
-| `DVA      -> TLBIOp_DVA         
-| `IALL     -> TLBIOp_IALL        
-| `IASID    -> TLBIOp_IASID       
-| `IVA      -> TLBIOp_IVA         
-| `ALL      -> TLBIOp_ALL         
-| `ASID     -> TLBIOp_ASID        
-| `IPAS2    -> TLBIOp_IPAS2       
-| `VAA      -> TLBIOp_VAA         
-| `VA       -> TLBIOp_VA          
-| `VMALL    -> TLBIOp_VMALL       
-| `VMALLS12 -> TLBIOp_VMALLS12    
-| `RIPAS2   -> TLBIOp_RIPAS2      
-| `RVAA     -> TLBIOp_RVAA        
-| `RVA      -> TLBIOp_RVA         
-| `RPA      -> TLBIOp_RPA         
-| `PAALL    -> TLBIOp_PAALL       
-and regime_of = function
-| `EL3  -> Regime_EL3   
-| `EL30 -> Regime_EL30  
-| `EL2  -> Regime_EL2   
-| `EL20 -> Regime_EL20  
-| `EL10 -> Regime_EL10
-and shareability = function
-| `NSH -> Shareability_NSH
-| `ISH -> Shareability_ISH
-| `OSH -> Shareability_OSH
-and of_level sexp = match int sexp with
-| 0 | 1 | 2 -> TLBILevel_Any
-| 3 -> TLBILevel_Last
-| _ -> of_sexp_error "bad level" sexp
+let barrier_of barrier_name tl =
+  match barrier_name with
+  | Atom "dsb" -> (
+      match tl with
+      | List [ Atom "kind"; kind ] :: tl -> (Barrier_DSB (barrier_kind kind), tl)
+      | sexpr -> of_sexp_error "Bad barrier kind" (List sexpr))
+  | Atom "isb" -> (Barrier_ISB (), tl)
+  | sexpr -> of_sexp_error "Bad barrier name" sexpr
 
-let tlbi ?level ?addr ~regime ~shr op =
-  let level = match level with Some i -> of_level i | _ -> TLBILevel_Any
-  and address = match addr with Some a -> u64 a | _ -> Z0.zero
-  in {
-    tLBI_shareability = shareability shr;
-    tLBI_rec = {
-      tLBIRecord_op      = tlbi_op op;
-      tLBIRecord_regime  = regime_of regime;
-      tLBIRecord_level   = level;
-      tLBIRecord_address = address };
-  }
-
-let tlbi_of kind addr level sexp0 = match kind, addr, level with
-| "vmalls12e1",   None,      None -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`NSH
-| "vmalls12e1is", None,      None -> tlbi `VMALLS12 ~regime:`EL10 ~shr:`ISH
-| "vmalle1is",    None,      None -> tlbi `VMALL    ~regime:`EL10 ~shr:`ISH
-| "alle1is",      None,      None -> tlbi `ALL      ~regime:`EL10 ~shr:`ISH
-| "vmalle1",      None,      None -> tlbi `VMALL    ~regime:`EL10 ~shr:`NSH (* XXX ? *)
-| "vae2is",       Some addr, Some level -> tlbi `VA ~regime:`EL2 ~shr:`ISH ~addr ~level
-| "ipas2e1is",    Some addr, Some level -> tlbi `IPAS2 ~regime:`EL10 ~shr:`NSH ~addr ~level
-| "vale2is",      Some addr, Some level -> tlbi `VA ~regime:`EL2 ~shr:`ISH ~addr ~level
-| _ -> of_sexp_error "bad tlbi" sexp0
+let tlbi_of tlbi_name tl =
+  match tlbi_name with
+  | Atom "vmalls12e1" ->
+      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1; ttd_value = b0 },
+        tl )
+  | Atom "vmalls12e1is" ->
+      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1is; ttd_value = b0 },
+        tl )
+  | Atom "vmalle1is" ->
+      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalle1is; ttd_value = b0 }, tl)
+  | Atom "alle1is" ->
+      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_alle1is; ttd_value = b0 }, tl)
+  | Atom "vae2" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vae2; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
+  | Atom "vale2is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vale2is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
+  | Atom "vae2is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_vae2is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
+  | Atom "ipas2e1is" -> (
+      match tl with
+      | List [ Atom "value"; value ] :: tl ->
+          ( CMSD_TRANS_HW_TLBI
+              { ttd_tlbi_kind = TLBI_ipas2e1is; ttd_value = u64 value },
+            tl )
+      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
+  | sexp -> of_sexp_error "Bad tlbi" sexp
 
 let transition sexp =
   let data, id, tid, tl = match sexp with
-  | List (Atom "mem-write" :: id :: tid ::
-        List [Atom "mem-order"; o] :: List [Atom "address"; a] :: List [Atom "value"; v] :: tl) ->
-      CMSD_TRANS_HW_MEM_WRITE { twd_mo = mem_write_order o; twd_phys_addr = u64 a; twd_val = u64 v },
-      id, tid, tl
-  | List (Atom "mem-set" :: id :: tid::
-        List [Atom "address"; a] :: List [Atom "size"; s] :: List [Atom "value"; v] :: tl) ->
-      if u64 s <> ~$4096 then of_sexp_error "bad mem-set size" sexp else
-      CMSD_TRANS_HW_MEM_WRITE { twd_mo = WMO_page; twd_phys_addr = u64 a; twd_val = u64 v },
-      id, tid, tl
-  | List (Atom "mem-read" :: id :: tid::
-        List [Atom "address"; a] :: List [Atom "value"; v] :: tl) ->
-      CMSD_TRANS_HW_MEM_READ { trd_phys_addr = u64 a; trd_val = u64 v },
-      id, tid, tl
-  | List (Atom "mem-init" :: id :: tid::
-        List [Atom "address"; a] :: List [Atom "size"; s] :: tl) ->
-      CMSD_TRANS_ABS_MEM_INIT { tid_addr = u64 a; tid_size = u64 s },
-      id, tid, tl
-  | List (Atom "barrier" :: id :: tid :: Atom "isb" :: tl) ->
-      CMSD_TRANS_HW_BARRIER (Barrier_ISB ()), id, tid, tl
-  | List (Atom "barrier" :: id :: tid :: Atom "dsb" :: List [Atom "kind"; kind] :: tl) ->
-      CMSD_TRANS_HW_BARRIER (Barrier_DSB (barrier_kind kind)), id, tid, tl
-  | List (Atom "tlbi" :: id :: tid::
-        Atom kind :: List [Atom "addr"; a] :: List [Atom "level"; level] :: tl) ->
-      CMSD_TRANS_HW_TLBI (tlbi_of kind (Some a) (Some level) sexp), id, tid, tl
-  | List (Atom "tlbi" :: id :: tid:: Atom kind :: tl) ->
-      CMSD_TRANS_HW_TLBI (tlbi_of kind None None sexp), id, tid, tl
-  | List (Atom "sysreg-write" :: id :: tid::
-        List [Atom "sysreg"; sysreg] :: List [Atom "value"; v] :: tl) ->
-      CMSD_TRANS_HW_MSR { tmd_sysreg = msr_sysreg sysreg; tmd_val = u64 v },
-      id, tid, tl
-  | List (Atom "hint" :: id :: tid::
-        List [Atom "kind"; kind] :: List [Atom "location"; loc] :: List [Atom "value"; v] :: tl) ->
-      CMSD_TRANS_HINT { thd_hint_kind = hint_kind kind; thd_location = u64 loc; thd_value = u64 v },
-      id, tid, tl
-  | List (Atom "lock" :: id :: tid :: List [ Atom "address"; addr ] :: tl) ->
-    (CMSD_TRANS_ABS_LOCK (u64 addr), id, tid, tl)
-  | List (Atom "unlock" :: id :: tid :: List [ Atom "address"; addr ] :: tl) ->
-    (CMSD_TRANS_ABS_UNLOCK (u64 addr), id, tid, tl)
+  | List
+      (Atom "mem-write"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "mem-order"; order ]
+      :: List [ Atom "address"; addr ]
+      :: List [ Atom "value"; value ]
+      :: tl) ->
+        CMSD_TRANS_HW_MEM_WRITE { twd_mo = mem_write_order order; twd_phys_addr = u64 addr; twd_val = u64 value },
+        id, tid, tl
+  | List
+      (Atom "mem-read"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: List [ Atom "value"; value ]
+      :: tl) ->
+        CMSD_TRANS_HW_MEM_WRITE { twd_mo = WMO_page; twd_phys_addr = u64 addr; twd_val = u64 value },
+        id, tid, tl
+  | List
+      (Atom "barrier"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: barrier_name :: tl) ->
+      let barrier, tl = barrier_of barrier_name tl in
+      (CMSD_TRANS_HW_BARRIER barrier, id, tid, tl)
+  | List
+      (Atom "tlbi"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: tlbi_name :: tl) ->
+      let tlbi, tl = tlbi_of tlbi_name tl in
+      (tlbi, id, tid, tl)
+  | List
+      (Atom "sysreg-write"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "sysreg"; sysreg ]
+      :: List [ Atom "value"; value ]
+      :: tl) ->
+        CMSD_TRANS_HW_MSR { tmd_sysreg = msr_sysreg sysreg; tmd_val = u64 value },
+        id, tid, tl
+  | List
+      (Atom "mem-init"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: List [ Atom "size"; size ]
+      :: tl) ->
+        CMSD_TRANS_ABS_MEM_INIT { tid_addr = u64 addr; tid_size = u64 size },
+        id, tid, tl
+  | List
+      (Atom "mem-set"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: List [ Atom "size"; size ]
+      :: List [ Atom "value"; value ]
+      :: tl) ->
+        CMSD_TRANS_ABS_MEMSET { tmd_addr = u64 addr; tmd_size = u64 size; tmd_value = u64 value },
+        id, tid, tl
+  | List
+      (Atom "lock"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: tl) ->
+      (CMSD_TRANS_ABS_LOCK (u64 addr), id, tid, tl)
+  | List
+      (Atom "unlock"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: tl) ->
+      (CMSD_TRANS_ABS_UNLOCK (u64 addr), id, tid, tl)
+  | List
+      (Atom "hint"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "kind"; kind ]
+      :: List [ Atom "location"; loc ]
+      :: List [ Atom "value"; value ]
+      :: tl) ->
+        CMSD_TRANS_HINT { thd_hint_kind = hint_kind kind; thd_location = u64 loc; thd_value = u64 value; },
+        id, tid, tl
   | sexp -> of_sexp_error "bad event" sexp
   in
-  let id = match id with
-    | List [Atom "id"; id] -> int id
-    | sexp -> of_sexp_error "bad id" sexp
-  and tid = match tid with
-    | List [Atom "tid"; tid] -> u64 tid
-    | sexp -> of_sexp_error "bad tid" sexp
-  and loc = match tl with
-    | [List [Atom "src"; Atom _loc]] -> None
+  let loc =
+    match tl with
+    | List [ Atom "src"; Atom loc_str ] :: _ -> (
+        (* Now loc_str is a string like "file.c:123" *)
+        match String.split_on_char ':' loc_str with
+        | [ file; lineno ] ->
+            Some
+              { sl_file = file; sl_lineno = int_of_string lineno; sl_func = "" }
+        | _ ->
+            of_sexp_error "Malformed src format (expected file:line)"
+              (List [ Atom "src"; Atom loc_str ]))
     | [] -> None
     | sexp -> of_sexp_error "bad location or extra data" (List sexp)
   in
   Some {
     cms_src_loc = loc;
-    cms_id = id;
-    cms_thread_identifier = tid;
-    cms_data = data
+    cms_id = int id;
+    cms_thread_identifier = u64 tid;
+    cms_data = data;
   }
-
+  
 let of_line line = Sexplib.Sexp.of_string_conv_exn line transition
