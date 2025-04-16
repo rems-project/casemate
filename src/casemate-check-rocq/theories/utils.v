@@ -165,14 +165,6 @@ Inductive internal_error_type :=
   | IET_no_write_authorization
 .
 
-Fixpoint nth_opt {A : Type} (n : nat) (l : list A) {struct l} : option A :=
-  match n, l with
-  | O, x :: l' => Some x
-  | O, _ => None
-  | S m, nil => None
-  | S m, x :: t => nth_opt m t
-  end.
-
 Fixpoint idx_of {A : Type} (f : A -> bool) (acc : nat) (l : list A) {struct l} : nat :=
   match l with
   | nil => acc
