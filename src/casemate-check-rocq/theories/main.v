@@ -3,7 +3,6 @@ Require Export utils.
 Require Export transitions.
 Require Export model.
 Require Export pgtable.
-Require Export step.
 
 Fixpoint steps
   (transitions : list casemate_model_step)
