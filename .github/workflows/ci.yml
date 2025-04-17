@@ -16,10 +16,6 @@ concurrency:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        version: [4.14.1]
-
 
     runs-on: ubuntu-22.04
 
@@ -49,4 +45,68 @@ jobs:
     - name: Run tests
       working-directory: rems-project/casemate
       run: |
-        make checks
+        make check-examples
+
+  build_rocq:
+    strategy:
+      matrix:
+        version: [4.14.1]
+
+    runs-on: ubuntu-22.04
+
+    steps:
+
+    - run: mkdir -p rems-project
+
+    - uses: actions/checkout@v3
+      with:
+        path: rems-project/casemate
+
+    - name: System dependencies (ubuntu)
+      run: |
+        sudo apt update
+        sudo apt install build-essential opam
+
+    - name: Restore OPAM cache
+      id: cache-opam-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.opam
+        key: ${{ matrix.version }}
+  
+    - name: Setup OPAM
+      if: steps.cache-opam-restore.outputs.cache-hit != 'true'
+      working-directory: rems-project/casemate/src/casemate-check-rocq
+      run: |
+        opam init --yes --no-setup --shell=sh --compiler=${{ matrix.version }}
+        eval $(opam env --switch=${{ matrix.version }})
+        opam repo add --yes iris-dev https://gitlab.mpi-sws.org/iris/opam.git
+        opam pin add --yes --no-action https://github.com/tchajed/coq-record-update.git
+        opam install --deps-only --yes .
+        opam install --yes .
+    
+    - name: Save OPAM cache
+      uses: actions/cache/save@v4
+      if: steps.cache-opam-restore.outputs.cache-hit != 'true'
+      with:
+        path: ~/.opam
+        key: ${{ matrix.version }}
+
+    - name: Install Casemate-rocq
+      working-directory: rems-project/casemate/src/casemate-check-rocq
+      run: |
+        opam switch ${{ matrix.version }}
+        eval $(opam env --switch=${{ matrix.version }})
+        opam install --yes .
+
+    - name: Configure
+      working-directory: rems-project/casemate
+      run: |
+        ./configure
+
+    - name: Run Rocq checks
+      working-directory: rems-project/casemate
+      run: |
+        opam switch ${{ matrix.version }}
+        eval $(opam env --switch=${{ matrix.version }})
+        make check-rocq
