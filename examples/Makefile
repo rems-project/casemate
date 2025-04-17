@@ -1,4 +1,4 @@
-.PHONY: build clean logs list-build-objs
+.PHONY: build clean logs checks list-build-objs
 
 build-objs += simple
 build-objs += good_write
@@ -40,22 +40,20 @@ test_logs = $(patsubst %,$(src)/tests/%.log,$(build-objs))
 
 common_obj = $(src)/common.o
 
-test_checks = $(patsubst %,check-%,$(build-objs))
-
-checks: $(test_checks)
 expected: $(test_expects)
-logs: $(test_logs)
 
 .PRECIOUS: $(common_obj) $(test_objs) $(test_logs)
 
 $(src)/%: $(src)/tests/%.o $(common_obj) $(casemate_o)
 	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
 
-$(src)/tests/%.log: FORCE
-	$(call run_cmd,RUN,$(src)/$*,test -f $(src)/$* && ($(src)/$* -at 1> $@ 2>/dev/null || true))
+check-examples: FORCE
+	$(call run_cmd,CHECK,examples,$(src)/scripts/run_tests.py --examples)
 
-check-%: $(src)/tests/%.log FORCE
-	$(call run_cmd,CHECK,$(src)/$*,$(src)/scripts/check_simulation.py $< $(src)/$(EXPECTEDDIR)/$*.log)
+check-rocq: FORCE
+	$(call run_cmd,CHECK,examples,$(src)/scripts/run_tests.py --rocq)
+
+checks: check-examples check-rocq
 
 clean-%:
 	$(call run_clean,$(src)/$*,rm -f $(src)/$* $(src)/tests/$*.o $(src)/tests/$*.log)
