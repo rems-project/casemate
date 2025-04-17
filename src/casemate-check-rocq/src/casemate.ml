@@ -56,16 +56,29 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
     if Result.is_error res.cmr_data then Fmt.pr "@[%a@]@." pp_tr trans;
     res.cmr_data
   in
-  Iters.fold_result step_ cms_init xs |> Fmt.pr "@[%a@]@." pp_step_result
+  let res = Iters.fold_result step_ cms_init xs in
+  Fmt.pr "@[%a@]@." pp_step_result res;
+  res
 
 (** Cmdline args **)
 
 open Cmdliner
 
 let ( $$ ) f a = Term.(const f $ a)
-let info = Cmd.info "parser" ~doc:"Describe me"
 
-let term =
+let step_error : Cmd.Exit.code = 121
+
+let exits =
+  Cmd.Exit.defaults @ [ Cmd.Exit.info step_error ~doc:"on bad model step." ]
+
+let exit_of_step r =
+  match r with
+  | Ok _ -> Ok Cmd.Exit.ok
+  | Error _ -> Ok step_error
+
+let info = Cmd.info "parser" ~doc:"Describe me" ~exits:exits
+
+let term : Cmd.Exit.code Term.t =
   let open Arg in
   let trace =
     value
@@ -92,10 +105,12 @@ let term =
     (fun read write limit dump_state dump_roots dump_trans trace ->
       match (read, write, trace) with
       | None, None, Some f ->
-          Ok (run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Text f))
+          run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Text f) |> exit_of_step
       | Some f, None, None ->
-          Ok (run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Bin f))
-      | None, Some e, Some f -> Ok (pre_parse e f)
+          run_model ~dump_state ~dump_roots ~dump_trans ?limit (`Bin f) |> exit_of_step
+      | None, Some e, Some f ->
+        let () = pre_parse e f in
+        Ok Cmd.Exit.ok
       | None, None, None -> Error "No input."
       | _ -> Error "Invalid arguments.")
     $$ read $ write $ limit $ dump_s $ dump_r $ dump_t $ trace)
@@ -103,4 +118,4 @@ let term =
 
 let _ =
   Fmt_tty.setup_std_outputs ();
-  Cmd.v info term |> Cmd.eval
+  Cmd.v info term |> Cmd.eval' |> exit
