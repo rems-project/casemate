@@ -1,5 +1,5 @@
 .PHONY: build clean
-.PHONY: checks example-traces
+.PHONY: checks example-traces check-examples check-rocq
 .PHONY: casemate casemate-check casemate-lib
 .PHONY: help
 
@@ -53,5 +53,10 @@ clean:
 example-traces:
 	$(call build_subdir,RUN,examples,logs)
 
-checks:
-	$(call build_subdir,RUN,examples,checks)
+check-rocq:
+	$(call build_subdir,RUN,examples,check-rocq)
+
+check-examples:
+	$(call build_subdir,RUN,examples,check-examples)
+
+checks: check-examples check-rocq
