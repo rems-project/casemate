@@ -1711,9 +1711,6 @@ void step(struct casemate_model_step trans)
 	touched_watchpoint = false;
 	traced_current_trans = false;
 
-	if (!is_initialised)
-		goto out;
-
 	if (!opts()->enable_checking)
 		goto out;
 
@@ -1757,6 +1754,9 @@ out:
 
 void casemate_model_step(struct casemate_model_step trans)
 {
+	if (!LOAD_RLX(is_initialised))
+		return;
+
 	lock_sm();
 	step(trans);
 	unlock_sm();
