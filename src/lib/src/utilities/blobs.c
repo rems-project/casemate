@@ -12,7 +12,7 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size) {
 		the_ghost_state->memory.blobs_backing[i].valid = false;
 		the_ghost_state->memory.ordered_blob_list[i] = 0xDEADDEADDEADDEAD;
 	}
-	is_initialised = true;
+	STORE_RLX(is_initialised, true);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
