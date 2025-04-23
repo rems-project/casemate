@@ -3,8 +3,7 @@
 
 #include <casemate-impl/types.h>
 
-#ifndef __KVM_NVHE_HYPERVISOR__
-
+#ifndef CONFIG_LINUX
 #define GHOST_WHITE_ON_BLACK "\033[40;37;1m"
 #define GHOST_WHITE_ON_RED "\033[41;37;1m"
 #define GHOST_WHITE_ON_GREEN "\033[42;37;1m"
@@ -13,19 +12,11 @@
 #define GHOST_WHITE_ON_MAGENTA "\033[45;37;1m"
 #define GHOST_WHITE_ON_CYAN "\033[46;37;1m"
 #define GHOST_NORMAL "\033[0m"
+#endif /* CONFIG_LINUX */
 
+#ifndef CONFIG_HAS_PRINTF
 int ghost_printf(const char *fmt, ...);
-
-#else  /* __KVM_NVHE_HYPERVISOR__ */
-
-#ifdef GHOST_USES_SERIAL
-#include <nvhe/ghost/ghost_serial.h>
-#else
-#include <nvhe/ghost/ghost_extra_debug-pl011.h>
-#endif /* GHOST_USES_SERIAL */
-#include <nvhe/ghost/ghost_printer.h>
-
-#endif /* __KVM_NVHE_HYPERVISOR__ */
+#endif
 
 /**
  * ghost_fprintf() - fprintf-like function that uses the ghost driver.
