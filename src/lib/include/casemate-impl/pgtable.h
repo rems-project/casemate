@@ -5,6 +5,7 @@
 
 #include <casemate-impl/types.h>
 #include <casemate-impl/bitwise.h>
+#include <casemate-impl/state.h>
 
 /*
  * Concrete masks, and field bitpatterns for a variety of PTE bits

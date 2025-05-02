@@ -2,6 +2,7 @@
 #define CASEMATE_MODEL_STATE_H
 
 #include <casemate.h>
+#include <casemate-impl/state.h>
 #include <casemate-impl/options.h>
 
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)

@@ -8,11 +8,11 @@
  *
  * Users should implement this if they want to use the helper macros.
  */
-extern u64 casemate_cpu_id(void);
+extern uint64_t casemate_cpu_id(void);
 #define THREAD_ID casemate_cpu_id()
 
 #define casemate_model_step_write(...) __casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc, enum memory_order_t mo, phys_addr_t phys, u64 val)
+static inline void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo, uint64_t phys, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -30,7 +30,7 @@ static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc, 
 }
 
 #define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, phys_addr_t phys, u64 val)
+static inline void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -47,7 +47,7 @@ static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, p
 }
 
 #define casemate_model_step_dsb(...) __casemate_model_step_dsb(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, enum dxb_kind kind)
+static inline void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -64,7 +64,7 @@ static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, en
 }
 
 #define casemate_model_step_isb() __casemate_model_step_isb(THREAD_ID, SRC_LOC)
-static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
+static inline void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -80,7 +80,7 @@ static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 }
 
 #define casemate_model_step_tlbi_reg(...) __casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc, enum tlbi_kind kind, u64 value)
+static inline void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind, uint64_t value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -97,7 +97,7 @@ static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_lo
 }
 
 #define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, enum tlbi_kind kind)
+static inline void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -119,7 +119,7 @@ static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc, e
 	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, u64 val)
+static inline void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -136,7 +136,7 @@ static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc, en
 }
 
 #define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc, enum ghost_hint_kind kind, u64 location, u64 value)
+static inline void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind, uint64_t location, uint64_t value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -151,7 +151,7 @@ static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc, e
 }
 
 #define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u64 location, u64 size)
+static inline void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location, uint64_t size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -168,7 +168,7 @@ static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u
 }
 
 #define casemate_model_step_memset(...) __casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc, u64 location, u64 value, u64 size)
+static inline void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location, uint64_t value, uint64_t size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -186,7 +186,7 @@ static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc,
 }
 
 #define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u64 address)
+static inline void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -202,7 +202,7 @@ static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u
 }
 
 #define casemate_model_step_unlock(...) __casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_unlock(u64 tid, struct src_loc src_loc, u64 address)
+static inline void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,

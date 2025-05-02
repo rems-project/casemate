@@ -30,8 +30,6 @@ casemate-obj += src/utilities/diff.o
 
 headers-deps += include/casemate-in/casemate-config.in.h
 headers-deps += include/casemate-in/casemate-helpers.in.h
-headers-deps += include/casemate-in/casemate-state.in.h
-headers-deps += include/casemate-in/casemate-ghost-types.in.h
 headers-deps += include/casemate-in/casemate-transitions.in.h
 headers-deps += include/casemate-in/casemate-version.in.h
 headers-deps += include/casemate-in/casemate.out.h

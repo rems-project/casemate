@@ -13,8 +13,6 @@ compile_commands = []
 
 template = (INCLUDE / "casemate-in" / "casemate.out.h").read_text()
 helpers = (INCLUDE / "casemate-in" / "casemate-helpers.in.h").read_text()
-ghost = (INCLUDE / "casemate-in" / "casemate-ghost-types.in.h").read_text()
-state = (INCLUDE / "casemate-in" / "casemate-state.in.h").read_text()
 transitions = (INCLUDE / "casemate-in" / "casemate-transitions.in.h").read_text()
 config = (INCLUDE / "casemate-in" / "casemate-config.in.h").read_text()
 version = (INCLUDE / "casemate-in" / "casemate-version.in.h").read_text().strip()
@@ -25,9 +23,6 @@ def make_header(template):
     (
       template
       .replace(
-          "CASEMATE_STATE_H",
-          state,
-      ).replace(
           "CASEMATE_TRANSITIONS_H",
           transitions,
       ).replace(
@@ -36,9 +31,6 @@ def make_header(template):
       ).replace(
           "CASEMATE_CONFIG_H",
           config
-      ).replace(
-          "CASEMATE_GHOST_H",
-          ghost
       ).replace(
           "CASEMATE_VERSION_H",
           version
