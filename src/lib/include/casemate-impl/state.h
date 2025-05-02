@@ -1,3 +1,7 @@
+#ifndef CASEMATE_STATE_H
+#define CASEMATE_STATE_H
+
+#include <casemate-impl/types.h>
 
 /*
  * Model types
@@ -428,3 +432,5 @@ struct casemate_model_state {
 };
 
 int ghost_dump_model_state(void *arg, struct casemate_model_state *st);
+
+#endif /* CASEMATE_STATE_H */
