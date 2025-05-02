@@ -98,6 +98,7 @@ u64 casemate_cpu_id(void)
 
 void *initialise_casemate(void)
 {
+	int err;
 	void *st;
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
 	u64 sm_size = 2 * sizeof(struct casemate_model_state);
@@ -130,7 +131,10 @@ void *initialise_casemate(void)
 	opts.enable_tracing = SHOULD_TRACE;
 
 	st = malloc(sm_size);
-	initialise_casemate_model(&opts, 0, 0, (u64)st, sm_size);
+	err = initialise_casemate_model(&opts, 0, 0, st, sm_size);
+	if (err)
+		assert(false);
+
 	initialise_ghost_driver(&sm_driver);
 	return st;
 }

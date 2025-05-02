@@ -2,6 +2,7 @@
 #define COMMON_H
 
 #include <casemate.h>
+#include <casemate-impl/types.h>
 
 void common_init(int argc, char **argv);
 

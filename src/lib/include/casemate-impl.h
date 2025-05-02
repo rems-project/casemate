@@ -23,6 +23,8 @@
 #include <casemate-impl/arch.h>
 #include <casemate-impl/pgtable.h>
 
+#include <casemate-impl/state.h>
+
 #include <casemate-impl/model.h>
 
 #endif /* CASEMATE_IMPL_H */
