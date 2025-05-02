@@ -30,8 +30,7 @@ jobs:
     - name: System dependencies (ubuntu)
       run: |
         sudo apt update
-        sudo apt install build-essential
-        sudo apt install clang-format-15
+        sudo apt install -y build-essential clang clang-format-15
 
     - name: Configure
       working-directory: rems-project/casemate
@@ -72,7 +71,7 @@ jobs:
     - name: System dependencies (ubuntu)
       run: |
         sudo apt update
-        sudo apt install build-essential opam
+        sudo apt install -y build-essential clang opam
 
     - name: Restore OPAM cache
       id: cache-opam-restore
@@ -80,7 +79,7 @@ jobs:
       with:
         path: ~/.opam
         key: ${{ matrix.version }}
-  
+
     - name: Setup OPAM
       if: steps.cache-opam-restore.outputs.cache-hit != 'true'
       working-directory: rems-project/casemate/src/casemate-check-rocq
@@ -91,7 +90,7 @@ jobs:
         opam pin add --yes --no-action https://github.com/tchajed/coq-record-update.git
         opam install --deps-only --yes .
         opam install --yes .
-    
+
     - name: Save OPAM cache
       uses: actions/cache/save@v4
       if: steps.cache-opam-restore.outputs.cache-hit != 'true'
