@@ -27,6 +27,7 @@ casemate-obj += src/utilities/blobs.o
 casemate-obj += src/utilities/state_utils.o
 casemate-obj += src/utilities/printer.o
 casemate-obj += src/utilities/diff.o
+casemate-objs := $(addprefix $(src)/,$(casemate-obj))
 
 headers-deps += include/casemate-in/casemate-config.in.h
 headers-deps += include/casemate-in/casemate-helpers.in.h
@@ -51,8 +52,8 @@ $(src)/casemate.h: $(src)/include/casemate.h
 
 clean:
 	$(call run_clean,$(src)/includes, $(src)/include/casemate.h)
-	$(call run_clean,$(src)/src/, $(addprefix $(src)/,$(casemate-obj) $(patsubst %.o,%.o.cmd,$(casemate-obj))))
-	$(call run_clean,$(src)/casemate.o, $(src)/casemate.o)
+	$(call run_clean,$(src)/src/,$(casemate-objs) $(call obj-aux-files, $(casemate-objs)))
+	$(call run_clean,$(src)/casemate.o, $(src)/casemate.o $(call obj-aux-files, $(src)/casemate.o))
 
 fmt:
 	$(call run_cmd,FMT,clang-format,\

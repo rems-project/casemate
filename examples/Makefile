@@ -37,6 +37,7 @@ EXPECTEDDIR = expected
 test_objs = $(patsubst %,$(src)/tests/%.o,$(build-objs))
 test_expects = $(patsubst %,$(src)/$(EXPECTEDDIR)/%.log,$(build-objs))
 test_logs = $(patsubst %,$(src)/tests/%.log,$(build-objs))
+src-build-objs := $(addprefix $(src)/, $(build-objs))
 
 common_obj = $(src)/common.o
 
@@ -55,12 +56,9 @@ check-rocq: FORCE
 
 checks: check-examples check-rocq
 
-clean-%:
-	$(call run_clean,$(src)/$*,rm -f $(src)/$* $(src)/tests/$*.o $(src)/tests/$*.log)
-
-clean_objs = $(patsubst %,clean-%,$(build-objs))
-clean: $(clean_objs)
-	$(call run_clean,$(src)/common.o,rm -f $(common_obj))
+clean:
+	$(call run_clean,$(src)/common.o,$(common_obj) $(call obj-aux-files, $(common_obj)))
+	$(call run_clean,$(src)/tests/,$(src-build-objs) $(call obj-aux-files, $(src-build-objs)))
 
 clean-expected:
 	$(call run_clean,$(src)/$(EXPECTEDDIR),rm -f $(src)/$(EXPECTEDDIR)/*.log)

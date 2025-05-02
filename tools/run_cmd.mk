@@ -13,6 +13,10 @@ define run_clean
 	)
 endef
 
+define obj-aux-files
+	$(patsubst %.o, %.o.cmd, $1) $(patsubst %.o, %.d, $1) $(patsubst %.o, %.o.S, $1)
+endef
+
 define run_cc
 $(call run_cmd,CC,$1, \
 		echo $(CC) $(CFLAGS) -c $1 -o $2 > $2.cmd \

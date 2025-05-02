@@ -20,8 +20,8 @@ $(root)/casemate-check: $(check-obj)
 	$(call run_cp,$(root)/src/casemate-check-c/casemate-check,$(root)/casemate-check)
 
 clean:
-	$(call run_clean,$(src)/src,rm -f $(build-objs))
-	$(call run_clean,$(check-obj),rm -f $(check-obj))
+	$(call run_clean,$(src)/src,$(build-objs) $(call obj-aux-files, $(build-objs)))
+	$(call run_clean,$(check-obj),$(check-obj) $(call obj-aux-files, $(check-obj)))
 
 fmt:
 	$(call run_cmd,FMT,clang-format,\
