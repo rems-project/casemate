@@ -39,19 +39,19 @@ struct sm_tlbi_op_method {
 	enum sm_tlbi_op_method_kind kind;
 	union {
 		struct tlbi_op_method_by_address_data {
-			u64 page;
+			uint64_t page;
 
 			bool has_level_hint;
-			u8 level_hint;
+			uint8_t level_hint;
 
 			bool has_asid;
-			u8 asid;
+			uint8_t asid;
 
 			bool affects_last_level_only;
 		} by_address_data;
 
 		struct tlbi_op_method_by_address_space_id_data {
-			u64 asid_or_vmid;
+			uint64_t asid_or_vmid;
 		} by_id_data;
 	};
 };
@@ -130,13 +130,13 @@ struct ghost_hw_step {
 	union {
 		struct trans_write_data {
 			enum memory_order_t mo;
-			u64 phys_addr;
-			u64 val;
+			uint64_t phys_addr;
+			uint64_t val;
 		} write_data;
 
 		struct trans_read_data {
-			u64 phys_addr;
-			u64 val;
+			uint64_t phys_addr;
+			uint64_t val;
 		} read_data;
 
 		struct trans_barrier_data {
@@ -146,12 +146,12 @@ struct ghost_hw_step {
 
 		struct trans_tlbi_data {
 			enum tlbi_kind tlbi_kind;
-			u64 value;
+			uint64_t value;
 		} tlbi_data;
 
 		struct trans_msr_data {
 			enum ghost_sysreg_kind sysreg;
-			u64 val;
+			uint64_t val;
 		} msr_data;
 	};
 };
@@ -182,18 +182,18 @@ struct ghost_abs_step {
 	enum ghost_abs_kind kind;
 	union {
 		struct trans_init_data {
-			u64 location;
-			u64 size;
+			uint64_t location;
+			uint64_t size;
 		} init_data;
 
 		struct trans_lock_data {
-			u64 address;
+			uint64_t address;
 		} lock_data;
 
 		struct trans_memset_data {
-			u64 address;
-			u64 size;
-			u64 value;
+			uint64_t address;
+			uint64_t size;
+			uint64_t value;
 		} memset_data;
 	};
 };
@@ -222,8 +222,8 @@ enum ghost_hint_kind {
 
 struct ghost_hint_step {
 	enum ghost_hint_kind kind;
-	u64 location;
-	u64 value;
+	uint64_t location;
+	uint64_t value;
 };
 
 /**
@@ -239,12 +239,12 @@ struct casemate_model_step {
 	/**
 	 * @tid: thread identifier.
 	 */
-	thread_identifier tid;
+	uint8_t tid;
 
 	/**
 	 * @seq_id: sequence id number of the transition.
 	 */
-	u64 seq_id;
+	uint64_t seq_id;
 
 	/**
 	 * @src_loc: string location (path, function name, lineno etc)
@@ -271,10 +271,12 @@ struct casemate_model_step {
  *
  * `phys` and `size` define the region of memory that the model reserves for its own state.
  *
+ * Returns -12 (ENOMEM) if `sm_size` is not enough memory, otherwise 0.
+ *
  * NOTE: After this the target must manually initialise the already-existing pagetable memory with steps.
  */
-void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size,
-			       unsigned long sm_virt, u64 sm_size);
+int initialise_casemate_model(struct casemate_options *opts, uint64_t phys, uint64_t size,
+			      void *sm_virt, uint64_t sm_size);
 
 /**
  * casemate_model_step() - Take a step in the ghost model.

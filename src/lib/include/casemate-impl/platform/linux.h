@@ -5,6 +5,10 @@
 #endif
 
 #include <linux/bits.h>
+#include <linux/errno.h>
+
+#include <linux/stdarg.h>
+#include <linux/types.h>
 
 #include <nvhe/ghost/ghost_context.h>
 #include <nvhe/ghost/ghost_asserts.h>
@@ -24,5 +28,8 @@
 #define CONFIG_HAS_ASSERT
 #define CONFIG_HAS_PRINTF
 #define CONFIG_HAS_STRLEN
+#define CONFIG_HAS_ERRNO
+#define CONFIG_HAS_STDARG
+#define CONFIG_HAS_STDINT
 
 #endif /* CASEMATE_LINUX_H */

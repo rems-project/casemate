@@ -31,8 +31,6 @@ casemate-objs := $(addprefix $(src)/,$(casemate-obj))
 
 headers-deps += include/casemate-in/casemate-config.in.h
 headers-deps += include/casemate-in/casemate-helpers.in.h
-headers-deps += include/casemate-in/casemate-state.in.h
-headers-deps += include/casemate-in/casemate-ghost-types.in.h
 headers-deps += include/casemate-in/casemate-transitions.in.h
 headers-deps += include/casemate-in/casemate.out.h
 headers-objs += casemate.h

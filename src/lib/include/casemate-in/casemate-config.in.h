@@ -60,7 +60,7 @@ struct casemate_log_options {
 	/**
 	 * @log_format_version: Version of the log format
 	 */
-	unsigned int log_format_version;
+	uint8_t log_format_version;
 
 	/**
 	 * @condensed_format: if true, trace omits the keys in key/value pairs.
@@ -129,11 +129,11 @@ enum ghost_sysreg_kind {
 
 struct casemate_model_step;
 typedef int (*vprintf_cb)(void *arg, const char *format, va_list ap);
-typedef void *(*sprint_make_buf_cb)(char *arg, u64 n);
+typedef void *(*sprint_make_buf_cb)(char *arg, uint64_t n);
 typedef void (*sprint_free_buf_cb)(void *buf);
 typedef void (*abort_cb)(const char *msg);
-typedef u64 (*read_physmem_cb)(u64);
-typedef u64 (*read_sysreg_cb)(enum ghost_sysreg_kind sysreg);
+typedef uint64_t (*read_physmem_cb)(uint64_t);
+typedef uint64_t (*read_sysreg_cb)(enum ghost_sysreg_kind sysreg);
 typedef void (*trace_cb)(const char *record);
 
 /**
@@ -175,7 +175,7 @@ struct ghost_driver {
  *
  * Returns -1 on error.
  */
-int casemate_watch_location(u64 loc);
+int casemate_watch_location(uint64_t loc);
 
 /**
  * initialise_ghost_cm_driver() - Setup the global ghost driver.

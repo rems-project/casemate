@@ -3,6 +3,15 @@
 #ifndef CASEMATE_H
 #define CASEMATE_H
 
+#ifdef __KVM_NVHE_HYPERVISOR__
+#include <linux/stdarg.h>
+#include <linux/types.h>
+#else
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdbool.h>
+#endif
+
 /*
  * Casemate public interface
  */
@@ -98,7 +107,7 @@ struct casemate_log_options {
 	/**
 	 * @log_format_version: Version of the log format
 	 */
-	unsigned int log_format_version;
+	uint8_t log_format_version;
 
 	/**
 	 * @condensed_format: if true, trace omits the keys in key/value pairs.
@@ -166,12 +175,12 @@ enum ghost_sysreg_kind {
 };
 
 struct casemate_model_step;
-typedef int (*vprintf_cb)(void *arg, const char *format, va_list ap);
-typedef void *(*sprint_make_buf_cb)(char *arg, u64 n);
+typedef int (*vprintf_cb)(void* arg, const char *format, va_list ap);
+typedef void* (*sprint_make_buf_cb)(char* arg, uint64_t n);
 typedef void (*sprint_free_buf_cb)(void *buf);
 typedef void (*abort_cb)(const char *msg);
-typedef u64 (*read_physmem_cb)(u64);
-typedef u64 (*read_sysreg_cb)(enum ghost_sysreg_kind sysreg);
+typedef uint64_t (*read_physmem_cb)(uint64_t);
+typedef uint64_t (*read_sysreg_cb)(enum ghost_sysreg_kind sysreg);
 typedef void (*trace_cb)(const char *record);
 
 /**
@@ -213,7 +222,7 @@ struct ghost_driver {
  *
  * Returns -1 on error.
  */
-int casemate_watch_location(u64 loc);
+int casemate_watch_location(uint64_t loc);
 
 /**
  * initialise_ghost_cm_driver() - Setup the global ghost driver.
@@ -221,438 +230,6 @@ int casemate_watch_location(u64 loc);
 void initialise_ghost_driver(struct ghost_driver *driver);
 
 #endif /* CASEMATE_CONFIG_H */
-
-/* auto-included by Makefile */
-
-/*
- * Model types
- *
- * We try to create opaque typedefs where possible, when we do not care
- * about the implementation details (e.g. various integer types and sync primitives)
- */
-
-// TODO: BS: make variable-sized data structures instead of fixed CPUs
-#define MAX_CPU 4
-
-/**
- * typedef gsm_lock_addr_t - ghost model lock
- */
-typedef u64 gsm_lock_addr_t;
-
-/**
- * typedef thread_identifier - ID for hardware thread/CPU.
- */
-typedef int thread_identifier;
-
-/**
- * typedef sm_owner_t - ID for ownership
- *
- * This is the physical address of the pagetable root.
- */
-typedef u64 sm_owner_t;
-
-/**
- * enum LVS - Local (this CPU) Valid State of a single non-invalid PTE.
- * @LVS_unguarded: a valid value has been written by this core, but not DSB'd.
- * @LVS_dsbed: a valid value has been written by this core, and now DSB'd.
- * @LVS_dsb_csed: a valid value has been written by this core,
- *                a subsequent DSB has been performed,
- *                and also a context-synchronisation event on this core.
- */
-enum LVS {
-	LVS_unguarded,
-	LVS_dsbed,
-	LVS_dsb_csed
-};
-
-/**
- * struct aut_valid - Automata state for a valid PTE.
- * @lvs: per-CPU local-valid-state.
- *
- * TODO: JP: should we remember writer thread?
- */
-struct aut_valid {
-	enum LVS lvs[MAX_CPU];
-};
-
-/**
- * enum LIS - Local (this CPU) Invalid State of a single invalid PTE.
- * @LIS_unguarded: an invalid value has been written by this core, but not DSB'd.
- * @LIS_dsbed: an invalid value has been written by this core, and now DSB'd, but not TLBI'd.
- * @LIS_dsb_tlbi_ipa: the invalid write has been written by this core, DSB'd, and only a TLBI that hit the IPA mappings for this loc.
- * @LIS_dsb_tlbi_ipa_dsb: the invalid write has been written by this core, DSB'd, and only a TLBI that hit the IPA mappings for this loc, and now a DSB has been performed.
- * @LIS_dsb_tlbied: the invalid write has been written by this core, DSB'd, and now fully TLBI'd.
- */
-enum LIS {
-	LIS_unguarded,
-	LIS_dsbed,
-	LIS_dsb_tlbi_ipa,
-	LIS_dsb_tlbi_ipa_dsb,
-	LIS_dsb_tlbied,
-};
-
-/**
- * struct aut_invalid - Automata state for an invalid PTE
- * @invalidator_tid: thread id of the thread which wrote invalid.
- * @old_valid_desc: the descriptor which got overwritten.
- * @lis: sub-invalid-state, for thread with tid invalidator_tid.
- */
-struct aut_invalid {
-	thread_identifier invalidator_tid;
-	u64 old_valid_desc;
-	enum LIS lis;
-};
-
-/**
- * struct aut_invalid_clean - Automata state for an invalid+sufficiently globally TLBI'd PTE.
- * @invalidator_tid: thread id of the thread which wrote invalid.
- */
-struct aut_invalid_clean {
-	thread_identifier invalidator_tid;
-};
-
-/**
- * enum automaton_state_kind - Global top-level per-PTE tracker state.
- * @STATE_PTE_VALID: a valid and cleaned location, i.e. all threads agree the pgtable has been updated.
- * @STATE_PTE_INVALID_UNCLEAN: a thread has written an invalid descriptor to this location,
- *                             but any required break-before-make has not been completed yet.
- * @STATE_PTE_INVALID: all break-before-make requirements are complete and all cores agree the location is clean.
- * @STATE_PTE_NOT_WRITABLE: the location is frozen, and no thread is permitted to write to it.
- */
-enum automaton_state_kind {
-	STATE_PTE_VALID,
-	STATE_PTE_INVALID_UNCLEAN,
-	STATE_PTE_INVALID,
-	STATE_PTE_NOT_WRITABLE,
-};
-
-/**
- * struct pte_state - Automata state of a single PTE location.
- */
-struct sm_pte_state {
-	enum automaton_state_kind kind;
-	union {
-		struct aut_valid valid_state;
-		struct aut_invalid invalid_unclean_state;
-		struct aut_invalid_clean invalid_clean_state;
-	};
-};
-
-/**
- * enum pte_kind - Pagetable descriptor kind.
- * @PTE_KIND_TABLE: A table entry with a pointer to another pagetable.
- * @PTE_KIND_MAP: Either a block or page entry, with a pointer to an output page.
- * @PTE_KIND_INVALID: An invalid descriptor.
- */
-enum pte_kind {
-	PTE_KIND_TABLE,
-	PTE_KIND_MAP, /* BLOCK,PAGE */
-	PTE_KIND_INVALID,
-};
-
-/**
- * struct addr_range - A range start+size
- */
-struct addr_range {
-	u64 range_start;
-	u64 range_size;
-};
-
-/**
- * enum entry_stage - (optional) stage of translation
- */
-typedef enum {
-	ENTRY_STAGE2 = 2,
-	ENTRY_STAGE1 = 1,
-
-	/**
-	 * @ENTRY_STAGE_NONE: for memblocks and other non-pgtable mappings.
-	 */
-	ENTRY_STAGE_NONE = 0,
-} entry_stage_t;
-
-/**
- * enum entry_permissions - Abstract permissions for a range of OA, as bitflags
- */
-enum entry_permissions {
-	ENTRY_PERM_R = 1,
-	ENTRY_PERM_W = 2,
-	ENTRY_PERM_X = 4,
-
-	/*
-	 * ENTRY_PERM_UNKNOWN for encodings that do not correspond to any of the above.
-	 */
-	ENTRY_PERM_UNKNOWN = 8,
-};
-#define ENTRY_PERM_RW (ENTRY_PERM_R | ENTRY_PERM_W)
-#define ENTRY_PERM_RWX (ENTRY_PERM_R | ENTRY_PERM_W | ENTRY_PERM_X)
-
-/**
- * enum entry_memtype_attr - Abstract memory type.
- */
-enum entry_memtype_attr {
-	ENTRY_MEMTYPE_DEVICE,
-	ENTRY_MEMTYPE_NORMAL_CACHEABLE,
-
-	/* ENTRY_MEMTYPE_UNKNOWN for encodings that do not correspond to any of the above */
-	ENTRY_MEMTYPE_UNKNOWN,
-};
-
-struct entry_attributes {
-	enum entry_permissions prot;
-	enum entry_memtype_attr memtype;
-
-	/**
-	 * @raw_arch_attrs: the raw descriptor, masked to the attribute bits
-	 * Not semantically meaningful, but used in printing and diffs.
-	 */
-	u64 raw_arch_attrs;
-};
-
-/**
- * struct  entry_exploded_descriptor - Cached information about a PTE.
- * @kind: Whether the descriptor is invalid/a table/a block or page mapping.
- * @region: the input-address region this PTE covers.
- * @level: the level within the pgtable this entry is at.
- * @s2: whether this descriptor is for a Stage2 table.
- * @table_data: if kind is PTE_KIND_TABLE, the table descriptor data (next level table address).
- * @map_data: if kind is PTE_KIND_MAP, the mapping data (output address range, and other attributes).
- *
- * TODO: replace with entry_target...
- */
-struct entry_exploded_descriptor {
-	enum pte_kind kind;
-	struct addr_range ia_region;
-	u64 level;
-	entry_stage_t stage;
-	union {
-		struct {
-			u64 next_level_table_addr;
-		} table_data;
-
-		struct {
-			struct addr_range oa_region;
-			struct entry_attributes attrs;
-		} map_data;
-	};
-};
-
-/**
- * struct sm_location - A (64-bit) Location in the ghost model memory.
- * @initialised: whether this mem block has been initialised.
- * @phys_addr: the physical address of this location.
- * @val: if initialised, value stored by model for this location.
- * @is_pte: if initialised, whether this location is tracked as a PTE.
- * @descriptor: if initialised and is_pte, the value as a pre-computed descriptor kind.
- *              If the state is invalid unclean, then it is the last valid descriptor.
- * @state: if initialised and is_pte, the automata state for this location.
- * @owner: if initialised, the root of the tree that owns this location.
- * @thread_owner: if positive, the ID of the thread that can freely access this location
- *
- * The owner and descriptor are here as helpful cached values,
- * and could be computed by doing translation table walks.
- */
-struct sm_location {
-	bool initialised;
-	u64 phys_addr;
-	u64 val;
-	bool is_pte;
-	struct entry_exploded_descriptor descriptor;
-	struct sm_pte_state state;
-	sm_owner_t owner;
-	int thread_owner;
-};
-
-/*
- * Memory
- *
- * To not duplicate the entire machines memory,
- * we instead only track "blobs" (arbitrary aligned chunks)
- * of memory that the ghost model checking machinery is actually aware of.
- *
- * These blobs are not really part of the public interface, but in C one cannot split
- * the private and public parts of the state so easily.
- */
-
-#define SLOTS_PER_PAGE (512)
-
-#define SLOT_SHIFT 3
-
-#define BLOB_SHIFT 12
-#define MAX_BLOBS (0x2000)
-#define MAX_ROOTS 10
-#define MAX_UNCLEAN_LOCATIONS 10
-
-/**
- * struct casemate_memory_blob - A page of memory.
- * @valid: whether this blob is being used.
- * @phys: if valid, the physical address of the start of this region.
- * @slots: if valid, the array of memory locations within this region.
- *
- * Each blob is a aligned and contiguous page of memory.
- */
-struct casemate_memory_blob {
-	bool valid;
-	u64 phys;
-	struct sm_location slots[SLOTS_PER_PAGE];
-};
-
-/**
- * struct casemate_model_memory - ghost model memory.
- * @blobs_backing: the set of memory blobs.
- * @nr_allocated_blobs: the number of blobs created so far.
- * @ordered_blob_list: a list of indices of allocated blobs, in order of their physical addresses.
- */
-struct casemate_model_memory {
-	struct casemate_memory_blob blobs_backing[MAX_BLOBS];
-
-	u64 nr_allocated_blobs;
-	u64 ordered_blob_list[MAX_BLOBS];
-};
-
-/**
- * struct unclean_locations - set of locations
- */
-
-struct location_set {
-	struct sm_location *locations[MAX_UNCLEAN_LOCATIONS];
-	u64 len;
-};
-
-#define CASEMATE_MAX_LOCKS 8
-
-/**
- * struct lock_owner_map - Map of pgtable root to lock that owns it.
- */
-struct lock_owner_map {
-	u64 len;
-	sm_owner_t owner_ids[CASEMATE_MAX_LOCKS];
-	gsm_lock_addr_t *locks[CASEMATE_MAX_LOCKS];
-};
-
-/**
- * enum write_authorization - Permission to write to the pagetable
- * @AUTHORIZED: Can perform any write to the locked object without constraints.
- * @UNAUTHORIZED_PLAIN: Cannot perform a plain (non-atomic) write to valid entries.
- *
- * Captures which kinds of writes to a locked object are permitted.
- */
-enum write_authorization {
-	AUTHORIZED,
-	UNAUTHORIZED_PLAIN,
-};
-
-/**
- * struct lock_state - The current ghost state of a lock.
- * @id: The thread ID of the thread that currently owns the lock, or -1 if not held.
- * @write_authorization: what permission the owner of the lock has to the protected object.
- */
-struct lock_state {
-	thread_identifier id;
-	enum write_authorization write_authorization;
-};
-
-/**
- * struct lock_state_map - Map of the locks to their current state.
- */
-struct lock_state_map {
-	u64 len;
-	gsm_lock_addr_t *address[CASEMATE_MAX_LOCKS];
-	struct lock_state locker[CASEMATE_MAX_LOCKS];
-};
-
-/**
- * owner_lock() - Get hyp spinlock for an owner.
- *
- * Returns NULL if no lock for that owner_id.
- */
-gsm_lock_addr_t *owner_lock(sm_owner_t owner_id);
-
-/**
- * CASEMATE_MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
- */
-#define CASEMATE_MAX_VMIDS 64
-
-/**
- * typedef vmid_t - A virtual machine identifier (VMID)
- */
-typedef u64 vmid_t;
-
-/**
- * typedef addr_id_t - Generic address space identifier (ASID/VMID).
- */
-typedef u64 addr_id_t;
-
-/**
- * struct vmid_map - Map from VMID to Root.
- */
-struct vmid_map {
-	u64 len;
-	vmid_t vmids[CASEMATE_MAX_VMIDS];
-	sm_owner_t roots[CASEMATE_MAX_VMIDS];
-};
-
-/**
- * struct root - A single root (base addr + ASID/VMID)
- * @baddr: the root base (physical) address.
- * @id: the associated ASID/VMID.
- * @refcount: the number of CPUs that have this root currently active.
- */
-struct root {
-	sm_owner_t baddr;
-	addr_id_t id;
-	u64 refcount;
-};
-
-/**
- * struct roots - Pool of currently known roots
- */
-struct roots {
-	u64 len;
-	entry_stage_t stage;
-	struct root roots[MAX_ROOTS];
-};
-
-/**
- * struct cm_thrd_ctxt - Per thread context ghost copy
- */
-struct cm_thrd_ctxt {
-	struct root *current_s1;
-	struct root *current_s2;
-};
-
-/**
- * struct casemate_model_state - Top-level ghost model state.
- * @base_addr: the physical address of the start of the (ghost) memory.
- * @size: the number of bytes in the ghost memory to track.
- * @memory: the actual ghost model memory.
- * @unclean_locations: set of all the unclean locations
- * @roots_s1: set of known EL2 stage1 pagetable roots.
- * @roots_s2: set of known EL2 stage2 pagetable roots.
- * @thread_context: per-CPU thread-local context.
- * @locks: map from root physical address to lock physical address.
- * @lock_state: map from lock physical address to thread which owns the lock.
- */
-struct casemate_model_state {
-	u64 base_addr;
-	u64 size;
-	struct casemate_model_memory memory;
-
-	struct location_set unclean_locations;
-
-	u64 nr_s1_roots;
-	u64 s1_roots[MAX_ROOTS];
-
-	struct roots roots_s1;
-	struct roots roots_s2;
-
-	struct cm_thrd_ctxt thread_context[MAX_CPU];
-
-	struct lock_owner_map locks;
-	struct lock_state_map lock_state;
-};
-
-int ghost_dump_model_state(void *arg, struct casemate_model_state *st);
 
 /* auto-included by Makefile */
 /**
@@ -696,19 +273,19 @@ struct sm_tlbi_op_method {
 	enum sm_tlbi_op_method_kind kind;
 	union {
 		struct tlbi_op_method_by_address_data {
-			u64 page;
+			uint64_t page;
 
 			bool has_level_hint;
-			u8 level_hint;
+			uint8_t level_hint;
 
 			bool has_asid;
-			u8 asid;
+			uint8_t asid;
 
 			bool affects_last_level_only;
 		} by_address_data;
 
 		struct tlbi_op_method_by_address_space_id_data {
-			u64 asid_or_vmid;
+			uint64_t asid_or_vmid;
 		} by_id_data;
 	};
 };
@@ -787,13 +364,13 @@ struct ghost_hw_step {
 	union {
 		struct trans_write_data {
 			enum memory_order_t mo;
-			u64 phys_addr;
-			u64 val;
+			uint64_t phys_addr;
+			uint64_t val;
 		} write_data;
 
 		struct trans_read_data {
-			u64 phys_addr;
-			u64 val;
+			uint64_t phys_addr;
+			uint64_t val;
 		} read_data;
 
 		struct trans_barrier_data {
@@ -803,12 +380,12 @@ struct ghost_hw_step {
 
 		struct trans_tlbi_data {
 			enum tlbi_kind tlbi_kind;
-			u64 value;
+			uint64_t value;
 		} tlbi_data;
 
 		struct trans_msr_data {
 			enum ghost_sysreg_kind sysreg;
-			u64 val;
+			uint64_t val;
 		} msr_data;
 	};
 };
@@ -839,18 +416,18 @@ struct ghost_abs_step {
 	enum ghost_abs_kind kind;
 	union {
 		struct trans_init_data {
-			u64 location;
-			u64 size;
+			uint64_t location;
+			uint64_t size;
 		} init_data;
 
 		struct trans_lock_data {
-			u64 address;
+			uint64_t address;
 		} lock_data;
 
 		struct trans_memset_data {
-			u64 address;
-			u64 size;
-			u64 value;
+			uint64_t address;
+			uint64_t size;
+			uint64_t value;
 		} memset_data;
 	};
 };
@@ -879,8 +456,8 @@ enum ghost_hint_kind {
 
 struct ghost_hint_step {
 	enum ghost_hint_kind kind;
-	u64 location;
-	u64 value;
+	uint64_t location;
+	uint64_t value;
 };
 
 /**
@@ -896,12 +473,12 @@ struct casemate_model_step {
 	/**
 	 * @tid: thread identifier.
 	 */
-	thread_identifier tid;
+	uint8_t tid;
 
 	/**
 	 * @seq_id: sequence id number of the transition.
 	 */
-	u64 seq_id;
+	uint64_t seq_id;
 
 	/**
 	 * @src_loc: string location (path, function name, lineno etc)
@@ -928,10 +505,11 @@ struct casemate_model_step {
  *
  * `phys` and `size` define the region of memory that the model reserves for its own state.
  *
+ * Returns -12 (ENOMEM) if `sm_size` is not enough memory, otherwise 0.
+ *
  * NOTE: After this the target must manually initialise the already-existing pagetable memory with steps.
  */
-void initialise_casemate_model(struct casemate_options *opts, phys_addr_t phys, u64 size,
-			       unsigned long sm_virt, u64 sm_size);
+int initialise_casemate_model(struct casemate_options *opts, uint64_t phys, uint64_t size, void *sm_virt, uint64_t sm_size);
 
 /**
  * casemate_model_step() - Take a step in the ghost model.
@@ -954,13 +532,11 @@ void casemate_model_step(struct casemate_model_step trans);
  *
  * Users should implement this if they want to use the helper macros.
  */
-extern u64 casemate_cpu_id(void);
+extern uint64_t casemate_cpu_id(void);
 #define THREAD_ID casemate_cpu_id()
 
-#define casemate_model_step_write(...) \
-	__casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc,
-					       enum memory_order_t mo, phys_addr_t phys, u64 val)
+#define casemate_model_step_write(...) __casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo, uint64_t phys, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -980,8 +556,7 @@ static inline void __casemate_model_step_write(u64 tid, struct src_loc src_loc,
 }
 
 #define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, phys_addr_t phys,
-					      u64 val)
+static inline void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1000,7 +575,7 @@ static inline void __casemate_model_step_read(u64 tid, struct src_loc src_loc, p
 }
 
 #define casemate_model_step_dsb(...) __casemate_model_step_dsb(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, enum dxb_kind kind)
+static inline void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1019,7 +594,7 @@ static inline void __casemate_model_step_dsb(u64 tid, struct src_loc src_loc, en
 }
 
 #define casemate_model_step_isb() __casemate_model_step_isb(THREAD_ID, SRC_LOC)
-static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
+static inline void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1036,10 +611,8 @@ static inline void __casemate_model_step_isb(u64 tid, struct src_loc src_loc)
 	});
 }
 
-#define casemate_model_step_tlbi_reg(...) \
-	__casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_loc,
-						  enum tlbi_kind kind, u64 value)
+#define casemate_model_step_tlbi_reg(...) __casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind, uint64_t value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1058,8 +631,7 @@ static inline void __casemate_model_step_tlbi_reg(u64 tid, struct src_loc src_lo
 }
 
 #define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc,
-					      enum tlbi_kind kind)
+static inline void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1083,8 +655,7 @@ static inline void __casemate_model_step_tlbi(u64 tid, struct src_loc src_loc,
 	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc,
-					     enum ghost_sysreg_kind sysreg, u64 val)
+static inline void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg, uint64_t val)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1103,8 +674,7 @@ static inline void __casemate_model_step_msr(u64 tid, struct src_loc src_loc,
 }
 
 #define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc,
-					      enum ghost_hint_kind kind, u64 location, u64 value)
+static inline void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind, uint64_t location, uint64_t value)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1120,8 +690,7 @@ static inline void __casemate_model_step_hint(u64 tid, struct src_loc src_loc,
 }
 
 #define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u64 location,
-					      u64 size)
+static inline void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location, uint64_t size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1139,10 +708,8 @@ static inline void __casemate_model_step_init(u64 tid, struct src_loc src_loc, u
 	});
 }
 
-#define casemate_model_step_memset(...) \
-	__casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc, u64 location,
-						u64 value, u64 size)
+#define casemate_model_step_memset(...) __casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location, uint64_t value, uint64_t size)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1162,7 +729,7 @@ static inline void __casemate_model_step_memset(u64 tid, struct src_loc src_loc,
 }
 
 #define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u64 address)
+static inline void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,
@@ -1179,9 +746,8 @@ static inline void __casemate_model_step_lock(u64 tid, struct src_loc src_loc, u
 	});
 }
 
-#define casemate_model_step_unlock(...) \
-	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-static inline void __casemate_model_step_unlock(u64 tid, struct src_loc src_loc, u64 address)
+#define casemate_model_step_unlock(...) __casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+static inline void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
 	casemate_model_step((struct casemate_model_step){
 		.tid = tid,

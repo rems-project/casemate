@@ -313,7 +313,7 @@ void common_init(int argc, char **argv)
 	opts.enable_tracing = SHOULD_TRACE;
 
 	st = malloc(sm_size);
-	initialise_casemate_model(&opts, 0, 0, (u64)st, sm_size);
+	initialise_casemate_model(&opts, 0, 0, st, sm_size);
 	initialise_ghost_driver(&sm_driver);
 
 	mtx_init(&m, mtx_plain);
