@@ -60,6 +60,9 @@ clean:
 	$(call clean_subdir,examples)
 	$(call clean_subdir,src/casemate-check-c)
 
+
+# checkers
+
 example-traces:
 	$(call build_subdir,RUN,examples,logs)
 
@@ -71,6 +74,8 @@ check-examples:
 
 checks: check-examples check-rocq
 
+# clang-format
+
 lint:
 	$(call lint_subdir,src/lib)
 	$(call lint_subdir,src/casemate-check-c)
@@ -78,3 +83,21 @@ lint:
 fmt:
 	$(call fmt_subdir,src/lib)
 	$(call fmt_subdir,src/casemate-check-c)
+
+
+# CI/CD versioning control
+
+bump-version:
+	@echo "VERSION:$(file <VERSION) NEW_VERSION:$(NEW_VERSION)"
+ifneq ($(shell git status -s),)
+	@echo error: cannot bump version with untracked changes
+	@exit 1
+endif
+	echo "$(NEW_VERSION)" > VERSION
+	git add VERSION
+	git commit -m "bump: version: $(NEW_VERSION)"
+	git fetch --tags
+	git tag v$(NEW_VERSION)
+	git push origin main
+	git push origin v$(NEW_VERSION)
+.PHONY: bump-version
