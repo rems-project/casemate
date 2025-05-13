@@ -95,6 +95,8 @@ ifneq ($(shell git status -s),)
 endif
 	echo "$(NEW_VERSION)" > VERSION
 	git add VERSION
+	sed -i 's/#define CASEMATE_VERSION "\(.*\)"/#define CASEMATE_VERSION "$(NEW_VERSION)"/' src/lib/casemate.h
+	git add src/lib/casemate.h
 	git commit -m "bump: version: $(NEW_VERSION)"
 	git fetch --tags
 	git tag v$(NEW_VERSION)
