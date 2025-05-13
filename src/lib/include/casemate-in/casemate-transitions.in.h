@@ -31,45 +31,6 @@ enum sm_tlbi_op_regime_kind {
 	TLBI_REGIME_EL2 = 2, /* EL2 regime */
 };
 
-/**
- * struct sm_tlbi_op_method - Decoded TLBI by-method
- * @kind: whether this is "all", by address, or by address-space-identifier.
- */
-struct sm_tlbi_op_method {
-	enum sm_tlbi_op_method_kind kind;
-	union {
-		struct tlbi_op_method_by_address_data {
-			uint64_t page;
-
-			bool has_level_hint;
-			uint8_t level_hint;
-
-			bool has_asid;
-			uint8_t asid;
-
-			bool affects_last_level_only;
-		} by_address_data;
-
-		struct tlbi_op_method_by_address_space_id_data {
-			uint64_t asid_or_vmid;
-		} by_id_data;
-	};
-};
-
-/**
- * struct sm_tlbi_op - A decoded TLB maintenance operation.
- * @stage: whether this affects cached stage1 translations, cached stage2 translations, or both.
- * @regime: the translation regime that this TLB maintenance operation would affect the cached entries of.
- * @method: whether this TLBI is by IPA, by VA, or by VMID, etc., and the relevant address/vmid, etc.
- * @shootdown: whether this TLB maintenance operation is broadcast to other cores.
- */
-struct sm_tlbi_op {
-	enum sm_tlbi_op_stage stage;
-	enum sm_tlbi_op_regime_kind regime;
-	struct sm_tlbi_op_method method;
-	bool shootdown;
-};
-
 /// Encoded TLBIs
 
 enum tlbi_kind {
@@ -94,110 +55,6 @@ enum barrier_kind {
 	BARRIER_ISB
 };
 
-enum casemate_model_step_kind {
-	/**
-	 * @TRANS_HW_STEP - Hardware instruction
-	 */
-	TRANS_HW_STEP,
-
-	/**
-	 * @TRANS_ABS_STEP - An abstract software state transition
-	 * These generally transition some abstract reified ghost state in the model
-	 * e.g. for locks and C initialisations that are not exposed to the model
-	 */
-	TRANS_ABS_STEP,
-
-	/**
-	 * @TRANS_HINT - A non-hardware-model transition
-	 * These generally provide additional information to the casemate model,
-	 * such as ownership, to resolve otherwise unbounded non-determinism
-	 *
-	 * Removing HINTs should not change soundness
-	 */
-	TRANS_HINT,
-};
-
-enum ghost_hw_step_kind {
-	HW_MEM_WRITE,
-	HW_MEM_READ,
-	HW_BARRIER,
-	HW_TLBI,
-	HW_MSR,
-};
-
-struct ghost_hw_step {
-	enum ghost_hw_step_kind kind;
-	union {
-		struct trans_write_data {
-			enum memory_order_t mo;
-			uint64_t phys_addr;
-			uint64_t val;
-		} write_data;
-
-		struct trans_read_data {
-			uint64_t phys_addr;
-			uint64_t val;
-		} read_data;
-
-		struct trans_barrier_data {
-			enum barrier_kind kind;
-			enum dxb_kind dxb_data;
-		} barrier_data;
-
-		struct trans_tlbi_data {
-			enum tlbi_kind tlbi_kind;
-			uint64_t value;
-		} tlbi_data;
-
-		struct trans_msr_data {
-			enum ghost_sysreg_kind sysreg;
-			uint64_t val;
-		} msr_data;
-	};
-};
-
-enum ghost_abs_kind {
-	/**
-	 * @GHOST_ABS_LOCK - Acquire a mutex
-	 */
-	GHOST_ABS_LOCK,
-
-	/**
-	 * @GHOST_ABS_UNLOCK - Release a mutex
-	 */
-	GHOST_ABS_UNLOCK,
-
-	/**
-	 * @GHOST_ABS_INIT - Zeroed initialisation of some fresh memory
-	 */
-	GHOST_ABS_INIT,
-
-	/**
-	 * @GHOST_ABS_MEMSET - A C memset() call.
-	 */
-	GHOST_ABS_MEMSET,
-};
-
-struct ghost_abs_step {
-	enum ghost_abs_kind kind;
-	union {
-		struct trans_init_data {
-			uint64_t location;
-			uint64_t size;
-		} init_data;
-
-		struct trans_lock_data {
-			uint64_t address;
-		} lock_data;
-
-		struct trans_memset_data {
-			uint64_t address;
-			uint64_t size;
-			uint64_t value;
-		} memset_data;
-	};
-};
-
 enum ghost_hint_kind {
 	/**
 	 * @GHOST_HINT_SET_ROOT_LOCK - Set the lock owning a pgtable root.
@@ -220,12 +77,6 @@ enum ghost_hint_kind {
 	GHOST_HINT_SET_PTE_THREAD_OWNER,
 };
 
-struct ghost_hint_step {
-	enum ghost_hint_kind kind;
-	uint64_t location;
-	uint64_t value;
-};
-
 /**
  * Source location info
  */
@@ -233,32 +84,6 @@ struct src_loc {
 	const char *file;
 	const char *func;
 	int lineno;
-};
-
-struct casemate_model_step {
-	/**
-	 * @tid: thread identifier.
-	 */
-	uint8_t tid;
-
-	/**
-	 * @seq_id: sequence id number of the transition.
-	 */
-	uint64_t seq_id;
-
-	/**
-	 * @src_loc: string location (path, function name, lineno etc)
-	 *           of where the transition happens in the source code.
-	 *           For debugging/pretty printing.
-	 */
-	struct src_loc src_loc;
-
-	enum casemate_model_step_kind kind;
-	union {
-		struct ghost_hw_step hw_step;
-		struct ghost_abs_step abs_step;
-		struct ghost_hint_step hint_step;
-	};
 };
 
 /**
@@ -279,6 +104,74 @@ int initialise_casemate_model(struct casemate_options *opts, uint64_t phys, uint
 			      void *sm_virt, uint64_t sm_size);
 
 /**
- * casemate_model_step() - Take a step in the ghost model.
+ * casemate_cpu_id() - Return current CPU identifier.
+ *
+ * Users should implement this if they want to use the helper macros.
  */
-void casemate_model_step(struct casemate_model_step trans);
+extern uint64_t casemate_cpu_id(void);
+
+/// Transition API Steps ///
+
+// Step helpers
+
+#define SRC_LOC \
+	(struct src_loc) \
+	{ \
+		.file = __FILE__, .lineno = __LINE__, .func = __func__ \
+	}
+
+#define THREAD_ID casemate_cpu_id()
+
+#define casemate_model_step_write(...) \
+	__casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo,
+				 uint64_t phys, uint64_t val);
+
+#define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys,
+				uint64_t val);
+
+#define casemate_model_step_dsb(...) __casemate_model_step_dsb(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind);
+
+#define casemate_model_step_isb() __casemate_model_step_isb(THREAD_ID, SRC_LOC)
+void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc);
+
+#define casemate_model_step_tlbi_reg(...) \
+	__casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
+
+void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind,
+				    uint64_t value);
+
+#define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
+#define casemate_model_step_tlbi_va(TLBI_KIND, ADDR, TTL, ASID) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL) | ((ASID) << 48ULL))
+
+#define casemate_model_step_tlbi_ipa(TLBI_KIND, ADDR, TTL) \
+	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
+
+void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind);
+
+#define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc,
+			       enum ghost_sysreg_kind sysreg, uint64_t val);
+
+#define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind,
+				uint64_t location, uint64_t value);
+
+#define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				uint64_t size);
+
+#define casemate_model_step_memset(...) \
+	__casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				  uint64_t value, uint64_t size);
+
+#define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address);
+
+#define casemate_model_step_unlock(...) \
+	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address);

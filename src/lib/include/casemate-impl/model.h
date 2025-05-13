@@ -2,8 +2,11 @@
 #define CASEMATE_MODEL_STATE_H
 
 #include <casemate.h>
-#include <casemate-impl/state.h>
+
 #include <casemate-impl/options.h>
+
+#include <casemate-impl/transitions.h>
+#include <casemate-impl/state.h>
 
 #define BLOB_SIZE ((1UL) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK BITMASK(BLOB_SHIFT - 1, 0)

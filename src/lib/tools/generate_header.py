@@ -13,7 +13,6 @@ INCLUDE = ROOT / 'include'
 compile_commands = []
 
 template = (INCLUDE / "casemate-in" / "casemate.out.h").read_text()
-helpers = (INCLUDE / "casemate-in" / "casemate-helpers.in.h").read_text()
 transitions = (INCLUDE / "casemate-in" / "casemate-transitions.in.h").read_text()
 config = (INCLUDE / "casemate-in" / "casemate-config.in.h").read_text()
 version = (
@@ -29,9 +28,6 @@ def make_header(template):
       .replace(
           "CASEMATE_TRANSITIONS_H",
           transitions,
-      ).replace(
-          "CASEMATE_STEP_HELPERS_H",
-          helpers
       ).replace(
           "CASEMATE_CONFIG_H",
           config
