@@ -16,7 +16,7 @@
  * Casemate public interface
  */
 
-#define CASEMATE_VERSION "2.0.2"
+#define CASEMATE_VERSION "2.1.0"
 
 /* auto-included by Makefile */
 #ifndef CASEMATE_CONFIG_H
