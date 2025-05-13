@@ -18,6 +18,7 @@ CFLAGS += -fno-common -nostdlib
 LDFLAGS += -r
 
 casemate-obj += src/model.o
+casemate-obj += src/transitions.o
 casemate-obj += src/setup.o
 casemate-obj += src/pgtable.o
 casemate-obj += src/trace.o
@@ -30,7 +31,6 @@ casemate-obj += src/utilities/diff.o
 casemate-objs := $(addprefix $(src)/,$(casemate-obj))
 
 headers-deps += include/casemate-in/casemate-config.in.h
-headers-deps += include/casemate-in/casemate-helpers.in.h
 headers-deps += include/casemate-in/casemate-transitions.in.h
 headers-deps += include/casemate-in/casemate.out.h
 headers-objs += casemate.h
