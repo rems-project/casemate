@@ -46,7 +46,7 @@ expected: $(test_expects)
 .PRECIOUS: $(common_obj) $(test_objs) $(test_logs)
 
 $(src)/%: $(src)/tests/%.o $(common_obj) $(casemate_o)
-	$(call run_cmd,LD,$@,$(CC) $^ -o $@)
+	$(call run_cc_as_ld,$^,$@)
 
 check-examples: FORCE
 	$(call run_cmd,CHECK,examples,$(src)/scripts/run_tests.py --examples)
