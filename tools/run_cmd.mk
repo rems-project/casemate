@@ -19,21 +19,21 @@ endef
 
 define run_cc
 $(call run_cmd,CC,$1, \
-		echo $(CC) $(CFLAGS) -c $1 -o $2 > $2.cmd \
-		&& $(CC) $(CFLAGS) -c $1 -o $2 \
+		echo $(CC) $(CFLAGS) $(CFLAGS-$2) -c $1 -o $2 > $2.cmd \
+		&& $(CC) $(CFLAGS) $(CFLAGS-$2) -c $1 -o $2 \
 		&& $(OBJDUMP) -rS $2 > $2.S \
 	)
 endef
 
 define run_cc_as_ld
 $(call run_cmd,LD,$2, \
-		$(CC) $(CFLAGS) $1 -o $2 \
+		$(CC) $(CFLAGS) $(CFLAGS-$2) $1 -o $2 \
 	)
 endef
 
 define run_ld
 $(call run_cmd,LD,$2, \
-		$(LD) $(LDFLAGS) $1 -o $2 \
+		$(LD) $(LDFLAGS) $(LDFLAGS-$2) $1 -o $2 \
 	)
 endef
 
