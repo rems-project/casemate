@@ -11,8 +11,11 @@ static const char *tlbi_kind_names[] = {
 	[TLBI_vmalls12e1] = "vmalls12e1", //
 	[TLBI_vmalls12e1is] = "vmalls12e1is", //
 	[TLBI_vmalle1is] = "vmalle1is", //
+	[TLBI_alle1] = "alle1", //
 	[TLBI_alle1is] = "alle1is", //
 	[TLBI_vmalle1] = "vmalle1", //
+	[TLBI_alle2] = "alle2", //
+	[TLBI_alle2is] = "alle2is", //
 	[TLBI_vale2is] = "vale2is", //
 	[TLBI_vae2is] = "vae2is", //
 	[TLBI_ipas2e1is] = "ipas2e1is", //
@@ -85,7 +88,10 @@ static int record_cm_tlbi_fields(struct string_builder *buf, struct trans_tlbi_d
 	case TLBI_vmalls12e1:
 	case TLBI_vmalls12e1is:
 	case TLBI_vmalle1is:
+	case TLBI_alle1:
 	case TLBI_alle1is:
+	case TLBI_alle2:
+	case TLBI_alle2is:
 	case TLBI_vmalle1:
 		return 0;
 
