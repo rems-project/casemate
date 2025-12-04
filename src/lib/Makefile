@@ -15,8 +15,6 @@ ifeq ($(ARCH),AARCH4)
 endif
 CFLAGS += -fno-common -nostdlib
 
-LDFLAGS += -r
-
 casemate-obj += src/model.o
 casemate-obj += src/transitions.o
 casemate-obj += src/setup.o
@@ -42,6 +40,7 @@ $(src)/include/casemate.h: $(headers-deps)
 		$(src)/tools/generate_header.py \
 	)
 
+LDFLAGS-$(src)/casemate.o := -r
 $(src)/casemate.o: $(addprefix $(src)/,$(casemate-obj))
 	$(call run_ld,$^,$@)
 
