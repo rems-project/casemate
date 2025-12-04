@@ -243,8 +243,11 @@ enum tlbi_kind {
 	TLBI_vmalls12e1,
 	TLBI_vmalls12e1is,
 	TLBI_vmalle1is,
+	TLBI_alle1,
 	TLBI_alle1is,
 	TLBI_vmalle1,
+	TLBI_alle2,
+	TLBI_alle2is,
 	TLBI_vale2is,
 	TLBI_vae2is,
 	TLBI_ipas2e1is
