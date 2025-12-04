@@ -188,7 +188,10 @@ enum sm_tlbi_op_method_kind decode_tlbi_method_kind(enum tlbi_kind k)
 	case TLBI_ipas2e1is:
 		return TLBI_OP_BY_INPUT_ADDR;
 
+	case TLBI_alle1:
 	case TLBI_alle1is:
+	case TLBI_alle2:
+	case TLBI_alle2is:
 		return TLBI_OP_BY_ALL;
 
 	default:
@@ -205,10 +208,13 @@ bool decode_tlbi_shootdown_kind(enum tlbi_kind k)
 	case TLBI_vae2is:
 	case TLBI_ipas2e1is:
 	case TLBI_alle1is:
+	case TLBI_alle2is:
 		return true;
 
 	case TLBI_vmalls12e1:
 	case TLBI_vmalle1:
+	case TLBI_alle1:
+	case TLBI_alle2:
 		return false;
 
 	default:
@@ -223,6 +229,8 @@ enum sm_tlbi_op_stage decode_tlbi_stage_kind(enum tlbi_kind k)
 	case TLBI_vae2is:
 	case TLBI_vmalle1is:
 	case TLBI_vmalle1:
+	case TLBI_alle2:
+	case TLBI_alle2is:
 		return TLBI_OP_STAGE1;
 
 	case TLBI_ipas2e1is:
@@ -230,6 +238,7 @@ enum sm_tlbi_op_stage decode_tlbi_stage_kind(enum tlbi_kind k)
 
 	case TLBI_vmalls12e1:
 	case TLBI_vmalls12e1is:
+	case TLBI_alle1:
 	case TLBI_alle1is:
 		return TLBI_OP_BOTH_STAGES;
 
@@ -243,6 +252,8 @@ enum sm_tlbi_op_regime_kind decode_tlbi_regime_kind(enum tlbi_kind k)
 	switch (k) {
 	case TLBI_vale2is:
 	case TLBI_vae2is:
+	case TLBI_alle2:
+	case TLBI_alle2is:
 		return TLBI_REGIME_EL2;
 
 	case TLBI_vmalle1is:
@@ -250,6 +261,7 @@ enum sm_tlbi_op_regime_kind decode_tlbi_regime_kind(enum tlbi_kind k)
 	case TLBI_ipas2e1is:
 	case TLBI_vmalls12e1:
 	case TLBI_vmalls12e1is:
+	case TLBI_alle1:
 	case TLBI_alle1is:
 		return TLBI_REGIME_EL10;
 
@@ -271,7 +283,10 @@ static bool __decoded_tlbi_has_asid(struct trans_tlbi_data data, u8 *out_asid)
 	case TLBI_ipas2e1is:
 	case TLBI_vmalls12e1:
 	case TLBI_vmalls12e1is:
+	case TLBI_alle1:
 	case TLBI_alle1is:
+	case TLBI_alle2:
+	case TLBI_alle2is:
 		return false;
 
 	default:
@@ -333,8 +348,11 @@ struct sm_tlbi_op decode_tlbi(struct trans_tlbi_data data)
 		tlbi.method.by_id_data = decode_tlbi_by_space_id(data);
 		break;
 
+	case TLBI_OP_BY_ALL:
+		break;
+
 	default:
-		BUG(); // TODO: missing kind (TLBI ALL?)
+		BUG();
 	}
 
 	return tlbi;
@@ -1324,6 +1342,10 @@ static bool __should_perform_tlbi_matches_addr(struct pgtable_traverse_context *
 	u64 tlbi_addr;
 	u64 ia_start;
 	u64 ia_end;
+
+	/* cannot invalidate an L2 entry with TLBI-by-Addr */
+	if (ctxt->exploded_descriptor.kind == PTE_KIND_TABLE)
+		return false;
 
 	// input-address range of the PTE we're visiting
 	ia_start = ctxt->exploded_descriptor.ia_region.range_start;
