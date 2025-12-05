@@ -1721,6 +1721,9 @@ out:
 
 void casemate_model_step(struct casemate_model_step trans)
 {
+	if (! LOAD_RLX(STATE()))
+		return;
+
 	if (! LOAD_RLX(STATE()->is_initialised))
 		return;
 
