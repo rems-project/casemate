@@ -2,6 +2,7 @@
 #define CASEMATE_STATE_H
 
 #include <casemate-impl/types.h>
+#include <casemate-impl/sync.h>
 
 /*
  * Model types
@@ -432,5 +433,42 @@ struct casemate_model_state {
 };
 
 int ghost_dump_model_state(void *arg, struct casemate_model_state *st);
+
+/**
+ * struct casemate_state - Top-level casemate state
+ */
+struct casemate_state {
+	sm_mtx_t sm_lock;
+
+	bool is_initialised;
+	struct casemate_options opts;
+	struct ghost_driver driver;
+
+	/**
+	 * current_transition - The step currently being executed.
+	 */
+	struct casemate_model_step current_transition;
+
+	/**
+	 * traced_current_trans - Whether the current step has been traced so far 
+	 */
+	bool traced_current_trans;
+
+	/**
+	 * transition_id - The sequence ID to give to the next transition.
+	 */
+	u64 transition_id;
+
+	bool touched_watchpoint;
+	struct casemate_watchpoints watchpoints;
+
+	struct casemate_model_state *st;
+	struct casemate_model_state *st_pre;
+};
+
+extern struct casemate_state *the_ghost_state;
+#define STATE() the_ghost_state
+#define MODEL() STATE()->st
+#define CURRENT_TRANS() STATE()->current_transition
 
 #endif /* CASEMATE_STATE_H */

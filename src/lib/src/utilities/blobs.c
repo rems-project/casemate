@@ -6,14 +6,13 @@
 void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size)
 {
 	GHOST_LOG_CONTEXT_ENTER();
-	the_ghost_state->base_addr = phys;
-	the_ghost_state->size = size;
-	the_ghost_state->memory.nr_allocated_blobs = 0;
+	MODEL()->base_addr = phys;
+	MODEL()->size = size;
+	MODEL()->memory.nr_allocated_blobs = 0;
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		the_ghost_state->memory.blobs_backing[i].valid = false;
-		the_ghost_state->memory.ordered_blob_list[i] = 0xDEADDEADDEADDEAD;
+		MODEL()->memory.blobs_backing[i].valid = false;
+		MODEL()->memory.ordered_blob_list[i] = 0xDEADDEADDEADDEAD;
 	}
-	STORE_RLX(is_initialised, true);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -24,18 +23,18 @@ static bool check_sanity_of_blobs(void)
 {
 	int c = 0;
 
-	for (int i = 1; i < the_ghost_state->memory.nr_allocated_blobs; i++) {
-		if (! (blob_of(&the_ghost_state->memory, i - 1)->phys <
-		       blob_of(&the_ghost_state->memory, i)->phys))
+	for (int i = 1; i < MODEL()->memory.nr_allocated_blobs; i++) {
+		if (! (blob_of(&MODEL()->memory, i - 1)->phys <
+		       blob_of(&MODEL()->memory, i)->phys))
 			return false;
 	}
 
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		if (the_ghost_state->memory.blobs_backing[i].valid)
+		if (MODEL()->memory.blobs_backing[i].valid)
 			c++;
 	}
 
-	if (c != the_ghost_state->memory.nr_allocated_blobs)
+	if (c != MODEL()->memory.nr_allocated_blobs)
 		return false;
 
 	return true;
@@ -46,7 +45,7 @@ static bool check_sanity_of_no_blob(u64 phys)
 	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct casemate_memory_blob *b = &the_ghost_state->memory.blobs_backing[i];
+		struct casemate_memory_blob *b = &MODEL()->memory.blobs_backing[i];
 		if (b->valid && b->phys == page) {
 			return false;
 		}
@@ -112,7 +111,7 @@ static int bubble_blob_down(struct casemate_model_memory *mem)
 static int get_free_blob(void)
 {
 	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct casemate_memory_blob *this = &the_ghost_state->memory.blobs_backing[i];
+		struct casemate_memory_blob *this = &MODEL()->memory.blobs_backing[i];
 		if (! this->valid)
 			return i;
 	}
@@ -128,15 +127,15 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	struct casemate_memory_blob *this;
 
 	/* already one exists, done. */
-	this = find_blob(&the_ghost_state->memory, blob_phys);
+	this = find_blob(&MODEL()->memory, blob_phys);
 	if (this)
 		return this;
 
 	ghost_safety_check(check_sanity_of_no_blob(phys));
 
 	// otherwise, have to grab a new blob and insert it into the table
-	insert_blob_at_end(&the_ghost_state->memory, get_free_blob());
-	this = blob_of(&the_ghost_state->memory, the_ghost_state->memory.nr_allocated_blobs - 1);
+	insert_blob_at_end(&MODEL()->memory, get_free_blob());
+	this = blob_of(&MODEL()->memory, MODEL()->memory.nr_allocated_blobs - 1);
 	ghost_assert(! this->valid);
 
 	// and initialise it.
@@ -153,7 +152,7 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 
 	// finally, we bubble it down in the ordered list
 	// to maintain the sorted order
-	bubble_blob_down(&the_ghost_state->memory);
+	bubble_blob_down(&MODEL()->memory);
 	ghost_safety_check(check_sanity_of_blobs());
 
 	return this;
@@ -227,7 +226,7 @@ static u64 __read_phys(u64 addr, bool pre)
 		} else {
 			// otherwise, secretly return the value we are about to write.
 			// then continue with checks.
-			value = current_transition.hw_step.write_data.val;
+			value = CURRENT_TRANS().hw_step.write_data.val;
 		}
 	}
 

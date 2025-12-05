@@ -104,6 +104,15 @@ int initialise_casemate_model(struct casemate_options *opts, uint64_t phys, uint
 			      void *sm_virt, uint64_t sm_size);
 
 /**
+ * attach_casemate_model() - Attach monitor to a running model state
+ * @st: the start of the virtual address of the memory the ghost model state is at
+ *
+ * Returns -1 if the pointed to state is not properly initialised
+ * Returns 0 otherwise
+ */
+int attach_casemate_model(void *st);
+
+/**
  * casemate_cpu_id() - Return current CPU identifier.
  *
  * Users should implement this if they want to use the helper macros.
