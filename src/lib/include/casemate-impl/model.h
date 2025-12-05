@@ -14,6 +14,8 @@
 #define OFFSET_IN_BLOB(x) ((x)&BLOB_OFFSET_MASK)
 #define SLOT_OFFSET_IN_BLOB(x) (OFFSET_IN_BLOB(x) >> SLOT_SHIFT)
 
+#define CURRENT_TRANS() STATE()->current_transition
+
 /**
  * read_phys_pre() - Read a physical address from the ghost model memory.
  *
@@ -67,28 +69,18 @@ bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage);
 void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id);
 
 /**
- * current_transition - The step currently being executed.
- */
-extern struct casemate_model_step current_transition;
-
-/**
- * transition_id - The sequence ID to give to the next transition.
- */
-extern u64 transition_id;
-
-/**
  * is_on_write_transition() - Returns true when the current step is a write transition to `p`.
  */
 static inline bool is_on_write_transition(u64 p)
 {
-	return (current_transition.kind == TRANS_HW_STEP &&
-		current_transition.hw_step.kind == HW_MEM_WRITE &&
-		current_transition.hw_step.write_data.phys_addr == p);
+	return (CURRENT_TRANS().kind == TRANS_HW_STEP &&
+		CURRENT_TRANS().hw_step.kind == HW_MEM_WRITE &&
+		CURRENT_TRANS().hw_step.write_data.phys_addr == p);
 }
 
 static inline thread_identifier cpu_id(void)
 {
-	return current_transition.tid;
+	return CURRENT_TRANS().tid;
 }
 
 /**
@@ -123,15 +115,6 @@ void dump_cm_state(struct casemate_model_state *st);
 /// Copying
 
 void copy_cm_state_into(struct casemate_model_state *out);
-
-/*
- * the actual state
- *
- * We keep two, for diffing and debugging purposes.
- */
-extern struct casemate_model_state *the_ghost_state;
-extern struct casemate_model_state *the_ghost_state_pre;
-extern bool is_initialised;
 
 void ghost_diff_and_print_sm_state(struct casemate_model_state *s1,
 				   struct casemate_model_state *s2);

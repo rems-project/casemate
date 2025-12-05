@@ -3,6 +3,8 @@
 ///////////
 // atomics
 
+#define SM_LOCK() (&STATE()->sm_lock)
+
 #if defined(__AARCH64__)
 
 void __atomic_cas(volatile u64 *va, u64 old, u64 new)
@@ -42,25 +44,19 @@ void __atomic_cas(volatile u64 *va, u64 old, u64 new)
 ///////////
 // locking
 
-struct mutex {
-	u64 locked;
-};
-
-struct mutex sm_lock = { .locked = 0 };
-
 void init_sm_lock(void)
 {
-	/* statically initialised */
+	SM_LOCK()->locked = 0;
 }
 
 void lock_sm(void)
 {
-	__atomic_cas(&sm_lock.locked, 0, 1);
+	__atomic_cas(&SM_LOCK()->locked, 0, 1);
 }
 
 void unlock_sm(void)
 {
-	__atomic_cas(&sm_lock.locked, 1, 0);
+	__atomic_cas(&SM_LOCK()->locked, 1, 0);
 }
 
 #elif defined(__X86__)
@@ -70,21 +66,19 @@ void unlock_sm(void)
  */
 #include <threads.h>
 
-mtx_t sm_lock;
-
 void init_sm_lock(void)
 {
-	mtx_init(&sm_lock, mtx_plain);
+	mtx_init(SM_LOCK(), mtx_plain);
 }
 
 void lock_sm(void)
 {
-	mtx_lock(&sm_lock);
+	mtx_lock(SM_LOCK());
 }
 
 void unlock_sm(void)
 {
-	mtx_unlock(&sm_lock);
+	mtx_unlock(SM_LOCK());
 }
 
 #else

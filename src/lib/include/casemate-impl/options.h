@@ -3,16 +3,11 @@
 
 #include <casemate.h>
 
-extern struct casemate_options sm_options;
-
 #define CASEMATE_MAX_WATCHPOINTS 16
 struct casemate_watchpoints {
 	u64 num_watchpoints;
 	u64 watchpoints[CASEMATE_MAX_WATCHPOINTS];
 };
-
-extern struct casemate_watchpoints sm_watchpoints;
-extern bool touched_watchpoint;
 
 /**
  * opts() - Get model options.

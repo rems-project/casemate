@@ -5,8 +5,8 @@
 
 static bool is_watched(u64 location)
 {
-	for (int i = 0; i < sm_watchpoints.num_watchpoints; i++) {
-		if (sm_watchpoints.watchpoints[i] == location)
+	for (int i = 0; i < STATE()->watchpoints.num_watchpoints; i++) {
+		if (STATE()->watchpoints.watchpoints[i] == location)
 			return true;
 	}
 
@@ -16,7 +16,7 @@ static bool is_watched(u64 location)
 void touch(u64 location)
 {
 	if (is_watched(location))
-		touched_watchpoint = true;
+		STATE()->touched_watchpoint = true;
 }
 
 ////////////////////
@@ -24,9 +24,9 @@ void touch(u64 location)
 
 gsm_lock_addr_t *owner_lock(sm_owner_t owner_id)
 {
-	for (int i = 0; i < the_ghost_state->locks.len; i++) {
-		if (the_ghost_state->locks.owner_ids[i] == owner_id) {
-			return the_ghost_state->locks.locks[i];
+	for (int i = 0; i < MODEL()->locks.len; i++) {
+		if (MODEL()->locks.owner_ids[i] == owner_id) {
+			return MODEL()->locks.locks[i];
 		}
 	}
 
@@ -35,13 +35,13 @@ gsm_lock_addr_t *owner_lock(sm_owner_t owner_id)
 
 static void swap_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 {
-	struct lock_owner_map *locks = &the_ghost_state->locks;
+	struct lock_owner_map *locks = &MODEL()->locks;
 
 	if (! owner_lock(root)) {
 		ghost_assert(false);
 	}
 
-	for (int i = 0; i < the_ghost_state->locks.len; i++) {
+	for (int i = 0; i < MODEL()->locks.len; i++) {
 		if (locks->owner_ids[i] == root) {
 			locks->locks[i] = lock;
 			return;
@@ -60,10 +60,10 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 		unreachable();
 	}
 
-	i = the_ghost_state->locks.len++;
+	i = MODEL()->locks.len++;
 	ghost_assert(i < CASEMATE_MAX_LOCKS);
-	the_ghost_state->locks.owner_ids[i] = root;
-	the_ghost_state->locks.locks[i] = lock;
+	MODEL()->locks.owner_ids[i] = root;
+	MODEL()->locks.locks[i] = lock;
 }
 
 static void associate_lock(sm_owner_t root, gsm_lock_addr_t *lock)
@@ -77,15 +77,14 @@ static void associate_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 
 static void unregister_lock(u64 root)
 {
-	int len = the_ghost_state->locks.len;
+	int len = MODEL()->locks.len;
 
 	for (int i = 0; i < len; i++) {
-		if (the_ghost_state->locks.owner_ids[i] == root) {
+		if (MODEL()->locks.owner_ids[i] == root) {
 			len--;
-			the_ghost_state->locks.owner_ids[i] =
-				the_ghost_state->locks.owner_ids[len];
-			the_ghost_state->locks.locks[i] = the_ghost_state->locks.locks[len];
-			the_ghost_state->locks.len--;
+			MODEL()->locks.owner_ids[i] = MODEL()->locks.owner_ids[len];
+			MODEL()->locks.locks[i] = MODEL()->locks.locks[len];
+			MODEL()->locks.len--;
 			return;
 		}
 	}
@@ -99,12 +98,12 @@ bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state)
 		return false;
 	}
 
-	for (int i = 0; i < the_ghost_state->lock_state.len; i++) {
-		if (the_ghost_state->lock_state.address[i] == lock) {
+	for (int i = 0; i < MODEL()->lock_state.len; i++) {
+		if (MODEL()->lock_state.address[i] == lock) {
 			if (state != NULL) {
-				*state = &the_ghost_state->lock_state.locker[i];
+				*state = &MODEL()->lock_state.locker[i];
 			}
-			return the_ghost_state->lock_state.locker[i].id == cpu_id();
+			return MODEL()->lock_state.locker[i].id == cpu_id();
 		}
 	}
 
@@ -163,7 +162,7 @@ static void assert_owner_locked(struct sm_location *loc, struct lock_state **sta
 
 	if (! is_correctly_locked(lock, state)) {
 		// ghost_printf_ext("%g(sm_loc)", loc);
-		// ghost_printf_ext("%g(sm_locks)", the_ghost_state->locks);
+		// ghost_printf_ext("%g(sm_locks)", MODEL()->locks);
 		GHOST_MODEL_CATCH_FIRE("must write to pte while holding owner lock");
 	}
 }
@@ -532,7 +531,7 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 
 static inline struct cm_thrd_ctxt *current_thread_context(void)
 {
-	return &the_ghost_state->thread_context[cpu_id()];
+	return &MODEL()->thread_context[cpu_id()];
 }
 
 struct root *get_current_ttbr(void)
@@ -627,7 +626,7 @@ static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 	struct root *assoc_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 : &the_ghost_state->roots_s2;
+	roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
 	assoc_root = retrieve_root_for_baddr(roots, root);
 
 	if (! assoc_root)
@@ -672,8 +671,7 @@ static void step_msr(struct ghost_hw_step *step)
 			}
 		}
 
-		roots = (stage == ENTRY_STAGE1) ? &the_ghost_state->roots_s1 :
-						  &the_ghost_state->roots_s2;
+		roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
 
 		/* if that root with that id exists already, were just context switching */
 		assoc_root = retrieve_root_for_baddr(roots, root);
@@ -1050,8 +1048,8 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 
 static void reset_write_authorizations(void)
 {
-	int len = the_ghost_state->lock_state.len;
-	struct lock_state *states = the_ghost_state->lock_state.locker;
+	int len = MODEL()->lock_state.len;
+	struct lock_state *states = MODEL()->lock_state.locker;
 	for (int i = 0; i < len; i++) {
 		if (states[i].id == cpu_id())
 			states[i].write_authorization = AUTHORIZED;
@@ -1240,8 +1238,7 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 	 * and check the VTTBR VMID annotation matches the one associated with this root
 	 */
 	if (tlbi->regime == TLBI_REGIME_EL10 && ctxt->exploded_descriptor.stage == ENTRY_STAGE2) {
-		struct root *pte_root =
-			retrieve_root_for_baddr(&the_ghost_state->roots_s2, ctxt->root);
+		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots_s2, ctxt->root);
 		if (get_current_vttbr()->id != pte_root->id)
 			return false;
 		else
@@ -1250,8 +1247,7 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 
 	/* for TLBI that affects an ASID, it is supplied as an argument to the TLBI */
 	if (tlbi->regime == TLBI_REGIME_EL2 && ctxt->exploded_descriptor.stage == ENTRY_STAGE1) {
-		struct root *pte_root =
-			retrieve_root_for_baddr(&the_ghost_state->roots_s1, ctxt->root);
+		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots_s1, ctxt->root);
 		u64 asid;
 
 		if (__get_tlbi_asid(tlbi, &asid))
@@ -1524,37 +1520,35 @@ static void step_hint(struct ghost_hint_step *step)
 
 static void __step_lock(gsm_lock_addr_t *lock_addr)
 {
-	int len = the_ghost_state->lock_state.len;
+	int len = MODEL()->lock_state.len;
 	// look for the address in the map
 	for (int i = 0; i < len; i++) {
-		if (the_ghost_state->lock_state.address[i] == lock_addr) {
+		if (MODEL()->lock_state.address[i] == lock_addr) {
 			GHOST_MODEL_CATCH_FIRE("Tried to lock a component that was alerady held");
 		}
 	}
 	// If the lock is not yet in the map, we append it
 	ghost_assert(len < CASEMATE_MAX_LOCKS);
 
-	the_ghost_state->lock_state.address[len] = lock_addr;
-	the_ghost_state->lock_state.locker[len].id = cpu_id();
-	the_ghost_state->lock_state.locker[len].write_authorization = AUTHORIZED;
+	MODEL()->lock_state.address[len] = lock_addr;
+	MODEL()->lock_state.locker[len].id = cpu_id();
+	MODEL()->lock_state.locker[len].write_authorization = AUTHORIZED;
 
-	the_ghost_state->lock_state.len++;
+	MODEL()->lock_state.len++;
 }
 
 static void __step_unlock(gsm_lock_addr_t *lock_addr)
 {
-	int len = the_ghost_state->lock_state.len;
+	int len = MODEL()->lock_state.len;
 	// look for the address in the map
 	for (int i = 0; i < len; i++) {
-		if (the_ghost_state->lock_state.address[i] == lock_addr) {
-			if (the_ghost_state->lock_state.locker[i].id == cpu_id()) {
+		if (MODEL()->lock_state.address[i] == lock_addr) {
+			if (MODEL()->lock_state.locker[i].id == cpu_id()) {
 				// unlock the position
 				len--;
-				the_ghost_state->lock_state.locker[i] =
-					the_ghost_state->lock_state.locker[len];
-				the_ghost_state->lock_state.address[i] =
-					the_ghost_state->lock_state.address[len];
-				the_ghost_state->lock_state.len--;
+				MODEL()->lock_state.locker[i] = MODEL()->lock_state.locker[len];
+				MODEL()->lock_state.address[i] = MODEL()->lock_state.address[len];
+				MODEL()->lock_state.len--;
 				return;
 			} else {
 				GHOST_MODEL_CATCH_FIRE(
@@ -1636,7 +1630,7 @@ static inline bool should_print_state_on_step(void)
 		return false;
 
 	if (should_track_only_watchpoints())
-		return touched_watchpoint;
+		return STATE()->touched_watchpoint;
 
 	return true;
 }
@@ -1647,53 +1641,50 @@ static inline bool should_print_diff_on_step(void)
 		return false;
 
 	if (should_track_only_watchpoints())
-		return touched_watchpoint;
+		return STATE()->touched_watchpoint;
 
 	return true;
 }
 
-bool traced_current_trans = false;
-
 void ensure_traced_current_transition(bool force)
 {
-	if (traced_current_trans)
+	if (STATE()->traced_current_trans)
 		return;
 
 	if (! should_trace())
 		return;
 
-	if (should_track_only_watchpoints() && ! touched_watchpoint && ! force)
+	if (should_track_only_watchpoints() && ! STATE()->touched_watchpoint && ! force)
 		return;
 
-	trace_step(&current_transition);
+	trace_step(&CURRENT_TRANS());
 
-	traced_current_trans = true;
+	STATE()->traced_current_trans = true;
 }
 
 ///////////////////////////
 /// Generic Step
-
-struct casemate_model_step current_transition;
-u64 transition_id;
 
 void step(struct casemate_model_step trans)
 {
 	GHOST_LOG_CONTEXT_ENTER();
 	GHOST_LOG(trans, trans);
 
-	trans.seq_id = transition_id++;
-	current_transition = trans;
-	touched_watchpoint = false;
-	traced_current_trans = false;
+	/* XXX RO trans? */
+	trans.seq_id = STATE()->transition_id++;
 
-	if (! is_initialised)
+	STATE()->current_transition = trans;
+	STATE()->touched_watchpoint = false;
+	STATE()->traced_current_trans = false;
+
+	if (! STATE()->is_initialised)
 		goto out;
 
 	if (! opts()->enable_checking)
 		goto out;
 
 	if (should_print_diffs())
-		copy_cm_state_into(the_ghost_state_pre);
+		copy_cm_state_into(STATE()->st_pre);
 
 	switch (trans.kind) {
 	case TRANS_HW_STEP:
@@ -1714,12 +1705,12 @@ void step(struct casemate_model_step trans)
 	ensure_traced_current_transition(false);
 
 	if (should_print_state_on_step()) {
-		ghost_dump_model_state(NULL, the_ghost_state);
+		ghost_dump_model_state(NULL, MODEL());
 		ghost_printf("\n");
 	}
 
 	if (should_print_diff_on_step()) {
-		ghost_diff_and_print_sm_state(the_ghost_state_pre, the_ghost_state);
+		ghost_diff_and_print_sm_state(STATE()->st_pre, STATE()->st);
 		ghost_printf("\n");
 	}
 
@@ -1730,7 +1721,7 @@ out:
 
 void casemate_model_step(struct casemate_model_step trans)
 {
-	if (! LOAD_RLX(is_initialised))
+	if (! LOAD_RLX(STATE()->is_initialised))
 		return;
 
 	lock_sm();

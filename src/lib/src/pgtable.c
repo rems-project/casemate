@@ -387,18 +387,17 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 void add_location_to_unclean_PTE(struct sm_location *loc)
 {
 	// Check that the location is not already in the set
-	for (int i = 0; i < the_ghost_state->unclean_locations.len; i++) {
-		if (loc == the_ghost_state->unclean_locations.locations[i]) {
+	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
+		if (loc == MODEL()->unclean_locations.locations[i]) {
 			GHOST_WARN("A location was added twice to the unclean PTEs");
 			ghost_assert(false);
 		}
 	}
 
 	// Add it to the set
-	ghost_assert(the_ghost_state->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
-	the_ghost_state->unclean_locations.locations[the_ghost_state->unclean_locations.len] =
-		loc;
-	the_ghost_state->unclean_locations.len++;
+	ghost_assert(MODEL()->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
+	MODEL()->unclean_locations.locations[MODEL()->unclean_locations.len] = loc;
+	MODEL()->unclean_locations.len++;
 }
 
 static struct pgtable_traverse_context construct_context_from_pte(struct sm_location *loc,
@@ -423,11 +422,11 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage)
 {
 	struct sm_location *loc;
-	u64 *len = &the_ghost_state->unclean_locations.len;
+	u64 *len = &MODEL()->unclean_locations.len;
 	struct pgtable_traverse_context ctx;
 
 	for (int i = 0; i < *len; i++) {
-		loc = the_ghost_state->unclean_locations.locations[i];
+		loc = MODEL()->unclean_locations.locations[i];
 
 		ghost_assert(loc->initialised);
 		ghost_assert(loc->is_pte);
@@ -445,8 +444,8 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 		if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
 			// Take the last location of the list and put it in the current cell
 			(*len)--;
-			the_ghost_state->unclean_locations.locations[i] =
-				the_ghost_state->unclean_locations.locations[*len];
+			MODEL()->unclean_locations.locations[i] =
+				MODEL()->unclean_locations.locations[*len];
 			// decrement i to run on the current cell
 			i--;
 		}
