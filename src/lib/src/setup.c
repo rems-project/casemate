@@ -3,6 +3,7 @@
 //////////////////////////
 // Initialisation
 
+struct ghost_driver driver;
 struct casemate_state *the_ghost_state;
 
 /**
@@ -18,14 +19,14 @@ struct casemate_options *opts(void)
  */
 struct ghost_driver *side_effect(void)
 {
-	return &STATE()->driver;
+	return &driver;
 }
 
 void initialise_ghost_driver(struct ghost_driver *d)
 {
 	/* copy their driver into ours
 	 * so we don't have a reference to some unstable state */
-	STATE()->driver = *d;
+	driver = *d;
 }
 
 int attach_casemate_model(void *st)

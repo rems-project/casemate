@@ -199,11 +199,12 @@ struct ghost_driver {
 int casemate_watch_location(uint64_t loc);
 
 /**
- * initialise_ghost_cm_driver() - Setup the global ghost driver.
+ * initialise_ghost_driver() - Setup the ghost driver for this instance.
  */
 void initialise_ghost_driver(struct ghost_driver *driver);
 
 #endif /* CASEMATE_CONFIG_H */
+
 
 /* auto-included by Makefile */
 /**
