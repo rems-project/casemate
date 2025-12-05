@@ -442,7 +442,6 @@ struct casemate_state {
 
 	bool is_initialised;
 	struct casemate_options opts;
-	struct ghost_driver driver;
 
 	/**
 	 * current_transition - The step currently being executed.
@@ -466,6 +465,7 @@ struct casemate_state {
 	struct casemate_model_state *st_pre;
 };
 
+extern struct ghost_driver driver;
 extern struct casemate_state *the_ghost_state;
 #define STATE() the_ghost_state
 #define MODEL() STATE()->st
