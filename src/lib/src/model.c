@@ -644,6 +644,28 @@ static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 ////////////////////
 // Step write sysreg
 
+bool try_read_sysreg(enum ghost_sysreg_kind reg, u64 *ret)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+	struct sysreg sysreg = ctxt->regs[reg];
+	if (sysreg.present) {
+		*ret = sysreg.value;
+		return true;
+	}
+	return false;
+}
+
+u64 read_sysreg(enum ghost_sysreg_kind reg)
+{
+	u64 ret;
+
+	if (try_read_sysreg(reg, &ret))
+		return ret;
+
+	/* not known, try read from physical state */
+	return side_effect()->read_sysreg(reg);
+}
+
 static void step_msr(struct ghost_hw_step *step)
 {
 	bool ret;
@@ -719,9 +741,12 @@ context_switch:
 		break;
 
 	default:
-		GHOST_MODEL_CATCH_FIRE(
-			"wrote to unsupported sysreg - only support writes to (V)TTBR");
+		break;
 	}
+
+	/* update ghost version of the register */
+	ctxt->regs[step->msr_data.sysreg].present = true;
+	ctxt->regs[step->msr_data.sysreg].value = step->msr_data.val;
 }
 
 ////////////////////////

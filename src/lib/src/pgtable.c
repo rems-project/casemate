@@ -52,10 +52,10 @@ static u64 read_start_level(u64 tcr)
 static u64 discover_start_level(entry_stage_t stage)
 {
 	if (stage == ENTRY_STAGE2) {
-		u64 vtcr = side_effect()->read_sysreg(SYSREG_VTCR_EL2);
+		u64 vtcr = read_sysreg(SYSREG_VTCR_EL2);
 		return read_start_level(vtcr);
 	} else {
-		u64 tcr = side_effect()->read_sysreg(SYSREG_TCR_EL2);
+		u64 tcr = read_sysreg(SYSREG_TCR_EL2);
 		return read_start_level(tcr);
 	}
 }
@@ -66,9 +66,9 @@ static u64 discover_page_size(entry_stage_t stage)
 	u64 tg0;
 
 	if (stage == ENTRY_STAGE2) {
-		tcr = side_effect()->read_sysreg(SYSREG_VTCR_EL2);
+		tcr = read_sysreg(SYSREG_VTCR_EL2);
 	} else {
-		tcr = side_effect()->read_sysreg(SYSREG_TCR_EL2);
+		tcr = read_sysreg(SYSREG_TCR_EL2);
 	}
 
 	tg0 = (tcr & TCR_TG0_MASK) >> TCR_TG0_LO;
@@ -100,7 +100,7 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	// assume stage2 translations starting at level 0
 	ghost_assert(discover_start_level(ENTRY_STAGE2) == 0);
 
-	t0sz = (side_effect()->read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
+	t0sz = (read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
 
 	// now we know t0sz must be between 24 and 12.
 	if (t0sz >= 16) {
@@ -289,7 +289,7 @@ struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 		if (stage == ENTRY_STAGE1)
 			// TODO: BS: read sysregs from ghost model not h/w
 			//           they should be part of s1_roots or something?
-			mair = read_mair(side_effect()->read_sysreg(SYSREG_MAIR_EL2));
+			mair = read_mair(read_sysreg(SYSREG_MAIR_EL2));
 		else
 			mair = no_mair();
 		deconstructed.map_data.attrs =
