@@ -30,21 +30,7 @@ bool COLOR = false;
 
 u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 {
-	switch (sysreg) {
-	case SYSREG_VTCR_EL2:
-		return VTCR_EL2;
-	case SYSREG_TCR_EL2:
-		return TCR_EL2;
-	case SYSREG_MAIR_EL2:
-		return MAIR_EL2;
-
-	case SYSREG_VTTBR:
-	case SYSREG_TTBR_EL2:
-		assert(false);
-
-	default:
-		assert(false);
-	}
+	assert(false);
 }
 
 void ghost_cm_abort(const char *msg)
@@ -283,6 +269,10 @@ void common_init(int argc, char **argv)
 	st = malloc(sm_size);
 	initialise_casemate_model(&opts, 0, 0, st, sm_size);
 	initialise_ghost_driver(&sm_driver);
+
+	casemate_model_step_msr(SYSREG_VTCR_EL2, VTCR_EL2);
+	casemate_model_step_msr(SYSREG_TCR_EL2, TCR_EL2);
+	casemate_model_step_msr(SYSREG_MAIR_EL2, MAIR_EL2);
 
 	mtx_init(&m, mtx_plain);
 }
