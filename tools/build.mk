@@ -17,7 +17,7 @@ CONFIG = $(root)/config.mk
 
 %.o.S: %.o
 	$(call run_cmd,OBJDUMP,$@, \
-		$(OBJDUMP) -rS $^ > $@ \
+		$(OBJDUMP) -rSD $^ > $@ \
 	)
 
 $(src)/compile_commands.json:
