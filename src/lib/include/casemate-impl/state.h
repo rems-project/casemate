@@ -394,11 +394,34 @@ struct roots {
 };
 
 /**
+ * struct sysreg - A single possibly-present system register value
+ */
+struct sysreg {
+	bool present;
+	u64 value;
+};
+
+/**
+ * try_read_sysreg() - Read system register from Ghost state
+ *
+ * Returns false if ghost state has no known value for that register
+ */
+bool try_read_sysreg(enum ghost_sysreg_kind reg, u64 *ret);
+
+/**
+ * read_sysreg() - Read system register
+ *
+ * Performs register read side-effect if register is not known.
+ */
+u64 read_sysreg(enum ghost_sysreg_kind reg);
+
+/**
  * struct cm_thrd_ctxt - Per thread context ghost copy
  */
 struct cm_thrd_ctxt {
 	struct root *current_s1;
 	struct root *current_s2;
+	struct sysreg regs[SYSREG_MAIR_EL2];
 };
 
 /**
