@@ -18,6 +18,7 @@ arch=`uname -m`
 host=`uname -s`
 cross_prefix=
 clangd=1
+config=DEFAULT
 
 force=0
 warned=0
@@ -27,6 +28,7 @@ usage() {
   echo
   echo "Options:";
   echo " -h --help               print this help";
+  echo " --config=CONFIG         config file";
   echo " --cross-prefix=PREFIX   compilation tool prefix";
   echo " --cc=CC                 compiler";
   echo " --ld=LD                 linker";
@@ -55,6 +57,9 @@ while [[ "$1" = -* ]]; do
       opt="${opt%%=*}";
     fi
     case "$opt" in
+    --config)
+        config="$arg"
+        ;;
     --cross-prefix)
         cross_prefix="$arg"
         ;;
@@ -137,8 +142,17 @@ elif [ ${warned} -gt 1 ]; then
   echo "configure: multiple warnings suppressed, writing config anyway"
 fi
 
+pconfig=${rootdir}/configs/${config}
+if [ ! -f ${pconfig} ]; then
+	echo "unknown config: ${config}"
+	exit 1
+fi
+config=$pconfig
+
 cat <<EOF > config.mk
 # Auto-generated, see ./configure script.
+
+config.mk: ${config}
 
 root = ${rootdir}
 
@@ -159,4 +173,13 @@ CLANGD = ${clangd}
 casemate_o = ${casemate_o}
 casemate_h = ${casemate_h}
 lib_includes = ${lib_includes}
+
+# config rules:
 EOF
+
+while read -r ln
+do
+	if [ -n "$ln" ] && [[ "$ln" != \#* ]]; then
+		echo "$ln" >> config.mk
+	fi
+done < ${config}

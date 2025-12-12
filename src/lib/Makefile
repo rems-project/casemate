@@ -15,6 +15,27 @@ ifeq ($(ARCH),AARCH64)
 endif
 CFLAGS += -fno-common -nostdlib
 
+# platform-specific target rules
+CFLAGS += -DCONFIG_PLATFORM_$(CONFIG_TARGET_PLATFORM)
+ifeq ($(CONFIG_TARGET_PLATFORM),FREEBSD)
+ifeq ($(CONFIG_VMM_nVHE),y)
+bsd-build-obj := casemate.bsd.hyp.o
+CFLAGS += -DVMM_nVHE
+endif
+ifeq ($(CONFIG_KERNEL),y)
+bsd-build-obj := casemate.bsd.kern.o
+CFLAGS += -D_KERNEL
+endif
+endif
+
+ifeq ($(CONFIG_MASK_INTERRUPTS),y)
+CFLAGS += -DCONFIG_MASK_INTERRUPTS
+endif
+
+ifeq ($(CONFIG_ARM64_FORCE_BTI),y)
+LDFLAGS += -zforce-bti
+endif
+
 casemate-obj += src/model.o
 casemate-obj += src/transitions.o
 casemate-obj += src/setup.o
@@ -43,6 +64,13 @@ $(src)/include/casemate.h: $(headers-deps)
 LDFLAGS-$(src)/casemate.o := -r
 $(src)/casemate.o: $(addprefix $(src)/,$(casemate-obj))
 	$(call run_ld,$^,$@)
+
+ifeq ($(CONFIG_TARGET_PLATFORM),FREEBSD)
+build: $(src)/$(bsd-build-obj)
+
+$(src)/$(bsd-build-obj): $(src)/casemate.o
+	$(call run_cp,$^,$@)
+endif
 
 $(src)/casemate.h: $(src)/include/casemate.h
 	$(call run_cp,$^,$@)
