@@ -27,11 +27,10 @@ void __atomic_cas(volatile u64 *va, u64 old, u64 new)
 		"clrex\n"
 		"1:\n"
 		"wfe\n"
-		"ldxr x0, [%[va]]\n"
+		"ldaxr x0, [%[va]]\n"
 		"cmp x0, %[old]\n"
 		"b.ne 0b\n"
-		"dsb sy\n"
-		"stxr w1, %[val], [%[va]]\n"
+		"stlxr w1, %[val], [%[va]]\n"
 		"cbnz w1, 1b\n"
 
 		"1:\n"
