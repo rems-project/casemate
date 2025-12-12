@@ -22,7 +22,7 @@ void touch(u64 location)
 ////////////////////
 // Locks
 
-gsm_lock_addr_t *owner_lock(sm_owner_t owner_id)
+gsm_lock_addr_t owner_lock(sm_owner_t owner_id)
 {
 	for (int i = 0; i < MODEL()->locks.len; i++) {
 		if (MODEL()->locks.owner_ids[i] == owner_id) {
@@ -30,10 +30,10 @@ gsm_lock_addr_t *owner_lock(sm_owner_t owner_id)
 		}
 	}
 
-	return NULL;
+	return 0;
 }
 
-static void swap_lock(sm_owner_t root, gsm_lock_addr_t *lock)
+static void swap_lock(sm_owner_t root, gsm_lock_addr_t lock)
 {
 	struct lock_owner_map *locks = &MODEL()->locks;
 
@@ -51,7 +51,7 @@ static void swap_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 	GHOST_MODEL_CATCH_FIRE("can't change lock on unlocked location");
 }
 
-static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
+static void append_lock(sm_owner_t root, gsm_lock_addr_t lock)
 {
 	u64 i;
 
@@ -70,7 +70,7 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 	MODEL()->locks.locks[i] = lock;
 }
 
-static void associate_lock(sm_owner_t root, gsm_lock_addr_t *lock)
+static void associate_lock(sm_owner_t root, gsm_lock_addr_t lock)
 {
 	if (owner_lock(root)) {
 		swap_lock(root, lock);
@@ -95,7 +95,7 @@ static void unregister_lock(u64 root)
 	GHOST_MODEL_CATCH_FIRE("Tried to release a table which did not have a lock");
 }
 
-bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state)
+bool is_correctly_locked(gsm_lock_addr_t lock, struct lock_state **state)
 {
 	if (! opts()->check_opts.check_synchronisation) {
 		*state = NULL;
@@ -118,7 +118,7 @@ bool is_location_locked(struct sm_location *loc)
 {
 	struct lock_state *state;
 	sm_owner_t owner_id;
-	gsm_lock_addr_t *lock;
+	gsm_lock_addr_t lock;
 
 	if (! loc->initialised || ! loc->is_pte)
 		return true;
@@ -147,7 +147,7 @@ bool is_location_locked(struct sm_location *loc)
 static void assert_owner_locked(struct sm_location *loc, struct lock_state **state)
 {
 	sm_owner_t owner_id;
-	gsm_lock_addr_t *lock;
+	gsm_lock_addr_t lock;
 
 	ghost_assert(loc->initialised && loc->is_pte);
 
@@ -551,6 +551,12 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 ///////////////////
 // Pagetable roots
 
+static struct root *retrieve_root_from_idx(u64 idx, entry_stage_t stage)
+{
+	struct roots *roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
+	return &roots->roots[idx];
+}
+
 static inline struct cm_thrd_ctxt *current_thread_context(void)
 {
 	return &MODEL()->thread_context[cpu_id()];
@@ -558,29 +564,41 @@ static inline struct cm_thrd_ctxt *current_thread_context(void)
 
 struct root *get_current_ttbr(void)
 {
-	return current_thread_context()->current_s1;
+	root_index_t *cur = &current_thread_context()->current_s1;
+	if (cur->present)
+		return retrieve_root_from_idx(cur->index, ENTRY_STAGE1);
+	else
+		return NULL;
 }
 
 struct root *get_current_vttbr(void)
 {
-	return current_thread_context()->current_s2;
+	root_index_t *cur = &current_thread_context()->current_s2;
+	if (cur->present)
+		return retrieve_root_from_idx(cur->index, ENTRY_STAGE1);
+	else
+		return NULL;
 }
 
 struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
 {
+	struct root *root;
 	for (int i = 0; i < roots->len; i++) {
-		if (roots->roots[i].id == id) {
-			return &roots->roots[i];
+		root = &roots->roots[i];
+		if (root->present && root->id == id) {
+			return root;
 		}
 	}
 	return NULL;
 }
 
-struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t root)
+struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t baddr)
 {
+	struct root *root;
 	for (int i = 0; i < roots->len; i++) {
-		if (roots->roots[i].baddr == root) {
-			return &roots->roots[i];
+		root = &roots->roots[i];
+		if (root->present && root->baddr == baddr) {
+			return root;
 		}
 	}
 	return NULL;
@@ -589,21 +607,8 @@ struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t root)
 void free_root(struct roots *roots, struct root *root)
 {
 	ghost_assert(root != NULL);
-
-	for (int i = 0; i < roots->len; i++) {
-		/* remove exactly this root object */
-		if (&roots->roots[i] == root) {
-			/* swap old last slot in */
-			if (i < roots->len - 1)
-				roots->roots[i] = roots->roots[roots->len - 1];
-
-			roots->len--;
-			return;
-		}
-	}
-
-	/* should never be trying to free a root that does not exist */
-	ghost_assert(false);
+	root->present = false;
+	roots->len--;
 }
 
 bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
@@ -624,6 +629,7 @@ bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
 
 void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id)
 {
+	u64 new_root_idx;
 	struct root new_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
@@ -631,13 +637,30 @@ void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id)
 		GHOST_MODEL_CATCH_FIRE("too many roots");
 	}
 
+	/* find empty slot
+	 * which must exist since len < MAX_ROOTS */
+	for (u64 i = 0; i < MAX_ROOTS; i++) {
+		if (! roots->roots[i].present) {
+			new_root_idx = i;
+			goto found;
+		}
+	}
+
+	GHOST_MODEL_CATCH_FIRE("unreachable: too many roots?");
+	return;
+
+found:
+	roots->len++;
 	new_root = (struct root){
+		.present = true,
 		.baddr = baddr,
 		.id = id,
 		.refcount = 0,
+		.index = new_root_idx,
 	};
-	roots->roots[roots->len++] = new_root;
+	roots->roots[new_root_idx] = new_root;
 
+	/* XXX what if already marked? */
 	traverse_pgtable(baddr, roots->stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
@@ -696,6 +719,7 @@ static void step_msr(struct ghost_hw_step *step)
 	entry_stage_t stage;
 	struct roots *roots;
 	struct root *assoc_root;
+	root_index_t *cur_root;
 
 	struct cm_thrd_ctxt *ctxt = current_thread_context();
 
@@ -747,10 +771,12 @@ static void step_msr(struct ghost_hw_step *step)
 		}
 
 context_switch:
-		/* decrement refcount on current (if applicable)*/
-		assoc_root = (stage == ENTRY_STAGE1) ? ctxt->current_s1 : ctxt->current_s2;
-		if (assoc_root)
+		/* decrement refcount on current (if applicable) */
+		cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
+		if (cur_root->present) {
+			assoc_root = retrieve_root_from_idx(cur_root->index, stage);
 			assoc_root->refcount--;
+		}
 
 		/* and increment refcount on one we just switched to */
 		assoc_root = retrieve_root_for_id(roots, id);
@@ -758,10 +784,15 @@ context_switch:
 		assoc_root->refcount++;
 
 		/* and make it the curent context */
+		struct root_index new_root_index = (struct root_index){
+			.present = true,
+			.index = assoc_root->index,
+		};
+
 		if (stage == ENTRY_STAGE1) {
-			ctxt->current_s1 = assoc_root;
+			ctxt->current_s1 = new_root_index;
 		} else {
-			ctxt->current_s2 = assoc_root;
+			ctxt->current_s2 = new_root_index;
 		}
 
 		break;
@@ -1505,7 +1536,7 @@ void check_release_cb(struct pgtable_traverse_context *ctxt)
 		GHOST_MODEL_CATCH_FIRE("cannot release table where children are still unclean");
 }
 
-static void step_hint_set_root_lock(u64 root, gsm_lock_addr_t *lock)
+static void step_hint_set_root_lock(u64 root, gsm_lock_addr_t lock)
 {
 	// TODO: BS: on teardown a VM's lock might get disassociated,
 	// then re-associated later with a different lock.
@@ -1573,7 +1604,7 @@ static void step_hint(struct ghost_hint_step *step)
 {
 	switch (step->kind) {
 	case GHOST_HINT_SET_ROOT_LOCK:
-		step_hint_set_root_lock(step->location, (gsm_lock_addr_t *)step->value);
+		step_hint_set_root_lock(step->location, (gsm_lock_addr_t)step->value);
 		break;
 	case GHOST_HINT_SET_OWNER_ROOT:
 		step_hint_set_owner_root(step->location, step->value);
@@ -1592,7 +1623,7 @@ static void step_hint(struct ghost_hint_step *step)
 //////////////////////
 // ABS
 
-static void __step_lock(gsm_lock_addr_t *lock_addr)
+static void __step_lock(gsm_lock_addr_t lock_addr)
 {
 	int len = MODEL()->lock_state.len;
 	// look for the address in the map
@@ -1613,7 +1644,7 @@ static void __step_lock(gsm_lock_addr_t *lock_addr)
 	MODEL()->lock_state.len++;
 }
 
-static void __step_unlock(gsm_lock_addr_t *lock_addr)
+static void __step_unlock(gsm_lock_addr_t lock_addr)
 {
 	int len = MODEL()->lock_state.len;
 	// look for the address in the map
@@ -1679,10 +1710,10 @@ static void step_abs(struct ghost_abs_step *step)
 {
 	switch (step->kind) {
 	case GHOST_ABS_LOCK:
-		__step_lock((gsm_lock_addr_t *)step->lock_data.address);
+		__step_lock((gsm_lock_addr_t)step->lock_data.address);
 		break;
 	case GHOST_ABS_UNLOCK:
-		__step_unlock((gsm_lock_addr_t *)step->lock_data.address);
+		__step_unlock((gsm_lock_addr_t)step->lock_data.address);
 		break;
 	case GHOST_ABS_INIT:
 		// Nothing to do
@@ -1768,7 +1799,7 @@ void step(struct casemate_model_step trans)
 		goto out;
 
 	if (should_print_diffs())
-		copy_cm_state_into(STATE()->st_pre);
+		copy_cm_state_into(MODEL_PRE());
 
 	switch (trans.kind) {
 	case TRANS_HW_STEP:
@@ -1794,7 +1825,7 @@ void step(struct casemate_model_step trans)
 	}
 
 	if (should_print_diff_on_step()) {
-		ghost_diff_and_print_sm_state(STATE()->st_pre, STATE()->st);
+		ghost_diff_and_print_sm_state(MODEL_PRE(), MODEL());
 		ghost_printf("\n");
 	}
 
