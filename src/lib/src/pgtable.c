@@ -423,7 +423,7 @@ void add_location_to_unclean_PTE(struct sm_location *loc)
 {
 	// Check that the location is not already in the set
 	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
-		if (loc == MODEL()->unclean_locations.locations[i]) {
+		if (loc->phys_addr == MODEL()->unclean_locations.locations[i]) {
 			GHOST_WARN("A location was added twice to the unclean PTEs");
 			ghost_assert(false);
 		}
@@ -431,7 +431,7 @@ void add_location_to_unclean_PTE(struct sm_location *loc)
 
 	// Add it to the set
 	ghost_assert(MODEL()->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
-	MODEL()->unclean_locations.locations[MODEL()->unclean_locations.len] = loc;
+	MODEL()->unclean_locations.locations[MODEL()->unclean_locations.len] = loc->phys_addr;
 	MODEL()->unclean_locations.len++;
 }
 
@@ -456,12 +456,14 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage)
 {
+	u64 phys;
 	struct sm_location *loc;
 	struct location_set *uncleans = &MODEL()->unclean_locations;
 	struct pgtable_traverse_context ctx;
 
 	for (int i = 0; i < uncleans->len; i++) {
-		loc = uncleans->locations[i];
+		phys = uncleans->locations[i];
+		loc = location(phys);
 
 		/* Steps on earlier locations
 		 * may touch later ones
@@ -487,7 +489,8 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 	/* Go back through and discard any that no longer need cleaning
 	 */
 	for (int i = 0; i < uncleans->len; i++) {
-		loc = uncleans->locations[i];
+		phys = uncleans->locations[i];
+		loc = location(phys);
 
 		if (loc->initialised && loc->is_pte &&
 		    loc->state.kind == STATE_PTE_INVALID_UNCLEAN)

@@ -237,8 +237,9 @@ u64 casemate_cpu_id(void)
 
 void common_init(int argc, char **argv)
 {
+	int err;
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
-	u64 sm_size = 2 * sizeof(struct casemate_model_state);
+	u64 sm_size = sizeof(struct casemate_state) + 2*sizeof(struct casemate_model_state);
 	struct ghost_driver sm_driver = {
 		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
@@ -267,7 +268,11 @@ void common_init(int argc, char **argv)
 	opts.enable_tracing = SHOULD_TRACE;
 
 	st = malloc(sm_size);
-	initialise_casemate_model(&opts, 0, 0, st, sm_size);
+	err = initialise_casemate_model(&opts, 0, 0, st, sm_size);
+	if (err) {
+		fprintf(stderr, "common: failed to initialise casemate state\n");
+		exit(1);
+	}
 	initialise_ghost_driver(&sm_driver);
 
 	casemate_model_step_msr(SYSREG_VTCR_EL2, VTCR_EL2);
