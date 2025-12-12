@@ -60,5 +60,5 @@ bool sm_loc_eq(struct sm_location *loc1, struct sm_location *loc2)
 // Copying
 void copy_cm_state_into(struct casemate_model_state *out)
 {
-	memcpy(out, the_ghost_state, sizeof(struct casemate_model_state));
+	memcpy(out, MODEL(), sizeof(struct casemate_model_state));
 }

@@ -291,11 +291,10 @@ struct casemate_model_memory {
 };
 
 /**
- * struct unclean_locations - set of locations
+ * struct location_set - set of locations
  */
-
 struct location_set {
-	struct sm_location *locations[MAX_UNCLEAN_LOCATIONS];
+	u64 locations[MAX_UNCLEAN_LOCATIONS];
 	u64 len;
 };
 
@@ -307,7 +306,7 @@ struct location_set {
 struct lock_owner_map {
 	u64 len;
 	sm_owner_t owner_ids[CASEMATE_MAX_LOCKS];
-	gsm_lock_addr_t *locks[CASEMATE_MAX_LOCKS];
+	gsm_lock_addr_t locks[CASEMATE_MAX_LOCKS];
 };
 
 /**
@@ -337,7 +336,7 @@ struct lock_state {
  */
 struct lock_state_map {
 	u64 len;
-	gsm_lock_addr_t *address[CASEMATE_MAX_LOCKS];
+	gsm_lock_addr_t address[CASEMATE_MAX_LOCKS];
 	struct lock_state locker[CASEMATE_MAX_LOCKS];
 };
 
@@ -346,7 +345,7 @@ struct lock_state_map {
  *
  * Returns NULL if no lock for that owner_id.
  */
-gsm_lock_addr_t *owner_lock(sm_owner_t owner_id);
+gsm_lock_addr_t owner_lock(sm_owner_t owner_id);
 
 /**
  * CASEMATE_MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
@@ -374,14 +373,18 @@ struct vmid_map {
 
 /**
  * struct root - A single root (base addr + ASID/VMID)
+ * @present: whether this root is active
  * @baddr: the root base (physical) address.
  * @id: the associated ASID/VMID.
  * @refcount: the number of CPUs that have this root currently active.
+ * @index: index of this root in the roots table
  */
 struct root {
+	bool present;
 	sm_owner_t baddr;
 	addr_id_t id;
 	u64 refcount;
+	u64 index;
 };
 
 /**
@@ -394,11 +397,45 @@ struct roots {
 };
 
 /**
+ * struct sysreg - A single possibly-present system register value
+ */
+struct sysreg {
+	bool present;
+	u64 value;
+};
+
+/**
+ * try_read_sysreg() - Read system register from Ghost state
+ *
+ * Returns false if ghost state has no known value for that register
+ */
+bool try_read_sysreg(enum ghost_sysreg_kind reg, u64 *ret);
+
+/**
+ * read_sysreg() - Read system register
+ *
+ * Performs register read side-effect if register is not known.
+ */
+u64 read_sysreg(enum ghost_sysreg_kind reg);
+
+/**
+ * struct root_index - An (optionally) loaded root with index to it
+ */
+struct root_index {
+	bool present;
+	u64 index;
+};
+
+typedef struct root_index root_index_t;
+
+/**
  * struct cm_thrd_ctxt - Per thread context ghost copy
+ * @current_s1_idx: index into the roots_s1 map of the currently-loaded stage1 root
  */
 struct cm_thrd_ctxt {
-	struct root *current_s1;
-	struct root *current_s2;
+	root_index_t current_s1;
+	root_index_t current_s2;
+	struct sysreg regs[SYSREG_MAIR_EL2];
 };
 
 /**
@@ -419,9 +456,6 @@ struct casemate_model_state {
 	struct casemate_model_memory memory;
 
 	struct location_set unclean_locations;
-
-	u64 nr_s1_roots;
-	u64 s1_roots[MAX_ROOTS];
 
 	struct roots roots_s1;
 	struct roots roots_s2;
@@ -461,14 +495,20 @@ struct casemate_state {
 	bool touched_watchpoint;
 	struct casemate_watchpoints watchpoints;
 
-	struct casemate_model_state *st;
-	struct casemate_model_state *st_pre;
+	/**
+	 * st - The model state
+	 *
+	 * st[0] is the real global state
+	 * st[1] is, optionally, a snapshot of the state
+	 */
+	struct casemate_model_state st[];
 };
 
 extern struct ghost_driver driver;
 extern struct casemate_state *the_ghost_state;
 #define STATE() the_ghost_state
-#define MODEL() STATE()->st
+#define MODEL() (&STATE()->st[0])
+#define MODEL_PRE() (&STATE()->st[1])
 #define CURRENT_TRANS() STATE()->current_transition
 
 #endif /* CASEMATE_STATE_H */

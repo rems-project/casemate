@@ -39,44 +39,72 @@ int attach_casemate_model(void *st)
 	return 0;
 }
 
+static void init_roots(struct roots *roots, entry_stage_t stage)
+{
+	roots->len = 0;
+	roots->stage = stage;
+}
+
+static void init_thrd_ctxt(struct cm_thrd_ctxt *ctx)
+{
+	ctx->current_s1.present = false;
+	ctx->current_s2.present = false;
+
+	for (u64 i = 0; i < SYSREG_MAIR_EL2 + 1; i++) {
+		ctx->regs[i].present = false;
+	}
+}
+
+static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 size)
+{
+	/* copy their configuration into ours
+	 * so we don't have a reference to some unstable state */
+	*opts() = *cfg;
+
+	init_sm_lock();
+
+	STATE()->transition_id = 0;
+	STATE()->watchpoints.num_watchpoints = 0;
+
+	/* initialise the model memory */
+	initialise_ghost_ptes_memory(phys, size);
+
+	MODEL()->unclean_locations.len = 0;
+	init_roots(&MODEL()->roots_s1, ENTRY_STAGE1);
+	init_roots(&MODEL()->roots_s2, ENTRY_STAGE2);
+
+	for (int i = 0; i < MAX_CPU; i++)
+		init_thrd_ctxt(&MODEL()->thread_context[i]);
+
+	MODEL()->locks.len = 0;
+	MODEL()->lock_state.len = 0;
+
+	/* mark as initialised */
+	STORE_RLX(STATE()->is_initialised, true);
+}
+
 int initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u64 size,
 			      void *sm_virt, u64 sm_size)
 {
-	int ret = 0;
+	int ret;
 	u64 expected_size;
-
-	the_ghost_state = (struct casemate_state *)sm_virt;
-	the_ghost_state->transition_id = 0;
-	the_ghost_state->watchpoints.num_watchpoints = 0;
-	init_sm_lock();
-
-	/* now there's a lock, we can start doing other things */
 	GHOST_LOG_CONTEXT_ENTER();
-
-	/* align to an 8-byte boundary */
-	STATE()->st = (struct casemate_model_state *)ALIGN_UP_TO(
-		(u64)(sm_virt + sizeof(struct casemate_state)), 8);
-	STATE()->st_pre = (struct casemate_model_state *)ALIGN_UP_TO((u64)(STATE()->st + 1), 8);
-	STATE()->transition_id = 0;
 
 	expected_size = sizeof(struct casemate_state) + sizeof(struct casemate_model_state);
 	if (cfg->check_opts.print_opts & CM_PRINT_DIFF_TO_STATE_ON_STEP)
-		expected_size += PAGE_SIZE + sizeof(struct casemate_model_state);
+		expected_size += sizeof(struct casemate_model_state);
 
 	if (sm_size < expected_size) {
 		ret = -12;
 		goto out;
 	}
 
-	/* copy their configuration into ours
-	 * so we don't have a reference to some unstable state */
-	*opts() = *cfg;
-	initialise_ghost_ptes_memory(phys, size);
+	/* install as this instance's state
+	 * and initialise it */
+	the_ghost_state = (struct casemate_state *)sm_virt;
+	init_sm_state(cfg, phys, size);
 
-	MODEL()->roots_s1.stage = ENTRY_STAGE1;
-	MODEL()->roots_s2.stage = ENTRY_STAGE2;
-	STORE_RLX(STATE()->is_initialised, true);
-
+	ret = 0;
 out:
 	GHOST_LOG_CONTEXT_EXIT();
 	return ret;
