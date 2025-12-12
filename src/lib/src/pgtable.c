@@ -86,7 +86,7 @@ static u64 discover_page_size(entry_stage_t stage)
 
 static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 {
-	u64 t0sz;
+	u64 t0sz, iasize, start_level, nr_start_entries;
 
 	/* stage1 is never concatenated */
 	if (stage == ENTRY_STAGE1)
@@ -97,25 +97,26 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	// assume pkvm has 4k graule
 	ghost_assert(discover_page_size(ENTRY_STAGE2) == PAGE_SIZE);
 
-	// assume stage2 translations starting at level 0
-	ghost_assert(discover_start_level(ENTRY_STAGE2) == 0);
-
+	// compute start level
+	start_level = discover_start_level(ENTRY_STAGE2);
 	t0sz = (read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
+	iasize = 1 << (64 - t0sz);
 
-	// now we know t0sz must be between 24 and 12.
-	if (t0sz >= 16) {
+	/* RHRSBS
+	 * For a stage 2 translation, if the translation table in the initial lookup level
+	 * would require 16 or fewer entries, then the stage 2 translation
+	 * can be configured to have all of the following properties:
+	 * - The initial lookup of the stage 2 translation starts at the next lookup level.
+	 * - A number of translation tables corresponding to the original number of
+	 *   translation table entries at the previously initial lookup level are
+	 *   concatenated at that next lookup level.
+	 */
+	nr_start_entries = (512 * MAP_SIZES[start_level] - iasize) / MAP_SIZES[start_level];
+
+	if (nr_start_entries <= 16)
+		return nr_start_entries;
+	else
 		return 1;
-	} else if (t0sz == 15) {
-		return 2;
-	} else if (t0sz == 14) {
-		return 4;
-	} else if (t0sz == 13) {
-		return 8;
-	} else if (t0sz == 12) {
-		return 16;
-	} else {
-		unreachable();
-	}
 }
 
 bool is_desc_valid(u64 descriptor)
@@ -381,8 +382,8 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 	GHOST_LOG(root, u64);
 	GHOST_LOG(start_level, u64);
 
-	// assume uses 4k granule, starting from level 0, without multiple concatenated pagetables
-	ghost_assert(start_level == 0);
+	// assume uses 4k granule, without multiple concatenated pagetables
+	//ghost_assert(start_level == 0);
 	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
 	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
 
