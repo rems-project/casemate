@@ -95,7 +95,7 @@ bool is_location_locked(struct sm_location *loc);
  *
  * NOTE: when synchronisation checking is disabled always returns false and *state is undefined.
  */
-bool is_correctly_locked(gsm_lock_addr_t *lock, struct lock_state **state);
+bool is_correctly_locked(gsm_lock_addr_t lock, struct lock_state **state);
 
 /// VMIDs
 
