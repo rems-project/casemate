@@ -1820,13 +1820,25 @@ out:
 
 void casemate_model_step(struct casemate_model_step trans)
 {
+#ifdef CONFIG_MASK_INTERRUPTS
+	u64 irq_mask;
+#endif
+
 	if (! LOAD_RLX(STATE()))
 		return;
 
 	if (! LOAD_RLX(STATE()->is_initialised))
 		return;
 
+#ifdef CONFIG_MASK_INTERRUPTS
+	irq_mask = mask_interrupts();
+#endif
+
 	lock_sm();
 	step(trans);
 	unlock_sm();
+
+#ifdef CONFIG_MASK_INTERRUPTS
+	restore_interrupts(irq_mask);
+#endif
 }
