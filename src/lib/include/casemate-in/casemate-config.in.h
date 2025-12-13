@@ -71,6 +71,13 @@ struct casemate_log_options {
 	 * @condensed_format: if true, trace omits the keys in key/value pairs.
 	 */
 	bool condensed_format;
+
+	/**
+	 * @omit_reads: do not trace reads
+	 *
+	 * NOTE: this does not prevent tracing on catching fire on a read step
+	 */
+	bool omit_reads;
 };
 
 /* clang-format off */
@@ -79,6 +86,7 @@ struct casemate_log_options {
 	{ \
 		.log_format_version = 1, \
 		.condensed_format = false, \
+		.omit_reads = false \
 	}
 /* clang-format on */
 
