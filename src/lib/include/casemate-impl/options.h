@@ -2,6 +2,7 @@
 #define CASEMATE_OPTIONS_H
 
 #include <casemate.h>
+#include <casemate-impl/transitions.h>
 
 #define CASEMATE_MAX_WATCHPOINTS 16
 struct casemate_watchpoints {
@@ -32,6 +33,11 @@ void touch(u64 location);
 static inline bool should_trace(void)
 {
 	return (opts()->enable_tracing);
+}
+
+static inline bool should_trace_step(struct casemate_model_step *step)
+{
+	return (! opts()->log_opts.omit_reads || ! is_read_step(step));
 }
 
 static inline bool should_print_state(void)
