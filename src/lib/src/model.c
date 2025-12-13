@@ -925,7 +925,9 @@ static void step_read(struct ghost_hw_step *step)
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
 	// (the read_phys already does this check, but it's never bad to double check).
-	ghost_assert(read_phys(loc->phys_addr) == loc->val);
+	if (read_phys(loc->phys_addr) != loc->val) {
+		GHOST_MODEL_CATCH_FIRE("the ghost model detected a PTE that changed under it");
+	}
 }
 
 /////////////////////
