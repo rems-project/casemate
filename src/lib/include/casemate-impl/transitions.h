@@ -185,4 +185,12 @@ struct casemate_model_step {
  */
 void casemate_model_step(struct casemate_model_step trans);
 
+/**
+ * is_read_step() - Returns TRUE if the given transition is a hardware memory read step
+ */
+static inline bool is_read_step(struct casemate_model_step *trans)
+{
+	return (trans->kind == TRANS_HW_STEP) && (trans->hw_step.kind == HW_MEM_READ);
+}
+
 #endif /* CASEMATE_TRANSITIONS_H */
