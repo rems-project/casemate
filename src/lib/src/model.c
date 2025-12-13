@@ -990,6 +990,11 @@ static void step_read(struct ghost_hw_step *step)
 
 	loc = location(step->read_data.phys_addr);
 
+	if (! loc->initialised) {
+		/* if uninitialised, let read succeed */
+		return;
+	}
+
 	// read doesn't have any real behaviour, except to return the value stored in memory.
 	// so we just assert that the value in the real concrete memory is what we are tracking.
 	// (the read_phys already does this check, but it's never bad to double check).
