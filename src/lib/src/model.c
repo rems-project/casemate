@@ -1723,6 +1723,9 @@ void ensure_traced_current_transition(bool force)
 	if (! should_trace())
 		return;
 
+	if (! should_trace_step(&CURRENT_TRANS()))
+		return;
+
 	if (should_track_only_watchpoints() && ! STATE()->touched_watchpoint)
 		return;
 
