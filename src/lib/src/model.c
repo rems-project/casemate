@@ -692,6 +692,10 @@ u64 read_sysreg(enum ghost_sysreg_kind reg)
 	if (try_read_sysreg(reg, &ret))
 		return ret;
 
+	if (side_effect()->read_sysreg == NULL)
+		GHOST_MODEL_CATCH_FIRE(
+			"attempted read of uninitialised system register without read_sysreg side effect installed");
+
 	/* not known, try read from physical state */
 	return side_effect()->read_sysreg(reg);
 }
