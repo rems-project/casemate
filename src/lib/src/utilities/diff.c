@@ -484,8 +484,7 @@ static void ghost_diff_sm_state(struct diff_container *node, struct casemate_mod
 	ghost_diff_field(node, "base", diff_pair(TU64(s1->base_addr), TU64(s2->base_addr)));
 	ghost_diff_field(node, "size", diff_pair(TU64(s1->size), TU64(s2->size)));
 
-	ghost_diff_sm_roots(node, "s1_roots", &s1->roots_s1, &s2->roots_s1);
-	ghost_diff_sm_roots(node, "s2_roots", &s1->roots_s2, &s2->roots_s2);
+	ghost_diff_sm_roots(node, "roots", &s1->roots, &s2->roots);
 
 	ghost_diff_sm_mem(node, &s1->memory, &s2->memory);
 }

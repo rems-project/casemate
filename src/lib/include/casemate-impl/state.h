@@ -260,7 +260,7 @@ struct sm_location {
 
 #define BLOB_SHIFT 12
 #define MAX_BLOBS (0x2000)
-#define MAX_ROOTS 10
+#define MAX_ROOTS 32
 #define MAX_UNCLEAN_LOCATIONS 10
 
 /**
@@ -374,6 +374,7 @@ struct vmid_map {
 /**
  * struct root - A single root (base addr + ASID/VMID)
  * @present: whether this root is active
+ * @stage: whether this points to a stage1 or a stage2 table
  * @baddr: the root base (physical) address.
  * @id: the associated ASID/VMID.
  * @refcount: the number of CPUs that have this root currently active.
@@ -381,6 +382,7 @@ struct vmid_map {
  */
 struct root {
 	bool present;
+	entry_stage_t stage;
 	sm_owner_t baddr;
 	addr_id_t id;
 	u64 refcount;
@@ -392,7 +394,6 @@ struct root {
  */
 struct roots {
 	u64 len;
-	entry_stage_t stage;
 	struct root roots[MAX_ROOTS];
 };
 
@@ -430,7 +431,8 @@ typedef struct root_index root_index_t;
 
 /**
  * struct cm_thrd_ctxt - Per thread context ghost copy
- * @current_s1_idx: index into the roots_s1 map of the currently-loaded stage1 root
+ * @current_s1: index into the roots map of the currently-loaded stage1 root
+ * @current_s2: index into the roots map of the currently-loaded stage1 root
  */
 struct cm_thrd_ctxt {
 	root_index_t current_s1;
@@ -444,8 +446,7 @@ struct cm_thrd_ctxt {
  * @size: the number of bytes in the ghost memory to track.
  * @memory: the actual ghost model memory.
  * @unclean_locations: set of all the unclean locations
- * @roots_s1: set of known EL2 stage1 pagetable roots.
- * @roots_s2: set of known EL2 stage2 pagetable roots.
+ * @roots: set of known pagetable roots.
  * @thread_context: per-CPU thread-local context.
  * @locks: map from root physical address to lock physical address.
  * @lock_state: map from lock physical address to thread which owns the lock.
@@ -457,8 +458,7 @@ struct casemate_model_state {
 
 	struct location_set unclean_locations;
 
-	struct roots roots_s1;
-	struct roots roots_s2;
+	struct roots roots;
 
 	struct cm_thrd_ctxt thread_context[MAX_CPU];
 
