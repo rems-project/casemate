@@ -30,6 +30,7 @@ int main(int argc, char **argv)
 
 	/* track pud as the root */
 	MSR(SYSREG_TTBR_EL2, (u64)root);
+	MSR(SYSREG_SCTLR_EL2, SCTLR_MMU_ON);
 
 	LOCK(l);
 	WRITE_ONCE(root[0], (u64)new_child | 0b11);

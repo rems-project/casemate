@@ -25,6 +25,7 @@ int main(int argc, char **argv)
 
 	/* associate with VMID 0 */
 	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)root, 0ULL));
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	DSB(ish);
 	ISB();
 

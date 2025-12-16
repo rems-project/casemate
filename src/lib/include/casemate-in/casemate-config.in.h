@@ -151,8 +151,12 @@ enum ghost_sysreg_kind {
 	SYSREG_VTTBR,
 	SYSREG_TTBR_EL2,
 	SYSREG_VTCR_EL2,
+	SYSREG_HCR_EL2,
 	SYSREG_TCR_EL2,
+	SYSREG_SCTLR_EL2,
 	SYSREG_MAIR_EL2,
+
+	MAX_SYSREG,
 };
 
 struct casemate_model_step;

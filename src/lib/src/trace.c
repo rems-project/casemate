@@ -22,7 +22,9 @@ static const char *sysreg_names[] = {
 	[SYSREG_VTTBR] = "vttbr_el2", //
 	[SYSREG_TTBR_EL2] = "ttbr0_el2", //
 	[SYSREG_VTCR_EL2] = "vtcr_el2", //
+	[SYSREG_HCR_EL2] = "hcr_el2", //
 	[SYSREG_TCR_EL2] = "tcr_el2", //
+	[SYSREG_SCTLR_EL2] = "sctlr_el2", //
 	[SYSREG_MAIR_EL2] = "mair_el2", //
 };
 

@@ -44,6 +44,7 @@ int main(int argc, char **argv)
 
 	/* track table as the root of a tree */
 	MSR(SYSREG_VTTBR, (u64)table);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	spawn_thread(write_pte1);
 	spawn_thread(write_pte2);
 	join();

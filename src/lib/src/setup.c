@@ -49,7 +49,7 @@ static void init_thrd_ctxt(struct cm_thrd_ctxt *ctx)
 	ctx->current_s1.present = false;
 	ctx->current_s2.present = false;
 
-	for (u64 i = 0; i < SYSREG_MAIR_EL2 + 1; i++) {
+	for (u64 i = 0; i < MAX_SYSREG; i++) {
 		ctx->regs[i].present = false;
 	}
 }

@@ -143,6 +143,12 @@ typedef struct {
 #define TCR_EL2_T0SZ_WIDTH 6
 #define TCR_EL2_T0SZ_MASK (BITMASK(TCR_EL2_T0SZ_WIDTH - 1, 0) << TCR_EL2_T0SZ_LO)
 
+#define SCTLR_M_BIT 0
+#define SCTLR_M_MASK (1 << SCTLR_M_BIT)
+
+#define HCR_VM_BIT 0
+#define HCR_VM_MASK (1 << HCR_VM_BIT)
+
 /* outside of realm security state, bit[55] is IGNORED, so can be used by software */
 #define PTE_FIELD_UPPER_ATTRS_SW_LO 55
 #define PTE_FIELD_UPPER_ATTRS_SW_MASK BITMASK(58, 55)

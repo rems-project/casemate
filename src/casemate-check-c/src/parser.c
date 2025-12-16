@@ -423,14 +423,16 @@ void parse_tlbi_tail(struct parser *p)
 }
 
 struct enum_map sysreg_map = {
-	.count = 5,
+	.count = 7,
 	.name = "sysreg",
 	.entries = {
 		{"vttbr_el2", SYSREG_VTTBR},
 		{"ttbr0_el2", SYSREG_TTBR_EL2},
-		{"mair_el2", SYSREG_MAIR_EL2},
 		{"vtcr_el2", SYSREG_VTCR_EL2},
+		{"hcr_el2", SYSREG_HCR_EL2},
 		{"tcr_el2", SYSREG_TCR_EL2},
+		{"sctlr_el2", SYSREG_SCTLR_EL2},
+		{"mair_el2", SYSREG_MAIR_EL2},
 	},
 };
 

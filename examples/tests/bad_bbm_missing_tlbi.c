@@ -34,6 +34,7 @@ int main(int argc, char **argv)
 
 	/* track pud as the root */
 	MSR(SYSREG_VTTBR, (u64)root);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 
 	LOCK(l);
 	WRITE_ONCE(root[0], 0);
