@@ -114,7 +114,7 @@ struct diff_container {
 /*********/
 // Differ
 
-static int __put_val_string(struct diff_val val, char *buf)
+static int __put_val_string(struct diff_val val, struct string_builder *buf)
 {
 	switch (val.kind) {
 	case Tu64:
@@ -152,19 +152,15 @@ static bool val_equal(struct diff_val lhs, struct diff_val rhs)
 		/* 256 should be long enough for any of our ghost-y prints.
 		 * by construction */
 		bool ret;
-		char buf1[256];
-		char buf2[256];
-		char *s1 = side_effect()->sprint_create_buffer(buf1, 256);
-		char *s2 = side_effect()->sprint_create_buffer(buf2, 256);
-		int r1 = __put_val_string(lhs, s1);
-		int r2 = __put_val_string(rhs, s2);
+		DEFINE_STRING_BUFFER(s1, 256);
+		DEFINE_STRING_BUFFER(s2, 256);
+		int r1 = __put_val_string(lhs, &s1);
+		int r2 = __put_val_string(rhs, &s2);
 		if (r1 || r2) {
 			ghost_assert(! r1 && ! r2);
 			return false;
 		}
-		ret = streq(buf1, buf2);
-		side_effect()->sprint_destroy_buffer(s1);
-		side_effect()->sprint_destroy_buffer(s2);
+		ret = streq(s1.out, s2.out);
 		return ret;
 	}
 	default:
@@ -214,36 +210,30 @@ static void __put_dirty_string(char *s, bool *dirty, bool negate)
 static void __hyp_dump_string_diff(struct diff_container *node, struct diff_val lhs,
 				   struct diff_val rhs)
 {
-	char lhs_s[GHOST_STRING_DUMP_LEN] = { 0 };
-	char rhs_s[GHOST_STRING_DUMP_LEN] = { 0 };
+	DEFINE_STRING_BUFFER(lhs_buf, GHOST_STRING_DUMP_LEN);
+	DEFINE_STRING_BUFFER(rhs_buf, GHOST_STRING_DUMP_LEN);
 	bool dirty[GHOST_STRING_DUMP_LEN] = { false };
 
-	char *lhs_buf = side_effect()->sprint_create_buffer(lhs_s, GHOST_STRING_DUMP_LEN);
-	char *rhs_buf = side_effect()->sprint_create_buffer(rhs_s, GHOST_STRING_DUMP_LEN);
-
-	__put_val_string(lhs, lhs_buf);
-	__put_val_string(rhs, rhs_buf);
-
-	side_effect()->sprint_destroy_buffer(lhs_buf);
-	side_effect()->sprint_destroy_buffer(rhs_buf);
+	__put_val_string(lhs, &lhs_buf);
+	__put_val_string(rhs, &rhs_buf);
 
 	// now, we find those that differ
 	// TODO: do something more clever, and find inserted/removed text.
 	//       so far, everything is constant-width and consistent so it's ok
 	for (int i = 0; i < GHOST_STRING_DUMP_LEN; i++) {
-		if (lhs_s[i] != rhs_s[i])
+		if (lhs_buf.out[i] != rhs_buf.out[i])
 			dirty[i] = true;
 	}
 
 	ghost_printf("\n");
 	ghost_print_indent(NULL, node->depth * 4);
 	ghost_printf("-");
-	__put_dirty_string(lhs_s, dirty, true);
+	__put_dirty_string(lhs_buf.out, dirty, true);
 
 	ghost_printf("\n");
 	ghost_print_indent(NULL, node->depth * 4);
 	ghost_printf("+");
-	__put_dirty_string(rhs_s, dirty, false);
+	__put_dirty_string(rhs_buf.out, dirty, false);
 }
 
 static void __ghost_print_diff(struct diff_container *node, struct ghost_diff *diff, u64 indent)

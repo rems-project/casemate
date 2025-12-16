@@ -149,9 +149,7 @@ enum ghost_sysreg_kind {
 };
 
 struct casemate_model_step;
-typedef int (*vprintf_cb)(void *arg, const char *format, va_list ap);
-typedef void *(*sprint_make_buf_cb)(char *arg, uint64_t n);
-typedef void (*sprint_free_buf_cb)(void *buf);
+typedef int (*putc_cb)(const char c);
 typedef void (*abort_cb)(const char *msg);
 typedef uint64_t (*read_physmem_cb)(uint64_t);
 typedef uint64_t (*read_sysreg_cb)(enum ghost_sysreg_kind sysreg);
@@ -160,9 +158,7 @@ typedef void (*trace_cb)(const char *record);
 /**
  * struct ghost_driver - Callbacks for driving the casemate model
  *
- * @print: callback for printing, with printf-like arguments.
- * @sprint_create_buffer: callback for making a buffer to pass to driver->print().
- * @sprint_destroy_buffer: frees a buffer created with `sprint_create_buffer`.
+ * @putc: callback for printing a single char.
  * @halt: callback for failed assertion.
  * @read_physmem: perform a read of memory.
  * @read_sysreg: callback for reading system registers.
@@ -173,9 +169,7 @@ typedef void (*trace_cb)(const char *record);
  *
  */
 struct ghost_driver {
-	vprintf_cb print;
-	sprint_make_buf_cb sprint_create_buffer;
-	sprint_free_buf_cb sprint_destroy_buffer;
+	putc_cb putc;
 	abort_cb abort;
 	read_physmem_cb read_physmem;
 	read_sysreg_cb read_sysreg;
@@ -185,8 +179,11 @@ struct ghost_driver {
 #define CASEMATE_DEFAULT_EMPTY_DRIVER \
 	(struct ghost_driver) \
 	{ \
-		.print = NULL, .sprint_create_buffer = NULL, .halt = NULL, .read_physmem = NULL, \
-		.read_sysreg = NULL, .trace = NULL, \
+		.putc = NULL, \
+		.halt = NULL, \
+		.read_physmem = NULL, \
+		.read_sysreg = NULL, \
+		.trace = NULL, \
 	}
 
 /**

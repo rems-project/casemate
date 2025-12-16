@@ -15,6 +15,11 @@
 
 int sb_putc(struct string_builder *buf, const char c)
 {
+	if (buf == NULL) {
+		side_effect()->putc(c);
+		return 0;
+	}
+
 	if (buf->rem == 0) {
 		return -1;
 	}
@@ -107,10 +112,6 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n)
 {
 	int i = n >> 2;
 
-	// always prefix hex with 0x
-	TRY_PUT('0');
-	TRY_PUT('x');
-
 	while (i--) {
 		/*
 		 * skip leading 0s
@@ -121,16 +122,295 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n)
 	return 0;
 }
 
+static int __putic(struct string_builder *buf, int width, char c)
+{
+	while (width--)
+		TRY_PUT(c);
+	return 0;
+}
+
+/* Printf
+ * This is based on the custom ghost printf() implementation
+ * in the ghost pKVM spec at
+ * https://github.com/rems-project/linux/blob/pkvm-verif-6.4/arch/arm64/kvm/hyp/nvhe/ghost/ghost_printer.c
+ *
+ * Dispatchers:
+ * We have the major print codes:
+ *  c: char
+ *  s: string
+ *  d: decimal
+ *  x: hex
+ *  p: pointer
+ *
+ * The full printf format is %<width:digit*><length:LENGTH_CHAR*><print_code:(c|s|d|x|p)
+ * for each print code, there is a dispatch function, which takes the padding as an int (-1 means no pad)
+ * and the mode as a bitmap (pos 0 = first mode char in MODE_CHAR present, etc)
+ * But for many they do nothing.
+ */
+
+enum arg_length {
+	LENGTH_hh = 8,
+	LENGTH_h = 16,
+	LENGTH_none = 32,
+	LENGTH_l_ll = 64,
+};
+
+int put_char(struct string_builder *buf, char **p, int arg)
+{
+	/*
+	 * Note that char/u8/etc gets promoted to 'int',
+	 * so we pull out an `int` and it's safe to downcast it to a `char`.
+	 */
+	char c = (char)arg;
+	return sb_putc(buf, c);
+}
+
+int put_bool(struct string_builder *buf, char **p, int arg)
+{
+	bool b = (bool)arg;
+	if (b)
+		TRY_PUTS("true");
+	else
+		TRY_PUTS("false");
+	return 0;
+}
+
+int put_str(struct string_builder *buf, char **p, int width, char *arg)
+{
+	int n;
+
+	if (arg == NULL)
+		arg = "<NULL>";
+
+	// pad string with " " up to width
+	n = strlen(arg);
+	if (width > 0 && n < width)
+		TRY(__putic(buf, width - n, ' '));
+
+	return sb_puts(buf, arg);
+}
+
+static int nr_decimal_digits(u64 n)
+{
+	int i = 0;
+
+	do {
+		n /= 10;
+		i++;
+	} while (n > 0);
+
+	return i;
+}
+
+int put_decimal(struct string_builder *buf, char **p, u64 width, _Bool is_signed,
+		enum arg_length len, u64 x)
+{
+	int n;
+	char sign = 0;
+	if (is_signed && (long)x < 0) {
+		sign = '-';
+		x = -x;
+	}
+	// pad the left-hand side with . up to width
+	n = nr_decimal_digits(x);
+	n += ! ! sign;
+	if (n < width)
+		TRY(__putic(buf, width - n, '.'));
+	if (sign)
+		TRY_PUT(sign);
+
+	return sb_putd(buf, x);
+}
+
+int put_hex(struct string_builder *buf, char **p, u64 width, enum arg_length len, u64 x)
+{
+	// pad the left-hand side with . up to width
+	int n = 2 + (len >> 2);
+	if (n < width)
+		TRY(__putic(buf, width - n, '.'));
+
+	return sb_putxn(buf, x, len);
+}
+
+int put_raw_ptr(struct string_builder *buf, char **p, void *arg)
+{
+	u64 x = (u64)arg;
+	TRY_PUTS("0x");
+	return sb_putxn(buf, x, 64);
+}
+
+bool __matches(char *p, const char *kind)
+{
+	// zip until one runs out
+	while (*kind && *p) {
+		if (*kind++ != *p++)
+			return false;
+	}
+
+	// if p ran out, then clearly didn't match.
+	if (*kind)
+		return false;
+
+	return true;
+}
+
+/* Loop + dispatcher for print codes */
+
+/*
+ * given a reference to a string like "01234xyz"
+ * slice off the leading digits (01234), update the pointer so it points to "xyz..."
+ * and return the leading digits as an int.
+ *
+ * Returns -1 if missing.
+ */
+int slice_off_width(char **p)
+{
+	int d = 0;
+
+	while (**p) {
+		char c = **p;
+
+		if ('0' <= c && c <= '9') {
+			d *= 10;
+			d += c - '0';
+			++*p;
+			continue;
+		}
+
+		return d;
+	}
+
+	return -1;
+}
+
+/*
+ * given a reference to a string like "labcdef"
+ * slice off the leading mode characters (e.g. "l")
+ * update the pointer so it points to the remaining "abcdef..."
+ * and return the mode as a bitmap of flags.
+ */
+enum arg_length slice_off_length(char **p)
+{
+	if (__matches(*p, "hh")) {
+		*p += 2;
+		return LENGTH_hh;
+	}
+
+	if (__matches(*p, "h")) {
+		*p += 1;
+		return LENGTH_h;
+	}
+
+	if (__matches(*p, "l")) {
+		*p += 1;
+		if (__matches(*p, "l"))
+			*p += 1;
+		return LENGTH_l_ll;
+	}
+
+	return LENGTH_none;
+}
+
+/*
+ * given a string like "01234xyz" return the index of the first non-digit character
+ */
+int partition_padding(char *p)
+{
+	int i = 0;
+
+	while (*p) {
+		char c = *p++;
+
+		if ('0' <= c && c <= '9') {
+			i++;
+			continue;
+		}
+
+		return i;
+	}
+
+	return -1;
+}
+
+/*
+ * VA_INT_ARG(AP) is like va_arg(ap, int)
+ * but substitutes `int` for whatever the `length` specifier says
+ */
+#define VA_INT_ARG(AP) (len == LENGTH_l_ll ? va_arg(AP, u64) : (u64)va_arg(AP, int))
+#define VA_UINT_ARG(AP) \
+	(len == LENGTH_l_ll ? (u64)va_arg(AP, s64) : (u64)va_arg(AP, unsigned int))
+
+int sb_vprintf(struct string_builder *buf, const char *fmt, va_list ap)
+{
+	char *p = (char *)fmt;
+	while (*p) {
+		char c = *p;
+
+		switch (c) {
+		case '%': {
+			int width;
+			enum arg_length len;
+
+			++p;
+
+			// %<width><length><print_code>
+			width = slice_off_width(&p);
+			len = slice_off_length(&p);
+
+			// get the print_code
+			c = *p;
+
+			switch (c) {
+			case '%':
+				TRY_PUT('%');
+				break;
+			case 'c':
+				TRY(put_char(buf, &p, va_arg(ap, int)));
+				break;
+			case 'b':
+				TRY(put_bool(buf, &p, va_arg(ap, int)));
+				break;
+			case 's':
+				TRY(put_str(buf, &p, width, va_arg(ap, char *)));
+				break;
+			case 'd':
+				TRY(put_decimal(buf, &p, width, true, len, VA_INT_ARG(ap)));
+				break;
+			case 'u':
+				TRY(put_decimal(buf, &p, width, false, len, VA_UINT_ARG(ap)));
+				break;
+			case 'x':
+				TRY(put_hex(buf, &p, width, len, VA_UINT_ARG(ap)));
+				break;
+			case 'p':
+				TRY(put_raw_ptr(buf, &p, va_arg(ap, void *)));
+				break;
+			default:
+				/* unknown print code */
+				return -1;
+			}
+			break;
+		}
+		default:
+			TRY_PUT(c);
+			break;
+		}
+
+		p++;
+	}
+
+	return 0;
+}
+
 //////////
 // Printf
 
-#ifndef CONFIG_HAS_PRINTF
 int ghost_printf(const char *fmt, ...)
 {
 	int ret;
 	va_list ap;
 	va_start(ap, fmt);
-	ret = side_effect()->print(NULL, fmt, ap);
+	ret = sb_vprintf(NULL, fmt, ap);
 	va_end(ap);
 
 	/* instead of returning error codes, really just fail,
@@ -140,15 +420,19 @@ int ghost_printf(const char *fmt, ...)
 
 	return ret;
 }
-#endif /* CONFIG_HAS_PRINTF */
 
 int ghost_fprintf(void *arg, const char *fmt, ...)
 {
 	int ret;
 	va_list ap;
 	va_start(ap, fmt);
-	ret = side_effect()->print(arg, fmt, ap);
+	ret = sb_vprintf(arg, fmt, ap);
 	va_end(ap);
+
+	/* retain NUL
+	 * so we can overwrite it by successive calls to sprintf */
+	if (arg != NULL)
+		sb_putc(arg, '\0');
 
 	/* instead of returning error codes, really just fail,
 	 * as no recovery on printing to UART. */
