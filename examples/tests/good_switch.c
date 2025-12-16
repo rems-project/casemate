@@ -21,6 +21,7 @@ int main(int argc, char **argv)
 	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)new_root, (u64)&l2);
 
 	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)root, ID0));
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	ISB();
 
 	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)new_root, ID1));

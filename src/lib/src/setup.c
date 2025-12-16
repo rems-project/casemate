@@ -52,6 +52,10 @@ static void init_thrd_ctxt(struct cm_thrd_ctxt *ctx)
 {
 	ctx->current_s1.present = false;
 	ctx->current_s2.present = false;
+
+	for (u64 i = 0; i < MAX_SYSREG; i++) {
+		ctx->regs[i].present = false;
+	}
 }
 
 static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 size)
