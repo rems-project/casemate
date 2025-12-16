@@ -16,6 +16,8 @@ struct casemate_model_state *st;
 u64 TCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
 u64 VTCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
 u64 MAIR_EL2 = 0;
+u64 SCTLR_EL2 = 0;
+u64 HCR_EL2 = 0;
 
 bool SHOULD_PRINT_STATE = false;
 bool SHOULD_PRINT_DIFF = false;
@@ -27,11 +29,6 @@ bool SHOULD_TRACE_CONDENSED = false;
 bool QUIET = false;
 
 bool COLOR = false;
-
-u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
-{
-	assert(false);
-}
 
 void ghost_cm_abort(const char *msg)
 {
@@ -243,7 +240,7 @@ void common_init(int argc, char **argv)
 	struct ghost_driver sm_driver = {
 		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
-		.read_sysreg = ghost_cm_read_sysreg,
+		.read_sysreg = NULL,
 		.abort = ghost_cm_abort,
 		.trace = ghost_cm_trace,
 	};
@@ -278,6 +275,8 @@ void common_init(int argc, char **argv)
 	casemate_model_step_msr(SYSREG_VTCR_EL2, VTCR_EL2);
 	casemate_model_step_msr(SYSREG_TCR_EL2, TCR_EL2);
 	casemate_model_step_msr(SYSREG_MAIR_EL2, MAIR_EL2);
+	casemate_model_step_msr(SYSREG_HCR_EL2, HCR_EL2);
+	casemate_model_step_msr(SYSREG_SCTLR_EL2, SCTLR_EL2);
 
 	mtx_init(&m, mtx_plain);
 }

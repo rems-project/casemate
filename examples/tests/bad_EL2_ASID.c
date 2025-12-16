@@ -24,4 +24,5 @@ int main(int argc, char **argv)
 
 	/* TTBR_EL2 in non-VHE mode must use ASID 0 */
 	MSR(SYSREG_TTBR_EL2, MAKE_TTBR((u64)root1, ID1));
+	MSR(SYSREG_SCTLR_EL2, SCTLR_MMU_ON);
 }
