@@ -9,9 +9,9 @@
 #define GHOST_LOG_INNER(LOGNAME, NAME, TYPE)
 #define GHOST_LOG_CONTEXT_EXIT_INNER(NAME)
 
-#define GHOST_WARN(MSG) \
+#define GHOST_WARN(MSG, ...) \
 	{ \
-		ghost_printf(GHOST_WHITE_ON_YELLOW "%s" GHOST_NORMAL "\n", MSG); \
+		ghost_printf(GHOST_WHITE_ON_YELLOW MSG GHOST_NORMAL "\n", ##__VA_ARGS__); \
 	}
 #endif
 
