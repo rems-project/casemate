@@ -39,10 +39,9 @@ int attach_casemate_model(void *st)
 	return 0;
 }
 
-static void init_roots(struct roots *roots, entry_stage_t stage)
+static void init_roots(struct roots *roots)
 {
 	roots->len = 0;
-	roots->stage = stage;
 }
 
 static void init_thrd_ctxt(struct cm_thrd_ctxt *ctx)
@@ -70,8 +69,7 @@ static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 si
 	initialise_ghost_ptes_memory(phys, size);
 
 	MODEL()->unclean_locations.len = 0;
-	init_roots(&MODEL()->roots_s1, ENTRY_STAGE1);
-	init_roots(&MODEL()->roots_s2, ENTRY_STAGE2);
+	init_roots(&MODEL()->roots);
 
 	for (int i = 0; i < MAX_CPU; i++)
 		init_thrd_ctxt(&MODEL()->thread_context[i]);

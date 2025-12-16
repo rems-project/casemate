@@ -722,12 +722,9 @@ int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 			  ""
 			  "base_addr:.......%16p\n"
 			  "size:............%16lx\n"
-			  "nr_s1_roots:.....%16lx\n"
-			  "nr_s2_roots:.....%16lx\n",
-			  s->base_addr, s->size, s->roots_s1.len, s->roots_s2.len));
-	TRY(gp_print_cm_roots(arg, "s1", &s->roots_s1));
-	TRY(ghost_fprintf(arg, "\n"));
-	TRY(gp_print_cm_roots(arg, "s2", &s->roots_s2));
+			  "nr_roots:........%16lx\n",
+			  s->base_addr, s->size, s->roots.len));
+	TRY(gp_print_cm_roots(arg, "roots", &s->roots));
 	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_locks(arg, &s->locks));
 	TRY(ghost_fprintf(arg, "\n"));

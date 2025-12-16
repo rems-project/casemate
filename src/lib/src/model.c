@@ -128,9 +128,6 @@ bool is_location_locked(struct sm_location *loc)
 
 	// Otherwise, get the owner of the location
 	owner_id = loc->owner;
-	// assume 0 cannot be a valid owner id
-	if (! owner_id)
-		GHOST_MODEL_CATCH_FIRE("must have associated location with an owner");
 	// get the address of the lock
 	lock = owner_lock(owner_id);
 	// check the state of the lock
@@ -152,13 +149,9 @@ static void assert_owner_locked(struct sm_location *loc, struct lock_state **sta
 
 	owner_id = loc->owner;
 
-	// assume 0 cannot be a valid owner id
-	if (! owner_id)
-		GHOST_MODEL_CATCH_FIRE("must have associated location with an owner");
-
 	lock = owner_lock(owner_id);
 	if (! lock)
-		GHOST_MODEL_CATCH_FIRE("must have associated owner with a root");
+		GHOST_MODEL_CATCH_FIRE("must have associated root with a lock");
 
 	if (! is_correctly_locked(lock, state)) {
 		// ghost_printf_ext("%g(sm_loc)", loc);
@@ -544,10 +537,9 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 ///////////////////
 // Pagetable roots
 
-static struct root *retrieve_root_from_idx(u64 idx, entry_stage_t stage)
+static struct root *retrieve_root_from_idx(u64 idx)
 {
-	struct roots *roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
-	return &roots->roots[idx];
+	return &MODEL()->roots.roots[idx];
 }
 
 static inline struct cm_thrd_ctxt *current_thread_context(void)
@@ -559,7 +551,7 @@ struct root *get_current_ttbr(void)
 {
 	root_index_t *cur = &current_thread_context()->current_s1;
 	if (cur->present)
-		return retrieve_root_from_idx(cur->index, ENTRY_STAGE1);
+		return retrieve_root_from_idx(cur->index);
 	else
 		return NULL;
 }
@@ -568,7 +560,7 @@ struct root *get_current_vttbr(void)
 {
 	root_index_t *cur = &current_thread_context()->current_s2;
 	if (cur->present)
-		return retrieve_root_from_idx(cur->index, ENTRY_STAGE1);
+		return retrieve_root_from_idx(cur->index);
 	else
 		return NULL;
 }
@@ -576,7 +568,7 @@ struct root *get_current_vttbr(void)
 struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
 {
 	struct root *root;
-	for (int i = 0; i < roots->len; i++) {
+	for (int i = 0; i < MAX_ROOTS; i++) {
 		root = &roots->roots[i];
 		if (root->present && root->id == id) {
 			return root;
@@ -588,7 +580,7 @@ struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
 struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t baddr)
 {
 	struct root *root;
-	for (int i = 0; i < roots->len; i++) {
+	for (int i = 0; i < MAX_ROOTS; i++) {
 		root = &roots->roots[i];
 		if (root->present && root->baddr == baddr) {
 			return root;
@@ -620,7 +612,7 @@ bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
 	}
 }
 
-void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id)
+void try_register_root(struct roots *roots, entry_stage_t stage, phys_addr_t baddr, addr_id_t id)
 {
 	u64 new_root_idx;
 	struct root new_root;
@@ -647,6 +639,7 @@ found:
 	new_root = (struct root){
 		.present = true,
 		.baddr = baddr,
+		.stage = stage,
 		.id = id,
 		.refcount = 0,
 		.index = new_root_idx,
@@ -654,17 +647,16 @@ found:
 	roots->roots[new_root_idx] = new_root;
 
 	/* XXX what if already marked? */
-	traverse_pgtable(baddr, roots->stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
+	traverse_pgtable(baddr, stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
 static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 {
-	struct roots *roots;
+	struct roots *roots = &MODEL()->roots;
 	struct root *assoc_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
 	assoc_root = retrieve_root_for_baddr(roots, root);
 
 	if (! assoc_root)
@@ -732,7 +724,7 @@ static void step_msr(struct ghost_hw_step *step)
 			}
 		}
 
-		roots = (stage == ENTRY_STAGE1) ? &MODEL()->roots_s1 : &MODEL()->roots_s2;
+		roots = &MODEL()->roots;
 
 		/* if that root with that id exists already, were just context switching */
 		assoc_root = retrieve_root_for_baddr(roots, root);
@@ -756,14 +748,14 @@ static void step_msr(struct ghost_hw_step *step)
 		/* otherwise, that VMID is free and this root has no associated VMID
 		 * so attach this one */
 		else {
-			try_register_root(roots, root, id);
+			try_register_root(roots, stage, root, id);
 		}
 
 context_switch:
 		/* decrement refcount on current (if applicable) */
 		cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
 		if (cur_root->present) {
-			assoc_root = retrieve_root_from_idx(cur_root->index, stage);
+			assoc_root = retrieve_root_from_idx(cur_root->index);
 			assoc_root->refcount--;
 		}
 
@@ -1311,7 +1303,7 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 	 * and check the VTTBR VMID annotation matches the one associated with this root
 	 */
 	if (tlbi->regime == TLBI_REGIME_EL10 && ctxt->exploded_descriptor.stage == ENTRY_STAGE2) {
-		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots_s2, ctxt->root);
+		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots, ctxt->root);
 		if (get_current_vttbr()->id != pte_root->id)
 			return false;
 		else
@@ -1320,7 +1312,7 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 
 	/* for TLBI that affects an ASID, it is supplied as an argument to the TLBI */
 	if (tlbi->regime == TLBI_REGIME_EL2 && ctxt->exploded_descriptor.stage == ENTRY_STAGE1) {
-		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots_s1, ctxt->root);
+		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots, ctxt->root);
 		u64 asid;
 
 		if (__get_tlbi_asid(tlbi, &asid))

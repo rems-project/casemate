@@ -66,7 +66,7 @@ struct sm_location *location(u64 phys);
  */
 bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage);
 
-void try_register_root(struct roots *roots, phys_addr_t baddr, addr_id_t id);
+void try_register_root(struct roots *roots, entry_stage_t stage, phys_addr_t baddr, addr_id_t id);
 
 /**
  * is_on_write_transition() - Returns true when the current step is a write transition to `p`.
