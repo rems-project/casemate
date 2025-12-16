@@ -646,6 +646,7 @@ found:
 	};
 	roots->roots[new_root_idx] = new_root;
 
+	/* mark all the children as ptes */
 	/* XXX what if already marked? */
 	traverse_pgtable(baddr, stage, mark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	GHOST_LOG_CONTEXT_EXIT();
@@ -700,7 +701,64 @@ u64 read_sysreg(enum ghost_sysreg_kind reg)
 	return side_effect()->read_sysreg(reg);
 }
 
-static void step_msr(struct ghost_hw_step *step)
+bool regime_enabled(entry_stage_t stage)
+{
+	enum ghost_sysreg_kind sysreg;
+	u64 val;
+
+	switch (stage) {
+	case ENTRY_STAGE1:
+		sysreg = SYSREG_SCTLR_EL2;
+		break;
+	case ENTRY_STAGE2:
+		sysreg = SYSREG_HCR_EL2;
+		break;
+	default:
+		ghost_assert(false); // unreachable
+	}
+
+	/* read the register
+	 *
+	 * there is an awkward corner case:
+	 * the **first** time we write to the register
+	 * it might not have been seen before
+	 * so we assume translation was disabled up to then */
+	if (side_effect()->read_sysreg == NULL) {
+		if (! try_read_sysreg(sysreg, &val))
+			return false;
+	} else {
+		val = read_sysreg(sysreg);
+	}
+
+	/* check (V)M bit */
+	return (val & 0b1) == 1;
+}
+
+static void deactivate_translation(struct root *root)
+{
+	root->refcount--;
+}
+
+static void activate_translation(struct root *root)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+
+	/* make it the curent context */
+	struct root_index new_root_index = (struct root_index){
+		.present = true,
+		.index = root->index,
+	};
+
+	if (root->stage == ENTRY_STAGE1) {
+		ctxt->current_s1 = new_root_index;
+	} else {
+		ctxt->current_s2 = new_root_index;
+	}
+
+	root->refcount++;
+}
+
+static void activate_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
 {
 	bool ret;
 	phys_addr_t root;
@@ -712,78 +770,89 @@ static void step_msr(struct ghost_hw_step *step)
 
 	struct cm_thrd_ctxt *ctxt = current_thread_context();
 
-	// TODO: BS: also remember which is current?
+	ret = stage_from_ttbr(sysreg, &stage);
+	ghost_assert(ret);
+
+	root = ttbr_extract_baddr(ttb);
+	id = ttbr_extract_id(ttb);
+
+	/* TTBR0_EL2 in non-VHE mode has a Res0 ASID */
+	if (sysreg == SYSREG_TTBR_EL2) {
+		if (id != 0) {
+			GHOST_MODEL_CATCH_FIRE("TTBR0_EL2 ASID is reserved 0");
+		}
+	}
+
+	roots = &MODEL()->roots;
+
+	/* if that root with that id exists already, were just context switching */
+	assoc_root = retrieve_root_for_baddr(roots, root);
+	if (assoc_root && assoc_root->id == id) {
+		goto context_switch;
+	}
+	/* see if that root is already associated with a different (VM/AS)ID */
+	else if (assoc_root && assoc_root->id != id) {
+		GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+	}
+
+	/* see if VMID is already associated */
+	assoc_root = retrieve_root_for_id(roots, id);
+	if (assoc_root && assoc_root->baddr != root) {
+		GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
+	}
+	/* if that VMID is free, check we have not already associated a different VMID */
+	else if (assoc_root && assoc_root->id != id) {
+		GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+	}
+	/* otherwise, that VMID is free and this root has no associated VMID
+	 * so attach this one */
+	else {
+		try_register_root(roots, stage, root, id);
+	}
+
+context_switch:
+	/* decrement refcount on current (if applicable) */
+	cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
+	if (cur_root->present) {
+		assoc_root = retrieve_root_from_idx(cur_root->index);
+		deactivate_translation(assoc_root);
+	}
+
+	/* and increment refcount on one we just switched to */
+	assoc_root = retrieve_root_for_id(roots, id);
+	ghost_assert(assoc_root);
+	activate_translation(assoc_root);
+}
+
+static void step_msr(struct ghost_hw_step *step)
+{
+	bool ret;
+	entry_stage_t stage;
+
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+
 	switch (step->msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
 	case SYSREG_VTTBR:
 		ret = stage_from_ttbr(step->msr_data.sysreg, &stage);
 		ghost_assert(ret);
-		root = ttbr_extract_baddr(step->msr_data.val);
-		id = ttbr_extract_id(step->msr_data.val);
 
-		/* TTBR0_EL2 in non-VHE mode has a Res0 ASID */
-		if (step->msr_data.sysreg == SYSREG_TTBR_EL2) {
-			if (id != 0) {
-				GHOST_MODEL_CATCH_FIRE("TTBR0_EL2 ASID is reserved 0");
-			}
-		}
+		if (regime_enabled(stage))
+			activate_ttbr(step->msr_data.sysreg, step->msr_data.val);
+		break;
 
-		roots = &MODEL()->roots;
+	case SYSREG_HCR_EL2:
+		/* switched on virtualization of translation */
+		if (! regime_enabled(ENTRY_STAGE2) && (step->msr_data.val & 0b1) == 1)
+			activate_ttbr(SYSREG_VTTBR, read_sysreg(SYSREG_VTTBR));
+		/* XXX .. and switched off ?*/
+		break;
 
-		/* if that root with that id exists already, were just context switching */
-		assoc_root = retrieve_root_for_baddr(roots, root);
-		if (assoc_root && assoc_root->id == id) {
-			goto context_switch;
-		}
-		/* see if that root is already associated with a different (VM/AS)ID */
-		else if (assoc_root && assoc_root->id != id) {
-			GHOST_WARN("tree rooted at %p already has ID %lu", root, id);
-			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
-		}
-
-		/* see if VMID is already associated */
-		assoc_root = retrieve_root_for_id(roots, id);
-		if (assoc_root && assoc_root->baddr != root) {
-			GHOST_WARN("tree rooted at %p with duplicated ID %lu", root, id);
-			GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
-		}
-		/* if that VMID is free, check we have not already associated a different VMID */
-		else if (assoc_root && assoc_root->id != id) {
-			GHOST_WARN("tree rooted at %p cannot use ID %lu, already in use", root,
-				   id);
-			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
-		}
-		/* otherwise, that VMID is free and this root has no associated VMID
-		 * so attach this one */
-		else {
-			try_register_root(roots, stage, root, id);
-		}
-
-context_switch:
-		/* decrement refcount on current (if applicable) */
-		cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
-		if (cur_root->present) {
-			assoc_root = retrieve_root_from_idx(cur_root->index);
-			assoc_root->refcount--;
-		}
-
-		/* and increment refcount on one we just switched to */
-		assoc_root = retrieve_root_for_id(roots, id);
-		ghost_assert(assoc_root);
-		assoc_root->refcount++;
-
-		/* and make it the curent context */
-		struct root_index new_root_index = (struct root_index){
-			.present = true,
-			.index = assoc_root->index,
-		};
-
-		if (stage == ENTRY_STAGE1) {
-			ctxt->current_s1 = new_root_index;
-		} else {
-			ctxt->current_s2 = new_root_index;
-		}
-
+	case SYSREG_SCTLR_EL2:
+		/* switched on translation */
+		if (! regime_enabled(ENTRY_STAGE1) && (step->msr_data.val & 0b1) == 1)
+			activate_ttbr(SYSREG_TTBR_EL2, read_sysreg(SYSREG_TTBR_EL2));
+		/* XXX .. and switched off ?*/
 		break;
 
 	default:

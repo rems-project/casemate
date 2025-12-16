@@ -10,6 +10,8 @@
 
 u64 TCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
 u64 VTCR_EL2 = (0b00 << TCR_TG0_LO) | ((64 - 48) << TCR_EL2_T0SZ_LO);
+u64 HCR_EL2 = (0b1 << HCR_VM_BIT);
+u64 SCTLR_EL2 = (0b1 << SCTLR_M_BIT);
 u64 MAIR_EL2 = 0;
 
 u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
@@ -21,6 +23,10 @@ u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 		return TCR_EL2;
 	case SYSREG_MAIR_EL2:
 		return MAIR_EL2;
+	case SYSREG_HCR_EL2:
+		return HCR_EL2;
+	case SYSREG_SCTLR_EL2:
+		return SCTLR_EL2;
 
 	case SYSREG_VTTBR:
 	case SYSREG_TTBR_EL2:

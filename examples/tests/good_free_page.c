@@ -29,6 +29,7 @@ int main(int argc, char **argv)
 	WRITE_ONCE(root[0], (u64)child | 0b11);
 
 	MSR(SYSREG_VTTBR, (u64)root);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 
 	/* remove child from the tree */
 	LOCK(l1);

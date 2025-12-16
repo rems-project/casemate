@@ -11,6 +11,9 @@ extern u64 TCR_EL2;
 extern u64 VTCR_EL2;
 extern u64 MAIR_EL2;
 
+#define SCTLR_MMU_ON 1
+#define HCR_MMU_ON 1
+
 typedef u64 tid_t;
 void spawn_thread(int fn(void*));
 void join(void);

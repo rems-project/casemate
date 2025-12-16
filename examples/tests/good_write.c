@@ -25,6 +25,7 @@ int main(int argc, char **argv)
 
 	/* track table as the root of a tree */
 	MSR(SYSREG_VTTBR, (u64)table);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 
 	LOCK(l);
 	WRITE_ONCE(table[0], 0);

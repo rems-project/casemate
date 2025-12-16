@@ -18,5 +18,6 @@ int main(int argc, char **argv)
 	TRANS_MEM_INIT((u64)table, 4096);
 	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)table, (u64)&l);
 	MSR(SYSREG_VTTBR, (u64)table);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	WRITE_ONCE(table[0], 0);
 }

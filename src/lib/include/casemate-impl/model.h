@@ -69,6 +69,11 @@ bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage);
 void try_register_root(struct roots *roots, entry_stage_t stage, phys_addr_t baddr, addr_id_t id);
 
 /**
+ * regime_enabled() - Returns True if the given translation regime is currently enabled
+ */
+bool regime_enabled(entry_stage_t stage);
+
+/**
  * is_on_write_transition() - Returns true when the current step is a write transition to `p`.
  */
 static inline bool is_on_write_transition(u64 p)

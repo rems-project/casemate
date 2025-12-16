@@ -21,6 +21,7 @@ int main(int argc, char **argv)
 	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)child, (u64)root);
 
 	MSR(SYSREG_VTTBR, (u64)root);
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	LOCK(l);
 	WRITE_ONCE(root[0], (u64)child | 0b11);
 	/* write in the middle */

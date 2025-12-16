@@ -437,7 +437,7 @@ typedef struct root_index root_index_t;
 struct cm_thrd_ctxt {
 	root_index_t current_s1;
 	root_index_t current_s2;
-	struct sysreg regs[SYSREG_MAIR_EL2];
+	struct sysreg regs[MAX_SYSREG];
 };
 
 /**
