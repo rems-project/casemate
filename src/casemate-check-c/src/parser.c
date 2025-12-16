@@ -228,11 +228,14 @@ u64 next_hex(struct parser *p)
 {
 	int r;
 	u64 h;
+	int offs = 0;
 	const char *word;
-	acceptc(p, '0');
-	acceptc(p, 'x');
 	word = next_word(p);
-	r = hextoi(word, &h);
+	if (word[0] == '0' && word[1] == 'x')
+		offs = 2;
+	else
+		offs = 0;
+	r = hextoi(word + offs, &h);
 	if (r < 0)
 		parse_error(p, "expected hex integer, but got '%s'", word);
 	free((void *)word);
