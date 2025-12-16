@@ -23,6 +23,7 @@ int main(int argc, char **argv)
 	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)root2, (u64)&l2);
 
 	MSR(SYSREG_VTTBR, MAKE_TTBR((u64)root1, ID0));
+	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 	DSB(ish);
 	ISB();
 
