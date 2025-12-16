@@ -49,36 +49,9 @@ struct _string_buffer {
 	int n;
 };
 
-int ghost_cm_print(void *arg, const char *format, va_list ap)
+int ghost_cm_putc(char c)
 {
-	int ret;
-	if (arg != NULL) {
-		struct _string_buffer *buf = arg;
-		ret = vsnprintf(buf->buf, buf->n, format, ap);
-		if (ret < 0)
-			return ret;
-		buf->buf += ret;
-		buf->n -= ret;
-		return 0;
-	} else {
-		ret = vprintf(format, ap);
-		if (ret < 0)
-			return ret;
-		return 0;
-	}
-}
-
-void *ghost_cm_make_buffer(char *arg, u64 n)
-{
-	struct _string_buffer *buf = malloc(sizeof(struct _string_buffer));
-	buf->buf = arg;
-	buf->n = n;
-	return buf;
-}
-
-void ghost_cm_free_buffer(void *buf)
-{
-	free(buf);
+	return printf("%c", c);
 }
 
 void ghost_cm_trace(const char *record)
@@ -103,12 +76,10 @@ void *initialise_casemate(void)
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
 	u64 sm_size = 2 * sizeof(struct casemate_model_state);
 	struct ghost_driver sm_driver = {
+		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
 		.read_sysreg = ghost_cm_read_sysreg,
 		.abort = ghost_cm_abort,
-		.print = ghost_cm_print,
-		.sprint_create_buffer = ghost_cm_make_buffer,
-		.sprint_destroy_buffer = ghost_cm_free_buffer,
 		.trace = ghost_cm_trace,
 	};
 

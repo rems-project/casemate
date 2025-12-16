@@ -64,6 +64,8 @@ int sb_putxn(struct string_builder *buf, u64 x, u32 n);
 
 #define TRY_PUTd(d) TRY(sb_putd(buf, (d)))
 
+#define TRY_PUTx(x) TRY(sb_putx(buf, (x)))
+
 #define TRY_PUTxn(x, n) TRY(sb_putxn(buf, (x), (n)))
 
 #define TRY_PUT_KV(k, v) \
