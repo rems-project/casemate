@@ -267,9 +267,11 @@ static u64 __read_phys(u64 addr, bool pre)
 	// 	GHOST_MODEL_CATCH_FIRE("Tried to read a physical location without holding the lock");
 
 	if (! loc->initialised) {
+		GHOST_WARN("saw uninitialised location %p", addr);
+
 		if (side_effect()->read_physmem == NULL)
 			GHOST_MODEL_CATCH_FIRE(
-				"saw uninitialised location %p, without read_physmem side-effect instantiated\n");
+				"saw uninitialised location without read_physmem side-effect instantiated\n");
 
 		// if not yet initialised
 		// assume the program was well-behaved up until now

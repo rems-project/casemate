@@ -737,16 +737,20 @@ static void step_msr(struct ghost_hw_step *step)
 		}
 		/* see if that root is already associated with a different (VM/AS)ID */
 		else if (assoc_root && assoc_root->id != id) {
+			GHOST_WARN("tree rooted at %p already has ID %lu", root, id);
 			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
 		}
 
 		/* see if VMID is already associated */
 		assoc_root = retrieve_root_for_id(roots, id);
 		if (assoc_root && assoc_root->baddr != root) {
+			GHOST_WARN("tree rooted at %p with duplicated ID %lu", root, id);
 			GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
 		}
 		/* if that VMID is free, check we have not already associated a different VMID */
 		else if (assoc_root && assoc_root->id != id) {
+			GHOST_WARN("tree rooted at %p cannot use ID %lu, already in use", root,
+				   id);
 			GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
 		}
 		/* otherwise, that VMID is free and this root has no associated VMID
