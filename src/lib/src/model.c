@@ -1653,12 +1653,17 @@ void ensure_traced_current_transition(bool force)
 	if (STATE()->traced_current_trans)
 		return;
 
+	if (force)
+		/* skip further checks */
+		goto do_trace;
+
 	if (! should_trace())
 		return;
 
-	if (should_track_only_watchpoints() && ! STATE()->touched_watchpoint && ! force)
+	if (should_track_only_watchpoints() && ! STATE()->touched_watchpoint)
 		return;
 
+do_trace:
 	trace_step(&CURRENT_TRANS());
 
 	STATE()->traced_current_trans = true;
