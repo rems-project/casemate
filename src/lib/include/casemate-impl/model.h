@@ -45,6 +45,11 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size);
 struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys);
 
 /**
+ * free_blob() - Given a blob, free it if it contains no initialised memory
+ */
+void free_blob(struct casemate_memory_blob *blob);
+
+/**
  * blob_of() - Given an index in the ordered_blob_list, return the corresponding blob
  */
 struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i);
@@ -79,6 +84,11 @@ static inline bool is_in_uncleans(u64 phys)
  * thinks is currently unclean
  */
 bool check_sanity_uncleans(void);
+
+/**
+ * blob_uninitialised() - Are all slots completely uninitialised
+ */
+bool blob_uninitialised(struct casemate_memory_blob *blob);
 
 /**
  * location() - Retrieve the ghost-model memory for a given physical address

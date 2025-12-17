@@ -12,6 +12,7 @@ TRANSITION =
     MEM-WRITE
   | MEM-READ
   | MEM-INIT
+  | MEM-FREE
   | MEM-SET
   | BARRIER
   | TLBI
@@ -69,6 +70,20 @@ MEM-INIT =
          "(", "address", u64, ")",
          "(", "size", u64, ")";
 ----
+
+==== mem-free
+
+Stop tracking memory
+
+Must not currently be a PTE, and accesses after freeing are invalid
+
+----
+MEM-FREE =
+    "mem-free",
+         "(", "address", u64, ")",
+         "(", "size", u64, ")";
+----
+
 
 ==== mem-set
 
