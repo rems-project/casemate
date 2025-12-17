@@ -995,7 +995,9 @@ static void step_write(struct ghost_hw_step *step)
 	loc = location(step->write_data.phys_addr);
 
 	if (! loc->initialised) {
-		GHOST_MODEL_CATCH_FIRE("Attempted write to uninitialised location");
+		if (opts()->check_opts.uninit_behavior != CM_IGNORE_UNINIT)
+			GHOST_MODEL_CATCH_FIRE("Attempted write to uninitialised location");
+
 		goto done;
 	}
 
@@ -1596,6 +1598,10 @@ static void step_hint_release_table(u64 root)
 {
 	struct sm_location *loc = location(root);
 
+	if (! loc->initialised)
+		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT)
+			return;
+
 	// TODO: BS: also check that it's not currently in-use by someone
 
 	// if this table was never used as a pgtable
@@ -1621,8 +1627,13 @@ static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
 	// TODO: mark all the parents as immutable
 	struct sm_location *loc = location(phys);
 
-	if (! loc->initialised)
-		GHOST_MODEL_CATCH_FIRE("cannot set thread owner for uninitialised PTE");
+	if (! loc->initialised) {
+		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT) {
+			return;
+		} else {
+			GHOST_MODEL_CATCH_FIRE("cannot set thread owner for uninitialised PTE");
+		}
+	}
 
 	if (! loc->is_pte)
 		GHOST_MODEL_CATCH_FIRE("cannot set thread owner for non PTE");
