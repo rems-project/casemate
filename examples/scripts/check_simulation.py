@@ -2,7 +2,9 @@
 # Guesses and checks a simulation between two log files, and checks the final condition.
 #
 # Usage:
-# ./check_simulation.py generated_log_file.log expected/expected_log_file.log
+# ./check_simulation.py [-C] generated_log_file.log expected/expected_log_file.log
+# options:
+#    -T     do not check trace, only final state
 
 import re
 import sys
@@ -78,11 +80,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument("given", type=pathlib.Path)
 parser.add_argument("expected", type=pathlib.Path)
 parser.add_argument("--debug", action="store_true", default=False)
+parser.add_argument("-T", dest="check_trace", action="store_false", default=True)
 
 
 def main(args):
     with open(args.given) as f1, open(args.expected) as f2:
-        compare_traces(f1, f2, debug=args.debug)
+        if args.check_trace:
+            compare_traces(f1, f2, debug=args.debug)
+        else:
+            last1, last2 = f1.readlines()[-1], f2.readlines()[-1]
+            # if either catch fire, check they match
+            if last1.startswith("!") or last2.startswith("!"):
+                compare_traces([last1], [last2], debug=args.debug)
     return 0
 
 

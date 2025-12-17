@@ -39,7 +39,7 @@ def check_expected(test_name):
     expected = (EXAMPLES_ROOT / "expected" / test_name).with_suffix(".log")
     runmsg("CHECK", test_name)
     subprocess.run(
-        ["python3", "./scripts/check_simulation.py", str(out_path), str(expected)],
+        ["python3", "./scripts/check_simulation.py", "-T", str(out_path), str(expected)],
         cwd=EXAMPLES_ROOT,
         check=True,
     )
