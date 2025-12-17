@@ -327,8 +327,11 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 
 		loc = location(pte_phys);
 
-		if (! loc->initialised)
+		if (! loc->initialised) {
+			GHOST_WARN("saw uninitialised PTE at 0x%lx when walking root:0x%lx",
+				   pte_phys, root);
 			GHOST_MODEL_CATCH_FIRE("uninitialised PTE on pgtable walk");
+		}
 
 		// If the location is owned by another thread, then don't keep going
 		if (flag == NO_READ_UNLOCKED_LOCATIONS && loc->thread_owner >= 0 &&
