@@ -1759,6 +1759,37 @@ static void __step_init(u64 phys_addr, u64 size)
 	}
 }
 
+static void __step_free(u64 phys_addr, u64 size)
+{
+	u64 p;
+	for (p = phys_addr; p < phys_addr + size; p += 8) {
+		struct sm_location *loc = location(p);
+
+		/* freeing un-initialised memory is always ok */
+		if (! loc->initialised)
+			continue;
+
+		/* check none are currently tracked as PTEs */
+		if (loc->initialised && loc->is_pte)
+			GHOST_MODEL_CATCH_FIRE("can't free location which is currently a PTE");
+
+		loc->initialised = false;
+	}
+
+	/* now try free any associated blobs */
+	for (p = phys_addr; p < phys_addr + size; p += PAGE_SIZE) {
+		struct casemate_memory_blob *blob = find_blob(&MODEL()->memory, p);
+
+		/* if uninitialised might not find it */
+		if (! blob)
+			continue;
+
+		/* if now totally empty, free it */
+		if (blob_unclean(blob))
+			free_blob(blob);
+	}
+}
+
 static void step_abs(struct ghost_abs_step *step)
 {
 	switch (step->kind) {
@@ -1769,8 +1800,10 @@ static void step_abs(struct ghost_abs_step *step)
 		__step_unlock((gsm_lock_addr_t)step->lock_data.address);
 		break;
 	case GHOST_ABS_INIT:
-		// Nothing to do
 		__step_init(step->init_data.location, step->init_data.size);
+		break;
+	case GHOST_ABS_FREE:
+		__step_free(step->init_data.location, step->init_data.size);
 		break;
 	case GHOST_ABS_MEMSET:
 		__step_memset(step->memset_data.address, step->memset_data.size,

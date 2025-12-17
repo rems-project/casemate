@@ -165,6 +165,25 @@ void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t l
 	});
 }
 
+void __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				uint64_t size)
+{
+	casemate_model_step((struct casemate_model_step){
+		.tid = tid,
+		.src_loc = src_loc,
+		.kind = TRANS_ABS_STEP,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_FREE,
+				.init_data =
+					(struct trans_init_data){
+						.location = location,
+						.size = size,
+					},
+			},
+	});
+}
+
 void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
 				  uint64_t value, uint64_t size)
 {

@@ -119,8 +119,17 @@ enum ghost_abs_kind {
 
 	/**
 	 * @GHOST_ABS_INIT - Zeroed initialisation of some fresh memory
+	 *
+	 * i.e. 'start tracking'
 	 */
 	GHOST_ABS_INIT,
+
+	/**
+	 * @GHOST_ABS_FREE - Free some possibly-initialised non-PTE memory.
+	 *
+	 * i.e. 'stop tracking'
+	 */
+	GHOST_ABS_FREE,
 
 	/**
 	 * @GHOST_ABS_MEMSET - A C memset() call.
@@ -131,6 +140,7 @@ enum ghost_abs_kind {
 struct ghost_abs_step {
 	enum ghost_abs_kind kind;
 	union {
+		/** @struct trans_init_data - Associated data for init/free of memory */
 		struct trans_init_data {
 			u64 location;
 			u64 size;

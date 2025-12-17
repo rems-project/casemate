@@ -53,10 +53,11 @@ static const char *hw_step_names[] = {
 };
 
 static const char *abs_step_names[] = {
-	[GHOST_ABS_LOCK] = "lock",
-	[GHOST_ABS_UNLOCK] = "unlock",
-	[GHOST_ABS_INIT] = "mem-init",
-	[GHOST_ABS_MEMSET] = "mem-set",
+	[GHOST_ABS_LOCK] = "lock", //
+	[GHOST_ABS_UNLOCK] = "unlock", //
+	[GHOST_ABS_INIT] = "mem-init", //
+	[GHOST_ABS_FREE] = "mem-free", //
+	[GHOST_ABS_MEMSET] = "mem-set", //
 };
 
 static const char *hint_step_name = "hint";
@@ -165,6 +166,7 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 		return 0;
 
 	case GHOST_ABS_INIT:
+	case GHOST_ABS_FREE:
 		TRY_PUT_KV("address", sb_putxn(buf, step->init_data.location, 64));
 		TRY_PUT(' ');
 		TRY_PUT_KV("size", sb_putxn(buf, step->init_data.size, 64));

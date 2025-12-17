@@ -155,6 +155,17 @@ static void insert_blob_at_end(struct casemate_model_memory *mem, u64 b)
 	mem->ordered_blob_list[mem->nr_allocated_blobs++] = b;
 }
 
+static int blob_index_of(struct casemate_model_memory *mem, struct casemate_memory_blob *blob)
+{
+	for (int i = 0; i < mem->nr_allocated_blobs; i++) {
+		struct casemate_memory_blob *this = blob_of(mem, i);
+		if (this == blob)
+			return i;
+	}
+
+	return -1;
+}
+
 static int bubble_blob_down(struct casemate_model_memory *mem)
 {
 	int i;
@@ -166,6 +177,18 @@ static int bubble_blob_down(struct casemate_model_memory *mem)
 	}
 
 	return i;
+}
+
+static void remove_blob_at(struct casemate_model_memory *mem, u64 b)
+{
+	if (mem->nr_allocated_blobs == 0)
+		return;
+
+	for (int i = b; i < mem->nr_allocated_blobs - 1; i++) {
+		BLOBINDX(mem, i) = BLOBINDX(mem, i + 1);
+	}
+
+	mem->nr_allocated_blobs--;
 }
 
 static int get_free_blob(void)
@@ -219,6 +242,25 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	return this;
 }
 
+void free_blob(struct casemate_memory_blob *blob)
+{
+	int idx;
+
+	/* no double free */
+	ghost_assert(blob->valid);
+
+	/* not (even partially) initialised */
+	ghost_safety_check(blob_uninitialised(blob));
+
+	/* find+remove it from ordered list */
+	idx = blob_index_of(&MODEL()->memory, blob);
+	ghost_assert(idx >= 0); /* must have been in the ordered list */
+	remove_blob_at(&MODEL()->memory, idx);
+
+	/* and now mark as invalid so can be re-used */
+	blob->valid = false;
+}
+
 bool blob_unclean(struct casemate_memory_blob *blob)
 {
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
@@ -228,6 +270,16 @@ bool blob_unclean(struct casemate_memory_blob *blob)
 	}
 
 	return false;
+}
+
+bool blob_uninitialised(struct casemate_memory_blob *blob)
+{
+	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
+		if (blob->slots[i].initialised)
+			return false;
+	}
+
+	return true;
 }
 
 /**
