@@ -79,6 +79,9 @@ int recv(void);
 #define TRANS_MEM_INIT(VAR, SIZE) \
 	casemate_model_step_init(VAR, SIZE)
 
+#define TRANS_MEM_FREE(VAR, SIZE) \
+	casemate_model_step_free(VAR, SIZE)
+
 #define TRANS_MEM_SET(VAR, SIZE, VAL) \
 	casemate_model_step_memset(VAR, SIZE, VAL)
 

@@ -419,6 +419,10 @@ void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost
 void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
 				uint64_t size);
 
+#define casemate_model_step_free(...) __casemate_model_step_free(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				uint64_t size);
+
 #define casemate_model_step_memset(...) \
 	__casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
 void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,

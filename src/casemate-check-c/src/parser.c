@@ -493,6 +493,10 @@ void parse_trans(struct parser *p)
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_INIT;
 		parse_mem_init_tail(p);
+	} else if (streq(prefix, "mem-free")) {
+		p->out->kind = TRANS_ABS_STEP;
+		p->out->abs_step.kind = GHOST_ABS_FREE;
+		parse_mem_init_tail(p);
 	} else if (streq(prefix, "mem-set")) {
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_MEMSET;
