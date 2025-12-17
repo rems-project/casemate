@@ -227,6 +227,14 @@ static void fastcache_fill_entry(struct casemate_model_memory *mem,
 	mem->fastcache[idx].is_valid = true;
 }
 
+static void fastcache_invalidate(struct casemate_model_memory *mem,
+				 struct casemate_memory_blob *this)
+{
+	for (int i = 0; i < BLOB_FASTCACHE_SIZE; i++)
+		if (mem->fastcache[i].is_valid && mem->fastcache[i].phys == this->phys)
+			mem->fastcache[i].is_valid = false;
+}
+
 static void fastcache_fill(struct casemate_model_memory *mem, struct casemate_memory_blob *this)
 {
 	ghost_assert(this->valid);
@@ -261,6 +269,18 @@ static int bubble_blob_down(struct casemate_model_memory *mem)
 	}
 
 	return i;
+}
+
+static void remove_blob_at(struct casemate_model_memory *mem, u64 b)
+{
+	if (mem->nr_allocated_blobs == 0)
+		return;
+
+	for (int i = b; i < mem->nr_allocated_blobs - 1; i++) {
+		BLOBINDX(mem, i) = BLOBINDX(mem, i + 1);
+	}
+
+	mem->nr_allocated_blobs--;
 }
 
 static int get_free_blob(void)
@@ -314,6 +334,34 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	return this;
 }
 
+void free_blob(struct casemate_memory_blob *blob)
+{
+	bool r;
+	u64 idx;
+	struct casemate_memory_blob *other;
+
+	/* no double free */
+	ghost_assert(blob->valid);
+
+	/* not (even partially) initialised */
+	ghost_safety_check(blob_uninitialised(blob));
+
+	/* find+remove it from ordered list */
+	r = blob_search(&MODEL()->memory, blob->phys, &idx, &other);
+	ghost_assert(r);
+	ghost_assert(other == blob);
+	remove_blob_at(&MODEL()->memory, idx);
+
+	/* remove from the fastcache */
+	fastcache_invalidate(&MODEL()->memory, blob);
+
+	/* and now mark as invalid so can be re-used */
+	blob->valid = false;
+
+	/* didn't mess anything up */
+	ghost_safety_check(check_sanity_of_blobs());
+}
+
 bool blob_unclean(struct casemate_memory_blob *blob)
 {
 	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
@@ -339,6 +387,16 @@ static bool sanity_check_location(u64 phys, struct sm_location *loc)
 	 * double-check that the model thinks it's unclean */
 	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
 		ghost_assert(is_in_uncleans(loc->phys_addr));
+
+	return true;
+}
+
+bool blob_uninitialised(struct casemate_memory_blob *blob)
+{
+	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
+		if (blob->slots[i].initialised)
+			return false;
+	}
 
 	return true;
 }
