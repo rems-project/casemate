@@ -17,6 +17,21 @@ typedef enum {
 
 #define CASEMATE_DEFAULT_PRINT_OPTS CM_PRINT_NONE
 
+typedef enum {
+	/** @CM_ERR_ON_UNINIT - Catch fire on a step for an uninitialised location */
+	CM_ERR_ON_UNINIT = 0,
+
+	/** @CM_IGNORE_UNINIT - Skip whole step on uninitialised address
+	 *
+	 * NOTE: This only affects explicit write accesses,
+	 * indirect reads of uninitialised memory (e.g. on writes to pagetable or system registers)
+	 * may still trigger errors if the dependent locations are uninitialised
+	 */
+	CM_IGNORE_UNINIT = 1,
+} casemate_uninit_opt_t;
+
+#define CASEMATE_DEFAULT_UNINIT_BEHAVIOR CM_ERR_ON_UNINIT
+
 struct casemate_checker_options {
 	/**
 	 * @promote_DSB_nsh: Silently promote all DSB NSH to DSB ISH
@@ -41,6 +56,11 @@ struct casemate_checker_options {
 	bool check_synchronisation;
 
 	/**
+	 * @uninit_behavior: what to do on an access to an uninitialised address
+	 */
+	casemate_uninit_opt_t uninit_behavior;
+
+	/**
 	 * @enable_printing: print out the current state of the
 	 * @print_opts: logging to perform.
 	 */
@@ -53,7 +73,8 @@ struct casemate_checker_options {
 	{ \
 		.promote_DSB_nsh = false, .promote_TLBI_nsh = false, \
 		.promote_TLBI_by_id = false, .check_synchronisation = true, \
-		.enable_printing = false, .print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
+		.uninit_behavior = CASEMATE_DEFAULT_UNINIT_BEHAVIOR, .enable_printing = false, \
+		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
 
 struct casemate_log_options {

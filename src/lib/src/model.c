@@ -945,6 +945,11 @@ static void step_write(struct ghost_hw_step *step)
 	// look inside memory at `addr`
 	loc = location(step->write_data.phys_addr);
 
+	if (! loc->initialised) {
+		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT)
+			goto done;
+	}
+
 	if (! loc->is_pte) {
 		goto done;
 	}
@@ -1536,6 +1541,10 @@ static void step_hint_release_table(u64 root)
 {
 	struct sm_location *loc = location(root);
 
+	if (! loc->initialised)
+		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT)
+			return;
+
 	// TODO: BS: also check that it's not currently in-use by someone
 
 	// need to check the table is clean.
@@ -1552,6 +1561,10 @@ static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
 {
 	// TODO: mark all the parents as immutable
 	struct sm_location *loc = location(phys);
+
+	if (! loc->initialised)
+		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT)
+			return;
 
 	ghost_assert(loc->initialised);
 	ghost_assert(loc->is_pte);
