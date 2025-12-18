@@ -14,6 +14,7 @@ extern bool SHOULD_TRACK_ONLY_WATCHPOINTS;
 extern bool SHOULD_TRACE;
 extern bool SHOULD_TRACE_CONDENSED;
 extern bool HARDEN;
+extern bool NO_DEFAULT_SYSREGS;
 extern bool QUIET;
 extern bool COLOR;
 extern bool DEBUG;

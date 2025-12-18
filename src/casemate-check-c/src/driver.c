@@ -104,7 +104,7 @@ void *initialise_casemate(void)
 	u64 sm_size = 2 * sizeof(struct casemate_model_state);
 	struct ghost_driver sm_driver = {
 		.read_physmem = NULL,
-		.read_sysreg = ghost_cm_read_sysreg,
+		.read_sysreg = NO_DEFAULT_SYSREGS ? NULL : ghost_cm_read_sysreg,
 		.abort = ghost_cm_abort,
 		.print = ghost_cm_print,
 		.sprint_create_buffer = ghost_cm_make_buffer,
