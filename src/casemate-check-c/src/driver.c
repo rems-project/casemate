@@ -78,7 +78,7 @@ void *initialise_casemate(void)
 	struct ghost_driver sm_driver = {
 		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
-		.read_sysreg = ghost_cm_read_sysreg,
+		.read_sysreg = NO_DEFAULT_SYSREGS ? NULL : ghost_cm_read_sysreg,
 		.abort = ghost_cm_abort,
 		.trace = ghost_cm_trace,
 	};

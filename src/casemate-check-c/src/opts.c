@@ -16,6 +16,7 @@ bool SHOULD_TRACK_ONLY_WATCHPOINTS = false;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
 bool HARDEN = false;
+bool NO_DEFAULT_SYSREGS = false;
 bool QUIET = false;
 bool COLOR = false;
 
@@ -33,6 +34,7 @@ static void print_help_and_quit(void)
 		"  -R --racy      	do not check locks/synchronisation are respected\n" //
 		"  -t --trace     	print trace record for each step\n" //
 		"  -T --no-trace  	do not print trace record for each step\n" //
+		"  -S --no-sysreg  	do not use default system register values\n" //
 		"  -c             	condensed trace format\n" //
 		"  -d --diff      	show diffs of state\n" //
 		"  -U --all        	show all (including unclean) locations in states/diffs\n" //
@@ -71,6 +73,7 @@ void parse_opts(int argc, char **argv)
 		{ "trace", no_argument, 0, 't' }, //
 		{ "no-trace", no_argument, 0, 'T' }, //
 		{ "harden", no_argument, 0, 'H' }, //
+		{ "no-sysreg", no_argument, 0, 'S' }, //
 		{ "diff", no_argument, 0, 'd' }, //
 		{ "all", no_argument, 0, 'U' }, //
 		{ "dry-run", no_argument, 0, 'C' }, //
@@ -84,7 +87,7 @@ void parse_opts(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptTHqdhUDRVW:", long_options, 0)) != -1) {
+	while ((c = getopt_long(argc, argv, "acptTHSqdhUDRVW:", long_options, 0)) != -1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -107,6 +110,9 @@ void parse_opts(int argc, char **argv)
 
 		case 'H':
 			HARDEN = true;
+
+		case 'S':
+			NO_DEFAULT_SYSREGS = true;
 			break;
 
 		case 'd':
