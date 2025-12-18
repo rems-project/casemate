@@ -18,8 +18,11 @@ include config.mk
 include tools/run_cmd.mk
 
 subdirs += src/lib
+
+ifneq ($(CONFIG_LIB_ONLY),y)
 subdirs += examples
 subdirs += src/casemate-check-c
+endif
 
 build: $(subdirs)
 
