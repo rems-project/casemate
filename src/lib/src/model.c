@@ -500,6 +500,9 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 	// mark that this location is no longer an active pte
 	// and stop following the automata
 	loc->is_pte = false;
+
+	// can now forget about the location entirely
+	forget_location(loc);
 }
 
 /**

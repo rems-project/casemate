@@ -60,6 +60,11 @@ bool blob_unclean(struct casemate_memory_blob *blob);
 struct sm_location *location(u64 phys);
 
 /**
+ * forget_location() - Stop tracking a location.
+ */
+void forget_location(struct sm_location *loc);
+
+/**
  * stage_from_ttbr() - Get stage from name of TTBR.
  *
  * Returns false if given sysreg name is not a valid TTBR.
