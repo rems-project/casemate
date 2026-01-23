@@ -1793,12 +1793,12 @@ static void __step_init(u64 phys_addr, u64 size)
 	for (p = phys_addr; p < phys_addr + size; p += 8) {
 		struct sm_location *loc = location(p);
 
-		/* permit re-initialising locations
-		 * but in that case just update the state to be zero */
 		if (! loc->initialised)
 			initialise_location(loc, 0);
-		else
-			__do_plain_write(phys_addr, 0);
+		else if (loc->is_pte || loc->val != 0)
+			/* re-initialising locations is okay,
+			 * but only if the location is still 0 */
+			GHOST_MODEL_CATCH_FIRE("cannot initialise used location");
 	}
 }
 
