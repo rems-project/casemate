@@ -61,7 +61,11 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t *lock)
 	}
 
 	i = MODEL()->locks.len++;
-	ghost_assert(i < CASEMATE_MAX_LOCKS);
+
+	if (i >= CASEMATE_MAX_LOCKS) {
+		GHOST_MODEL_CATCH_FIRE("can't associate lock, not enough free lock slots");
+	}
+
 	MODEL()->locks.owner_ids[i] = root;
 	MODEL()->locks.locks[i] = lock;
 }
@@ -1495,9 +1499,14 @@ static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
 	// TODO: mark all the parents as immutable
 	struct sm_location *loc = location(phys);
 
-	ghost_assert(loc->initialised);
-	ghost_assert(loc->is_pte);
-	ghost_assert(loc->descriptor.level == 3);
+	if (! loc->initialised)
+		GHOST_MODEL_CATCH_FIRE("cannot set thread owner for uninitialised PTE");
+
+	if (! loc->is_pte)
+		GHOST_MODEL_CATCH_FIRE("cannot set thread owner for non PTE");
+
+	if (loc->descriptor.level != 3)
+		GHOST_MODEL_CATCH_FIRE("cannot set thread owner for non-final-level PTE");
 
 	loc->thread_owner = val;
 }
@@ -1535,7 +1544,9 @@ static void __step_lock(gsm_lock_addr_t *lock_addr)
 		}
 	}
 	// If the lock is not yet in the map, we append it
-	ghost_assert(len < CASEMATE_MAX_LOCKS);
+	if (len >= CASEMATE_MAX_LOCKS) {
+		GHOST_MODEL_CATCH_FIRE("Tried to acquire too many locks at once");
+	}
 
 	MODEL()->lock_state.address[len] = lock_addr;
 	MODEL()->lock_state.locker[len].id = cpu_id();
