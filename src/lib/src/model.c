@@ -79,7 +79,7 @@ static void associate_lock(sm_owner_t root, gsm_lock_addr_t lock)
 	}
 }
 
-static void unregister_lock(u64 root)
+static void try_unregister_lock(u64 root, bool force)
 {
 	int len = MODEL()->locks.len;
 
@@ -92,7 +92,9 @@ static void unregister_lock(u64 root)
 			return;
 		}
 	}
-	GHOST_MODEL_CATCH_FIRE("Tried to release a table which did not have a lock");
+
+	if (force)
+		GHOST_MODEL_CATCH_FIRE("Tried to release a table which did not have a lock");
 }
 
 bool is_correctly_locked(gsm_lock_addr_t lock, struct lock_state **state)
@@ -1612,13 +1614,6 @@ static void step_hint_set_owner_root(u64 phys, u64 root)
 		if (loc->is_pte)
 			GHOST_MODEL_CATCH_FIRE("cannot change owned root if already in a tree");
 
-		// before letting us disassociate a pte with a given VM/tree,
-		// first we need to check that it's clean enough to forget about
-		// the association with the old VM
-		traverse_pgtable_from(root, loc->owner, loc->descriptor.ia_region.range_size,
-				      loc->descriptor.level, loc->descriptor.stage,
-				      check_release_cb, READ_UNLOCKED_LOCATIONS, NULL);
-
 		loc->owner = root;
 	}
 }
@@ -1633,6 +1628,13 @@ static void step_hint_release_table(u64 root)
 
 	// TODO: BS: also check that it's not currently in-use by someone
 
+	// if this table was never used as a pgtable
+	// it might never have been associated with a lock or made a pte
+	// so all the below are 'try' to do things
+
+	// remove the mapping from the root to the lock of the page-table
+	try_unregister_lock(root, false);
+
 	/* if not a PTE, do nothing */
 	if (! loc->is_pte)
 		return;
@@ -1642,9 +1644,6 @@ static void step_hint_release_table(u64 root)
 			      loc->descriptor.level, loc->descriptor.stage, check_release_cb,
 			      READ_UNLOCKED_LOCATIONS, NULL);
 	try_unregister_root(loc->descriptor.stage, root);
-
-	// remove the mapping from the root to the lock of the page-table
-	unregister_lock(root);
 }
 
 static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
