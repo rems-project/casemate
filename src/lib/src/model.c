@@ -1633,6 +1633,10 @@ static void step_hint_release_table(u64 root)
 
 	// TODO: BS: also check that it's not currently in-use by someone
 
+	/* if not a PTE, do nothing */
+	if (! loc->is_pte)
+		return;
+
 	// need to check the table is clean.
 	traverse_pgtable_from(root, loc->owner, loc->descriptor.ia_region.range_size,
 			      loc->descriptor.level, loc->descriptor.stage, check_release_cb,
