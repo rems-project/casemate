@@ -79,8 +79,8 @@ void *initialise_casemate(void)
 {
 	int err;
 	void *st;
+	u64 sm_size;
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
-	u64 sm_size = 2 * sizeof(struct casemate_model_state);
 	struct ghost_driver sm_driver = {
 		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
@@ -109,6 +109,7 @@ void *initialise_casemate(void)
 	opts.enable_tracing = SHOULD_TRACE;
 	opts.enable_safety_checks = HARDEN;
 
+	sm_size = sizeof_casemate_model(&opts);
 	st = malloc(sm_size);
 	err = initialise_casemate_model(&opts, 0, 0, st, sm_size);
 	if (err)
