@@ -81,6 +81,15 @@ static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 si
 	STORE_RLX(STATE()->is_initialised, true);
 }
 
+uint64_t sizeof_casemate_model(struct casemate_options *cfg)
+{
+	u64 expected_size;
+	expected_size = sizeof(struct casemate_state) + sizeof(struct casemate_model_state);
+	if (cfg->check_opts.print_opts & CM_PRINT_DIFF_TO_STATE_ON_STEP)
+		expected_size += sizeof(struct casemate_model_state);
+	return expected_size;
+}
+
 int initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u64 size,
 			      void *sm_virt, u64 sm_size)
 {
@@ -88,9 +97,7 @@ int initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u6
 	u64 expected_size;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	expected_size = sizeof(struct casemate_state) + sizeof(struct casemate_model_state);
-	if (cfg->check_opts.print_opts & CM_PRINT_DIFF_TO_STATE_ON_STEP)
-		expected_size += sizeof(struct casemate_model_state);
+	expected_size = sizeof_casemate_model(cfg);
 
 	if (sm_size < expected_size) {
 		ret = -12;
