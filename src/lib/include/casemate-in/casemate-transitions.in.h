@@ -90,6 +90,15 @@ struct src_loc {
 };
 
 /**
+ * sizeof_casemate_model() - Computes **minimum** size required for the Casemate model state
+ * @opts: a reference to the desired configuration
+ *
+ * NOTE: the size of the state is partially configuration-dependent,
+ * so this function accepts configuration options which are used only in that calculation.
+ */
+uint64_t sizeof_casemate_model(struct casemate_options *opts);
+
+/**
  * initialise_casemate_model() - One-shot initialisation of model state.
  * @opts: a reference to an initial configuration to use during setup.
  * @phys: the start physical address of the memory given to pKVM.

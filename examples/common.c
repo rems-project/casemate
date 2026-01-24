@@ -236,7 +236,8 @@ void common_init(int argc, char **argv)
 {
 	int err;
 	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
-	u64 sm_size = sizeof(struct casemate_state) + 2*sizeof(struct casemate_model_state);
+	u64 sm_size;
+
 	struct ghost_driver sm_driver = {
 		.putc = ghost_cm_putc,
 		.read_physmem = NULL,
@@ -264,6 +265,7 @@ void common_init(int argc, char **argv)
 
 	opts.enable_tracing = SHOULD_TRACE;
 
+	sm_size = sizeof_casemate_model(&opts);
 	st = malloc(sm_size);
 	err = initialise_casemate_model(&opts, 0, 0, st, sm_size);
 	if (err) {

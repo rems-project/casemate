@@ -11,8 +11,9 @@
  * about the implementation details (e.g. various integer types and sync primitives)
  */
 
-// TODO: BS: make variable-sized data structures instead of fixed CPUs
+#ifndef MAX_CPU
 #define MAX_CPU 4
+#endif
 
 /**
  * typedef gsm_lock_addr_t - ghost model lock
@@ -259,9 +260,18 @@ struct sm_location {
 #define SLOT_SHIFT 3
 
 #define BLOB_SHIFT 12
-#define MAX_BLOBS (0x2000)
-#define MAX_ROOTS 32
+
+#ifndef MAX_BLOBS
+#define MAX_BLOBS 0x2000
+#endif
+
+#ifndef MAX_ROOTS
+#define MAX_ROOTS 64
+#endif
+
+#ifndef MAX_UNCLEAN_LOCATIONS
 #define MAX_UNCLEAN_LOCATIONS 10
+#endif
 
 /**
  * struct casemate_memory_blob - A page of memory.
@@ -298,15 +308,17 @@ struct location_set {
 	u64 len;
 };
 
-#define CASEMATE_MAX_LOCKS 8
+#ifndef MAX_LOCKS
+#define MAX_LOCKS 64
+#endif
 
 /**
  * struct lock_owner_map - Map of pgtable root to lock that owns it.
  */
 struct lock_owner_map {
 	u64 len;
-	sm_owner_t owner_ids[CASEMATE_MAX_LOCKS];
-	gsm_lock_addr_t locks[CASEMATE_MAX_LOCKS];
+	sm_owner_t owner_ids[MAX_LOCKS];
+	gsm_lock_addr_t locks[MAX_LOCKS];
 };
 
 /**
@@ -338,8 +350,8 @@ struct lock_state {
  */
 struct lock_state_map {
 	u64 len;
-	gsm_lock_addr_t address[CASEMATE_MAX_LOCKS];
-	struct lock_state locker[CASEMATE_MAX_LOCKS];
+	gsm_lock_addr_t address[MAX_LOCKS];
+	struct lock_state locker[MAX_LOCKS];
 };
 
 /**
@@ -350,9 +362,11 @@ struct lock_state_map {
 gsm_lock_addr_t owner_lock(sm_owner_t owner_id);
 
 /**
- * CASEMATE_MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
+ * MAX_VMIDS - Maximum number of VMIDs Casemate can support concurrently.
  */
-#define CASEMATE_MAX_VMIDS 64
+#ifndef MAX_VMIDS
+#define MAX_VMIDS 64
+#endif
 
 /**
  * typedef vmid_t - A virtual machine identifier (VMID)
@@ -369,8 +383,8 @@ typedef u64 addr_id_t;
  */
 struct vmid_map {
 	u64 len;
-	vmid_t vmids[CASEMATE_MAX_VMIDS];
-	sm_owner_t roots[CASEMATE_MAX_VMIDS];
+	vmid_t vmids[MAX_VMIDS];
+	sm_owner_t roots[MAX_VMIDS];
 };
 
 /**

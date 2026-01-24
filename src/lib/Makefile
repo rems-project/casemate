@@ -15,6 +15,20 @@ ifeq ($(ARCH),AARCH64)
 endif
 CFLAGS += -fno-common -nostdlib
 
+
+# build-time constants
+define build_const_arg
+$(if $(CONFIG_$1),-D$1=$(CONFIG_$1))
+endef
+
+CFLAGS += \
+	$(call build_const_arg,MAX_CPU) \
+	$(call build_const_arg,MAX_BLOBS) \
+	$(call build_const_arg,MAX_ROOTS) \
+	$(call build_const_arg,MAX_UNCLEAN_LOCATIONS) \
+	$(call build_const_arg,MAX_LOCKS) \
+	$(call build_const_arg,MAX_VMIDS) \
+
 # platform-specific target rules
 CFLAGS += -DCONFIG_PLATFORM_$(CONFIG_TARGET_PLATFORM)
 ifeq ($(CONFIG_TARGET_PLATFORM),FREEBSD)

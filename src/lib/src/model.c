@@ -62,7 +62,7 @@ static void append_lock(sm_owner_t root, gsm_lock_addr_t lock)
 
 	i = MODEL()->locks.len++;
 
-	if (i >= CASEMATE_MAX_LOCKS) {
+	if (i >= MAX_LOCKS) {
 		GHOST_MODEL_CATCH_FIRE("can't associate lock, not enough free lock slots");
 	}
 
@@ -1694,7 +1694,7 @@ static void __step_lock(gsm_lock_addr_t lock_addr)
 		}
 	}
 	// If the lock is not yet in the map, we append it
-	if (len >= CASEMATE_MAX_LOCKS) {
+	if (len >= MAX_LOCKS) {
 		GHOST_MODEL_CATCH_FIRE("Tried to acquire too many locks at once");
 	}
 
