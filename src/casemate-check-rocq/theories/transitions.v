@@ -105,14 +105,14 @@ Definition decoded_tlbi_has_asid (td : trans_tlbi_data) : option addr_id_t :=
 
 Definition decode_tlbi_by_addr (td : trans_tlbi_data) : TLBI_op_by_addr_data :=
   let page := bv_and_64 td.(ttd_value) TLBI_PAGE_MASK in
-  let last_level_only := 
+  let last_level_only :=
     match td.(ttd_tlbi_kind) with
     | TLBI_vale2is => true
     | _ => false
     end in
   let level := bv_and_64 td.(ttd_value) TLBI_TTL_MASK in
-  let level_hint := 
-    if (level b<? b4) then None 
+  let level_hint :=
+    if (level b<? b4) then None
     else Some (bv_and_64 level b3) in
 
   {|
@@ -320,8 +320,8 @@ Definition step_write_table_mark_children
         let st := clean_reachable map descriptor cms in
         let st := Mlog
           (Log "BBM: invalid clean->valid"%string (phys_addr_val loc.(sl_phys_addr))) st in
-        Mupdate_state (traverse_pgt_from 
-                          descriptor.(eed_owner) 
+        Mupdate_state (traverse_pgt_from
+                          descriptor.(eed_owner)
                           map.(next_level_table_addr)
                           descriptor.(eed_ia_region).(range_start)
                           (next_level descriptor.(eed_level))
@@ -347,11 +347,11 @@ Definition step_write_on_invalid
     | None => (* This should not happen because if we write on invalid, we write on PTE *)
       Merror (CME_internal_error IET_unexpected_none)
     | Some descriptor =>
-      let descriptor := deconstruct_pte 
-          tid 
-          descriptor.(eed_ia_region).(range_start) 
-          val descriptor.(eed_level) 
-          descriptor.(eed_owner) 
+      let descriptor := deconstruct_pte
+          tid
+          descriptor.(eed_ia_region).(range_start)
+          val descriptor.(eed_level)
+          descriptor.(eed_owner)
           descriptor.(eed_stage) in
       let new_loc := loc <| sl_val := val |> <| sl_pte := Some descriptor |> in
       let new_cms := cms <| cms_memory := <[ loc.(sl_phys_addr) := new_loc ]> cms.(cms_memory) |> in
@@ -487,7 +487,7 @@ Definition drop_write_authorisation
         match wmo with
         | WMO_page | WMO_plain => (* check that the write is authorized, and then drop the authorization *)
           match auth with
-          | write_authorized => 
+          | write_authorized =>
             let new_lock_state := {| ls_tid := lock_owner; ls_write_authorization := write_unauthorized |} in
             Mreturn (cms <| cms_lock_state := insert lock_addr new_lock_state cms.(cms_lock_state)|>)
           | write_unauthorized =>
@@ -517,7 +517,7 @@ Definition check_write_authorized
   let val := wd.(twd_val) in
   let addr := wd.(twd_phys_addr) in
   if negb ((bv_and_64 (phys_addr_val addr) b7) b=? b0)
-    then Merror CME_unaligned_write 
+    then Merror CME_unaligned_write
   else
     match cms !! addr with
     | None => Mreturn cms
@@ -887,7 +887,7 @@ Definition all_children_invalid (pte_desc : entry_exploded_descriptor) (cms : ca
   | _ => true
   end.
 
-Definition should_perform_tlbi 
+Definition should_perform_tlbi
   (cpu_id : thread_identifier)
   (td : TLBI_intermediate)
   (ptc : pgtable_traverse_context) : option bool :=
@@ -910,7 +910,7 @@ Definition should_perform_tlbi
         (* __should_perform_tlbi_matches_addr *)
         else if negb ((phys_addr_val ia_start b<=? tlbi_addr)
                   && (tlbi_addr b<? phys_addr_val ia_end)) then Some false
-        
+
         (* __should_perform_tlbi_matches_level *)
         else if ((negb (is_l3 pte_desc.(eed_level))) && d.(TOBAD_last_level_only)) then
           Some false
@@ -1047,7 +1047,7 @@ Definition tlbi_visitor
       end
     end.
 
-Definition step_tlbi 
+Definition step_tlbi
   (tid : thread_identifier)
   (td : trans_tlbi_data)
   (cm : casemate_model_state) :
@@ -1105,14 +1105,14 @@ Definition context_switch
   (addr_id : addr_id_t)
   (stage : entry_stage_t)
   (md : trans_msr_data)
-  (cm : casemate_model_state) : 
+  (cm : casemate_model_state) :
   casemate_model_result :=
   (* decrement refcount on current root (if applicable) *)
   let assoc_root := current_thread_context_root tid stage cm in
-  let decr_cm := 
+  let decr_cm :=
     match assoc_root with
     | Some root =>
-      let new_assoc_root := {| 
+      let new_assoc_root := {|
         r_baddr := root.(r_baddr);
         r_id := root.(r_id);
         r_refcount := root.(r_refcount) - 1 |} in
@@ -1125,7 +1125,7 @@ Definition context_switch
   let assoc_root := retrieve_root_for_id stage decr_cm.(cms_roots) addr_id in
   match assoc_root with
   | Some root =>
-    let new_assoc_root := {| 
+    let new_assoc_root := {|
       r_baddr := root.(r_baddr);
       r_id := root.(r_id);
       r_refcount := root.(r_refcount) + 1 |} in
@@ -1144,10 +1144,10 @@ Definition stage_from_ttbr
   | SYSREG_VTTBR => S2
   end.
 
-Definition step_msr 
+Definition step_msr
   (tid : thread_identifier)
   (md : trans_msr_data)
-  (cm : casemate_model_state) : 
+  (cm : casemate_model_state) :
   casemate_model_result :=
   let stage := stage_from_ttbr md.(tmd_sysreg) in
   let baddr := ttbr_extract_baddr md.(tmd_val) in
