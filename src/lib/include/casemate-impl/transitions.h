@@ -113,6 +113,11 @@ enum ghost_abs_kind {
 	GHOST_ABS_LOCK,
 
 	/**
+	 * @GHOST_ABS_TRYLOCK - Acquire a mutex (maybe recursively)
+	 */
+	GHOST_ABS_TRYLOCK,
+
+	/**
 	 * @GHOST_ABS_UNLOCK - Release a mutex
 	 */
 	GHOST_ABS_UNLOCK,
