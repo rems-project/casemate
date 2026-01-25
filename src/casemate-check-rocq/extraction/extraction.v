@@ -24,7 +24,7 @@ Extract Inlined Constant cmap_lookup => "Cmap.lookup".
 Extract Inlined Constant cmap_insert => "Cmap.insert".
 
 
-Extract Constant zmap "'x" => "'x Zmap.t". 
+Extract Constant zmap "'x" => "'x Zmap.t".
 Extract Inlined Constant zmap_empty => "Zmap.empty".
 Extract Inlined Constant zmap_lookup => "Zmap.find_opt".
 Extract Inlined Constant zmap_insert => "Zmap.add".

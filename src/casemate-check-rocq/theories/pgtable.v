@@ -164,17 +164,17 @@ Fixpoint traverse_pgt_from_aux
   (stage : entry_stage_t)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (max_call_number : nat)
-  (mon : casemate_model_result) : 
+  (mon : casemate_model_result) :
   casemate_model_result :=
   match max_call_number with
-  | S max_call_number => traverse_pgt_from_offs 
-                            root 
-                            table_start partial_ia 
-                            level 
-                            stage 
-                            visitor_cb 
-                            b0 
-                            max_call_number 
+  | S max_call_number => traverse_pgt_from_offs
+                            root
+                            table_start partial_ia
+                            level
+                            stage
+                            visitor_cb
+                            b0
+                            max_call_number
                             mon
   | O => Merror (CME_internal_error IET_infinite_loop)
   end
@@ -235,23 +235,23 @@ with traverse_pgt_from_offs
                     (((PA i) pa* exploded_desc.(eed_ia_region).(range_size))) in
                 (* recursive call: explore sub-pgt *)
                 traverse_pgt_from_aux
-                  root 
-                  rec_table_start next_partial_ia 
-                  (next_level level) 
-                  stage 
-                  visitor_cb 
-                  max_call_number 
+                  root
+                  rec_table_start next_partial_ia
+                  (next_level level)
+                  stage
+                  visitor_cb
+                  max_call_number
                   mon
               | _ => mon
               end
             in
-            traverse_pgt_from_offs 
-              root 
-              table_start partial_ia 
-              level stage 
-              visitor_cb 
-              (bv_add_64 i b1)  
-              max_call_number 
+            traverse_pgt_from_offs
+              root
+              table_start partial_ia
+              level stage
+              visitor_cb
+              (bv_add_64 i b1)
+              max_call_number
               mon
           end
         end
@@ -284,12 +284,12 @@ Definition traverse_pgt_from_root
   (visitor_cb : pgtable_traverse_context -> casemate_model_result)
   (cms : casemate_model_state) :
   casemate_model_result :=
-  traverse_pgt_from 
-    root 
-    (owner_val root) 
-    pa0 
-    l0 
-    stage 
+  traverse_pgt_from
+    root
+    (owner_val root)
+    pa0
+    l0
+    stage
     visitor_cb
     cms
 .
@@ -333,7 +333,7 @@ Definition traverse_all_pgt
   (cms : casemate_model_state)
   (visitor_cb : pgtable_traverse_context -> casemate_model_result) :=
   match traverse_pgt th cms visitor_cb S1 with
-  | {| cmr_log := logs; cmr_data := Ok _ _ cms |} => 
+  | {| cmr_log := logs; cmr_data := Ok _ _ cms |} =>
     let res := traverse_pgt th cms visitor_cb S2 in
     res <| cmr_log := res.(cmr_log) ++ logs |>
   | err => err

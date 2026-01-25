@@ -201,5 +201,5 @@ let transition sexp =
     cms_thread_identifier = u64 tid;
     cms_data = data;
   }
-  
+
 let of_line line = Sexplib.Sexp.of_string_conv_exn line transition

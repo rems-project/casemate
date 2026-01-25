@@ -41,7 +41,7 @@ let lexicon: (string, token) Hashtbl.t =
   let add (key, builder) = Hashtbl.add lexicon key builder in
   List.iter add keywords; lexicon
 
-let purify_str = 
+let purify_str =
   Str.global_replace (Str.regexp "\\.\\|(=\\|)\\|pfn\\=\\|level\\=") ""
 
 let value i =

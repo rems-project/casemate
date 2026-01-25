@@ -106,7 +106,7 @@ Record sm_location := mk_sm_location {
   sl_pte : option entry_exploded_descriptor;
   sl_thread_owner : option thread_identifier;
 }.
-#[export] Instance eta_sm_location : Settable _ := 
+#[export] Instance eta_sm_location : Settable _ :=
   settable! mk_sm_location <sl_phys_addr; sl_val; sl_pte; sl_thread_owner>.
 
 Record owner_locks := {
@@ -125,7 +125,7 @@ Record cm_thrd_ctxt := {
   current_s1 : sm_owner_t;
   current_s2 : sm_owner_t;
 }.
-  
+
 (* The memory state is a map from address to casemate model location *)
 Definition casemate_model_memory := cmap sm_location.
 
@@ -162,18 +162,18 @@ Definition retrieve_root_for_baddr
   (stage : entry_stage_t)
   (cm_roots : casemate_model_roots)
   (root_addr : sm_owner_t) : option cm_root :=
-  let roots := 
+  let roots :=
     match stage with
     | S1 => cm_roots.(cmr_s1)
     | S2 => cm_roots.(cmr_s2)
-    end in 
+    end in
   find (fun elem => bool_decide (elem.(r_baddr) = root_addr)) roots.
 
 Definition retrieve_root_for_id
   (stage : entry_stage_t)
   (cm_roots : casemate_model_roots)
   (addr_id : addr_id_t) : option cm_root :=
-  let roots := 
+  let roots :=
     match stage with
     | S1 => cm_roots.(cmr_s1)
     | S2 => cm_roots.(cmr_s2)
@@ -182,14 +182,14 @@ Definition retrieve_root_for_id
 
 Definition update_root_for_baddr
   (root_addr : sm_owner_t)
-  (new_root : cm_root) 
+  (new_root : cm_root)
   (roots : list cm_root) : list cm_root :=
   let idx := index_of (fun elem => bool_decide (elem.(r_baddr) = root_addr)) roots in
   list_insert idx new_root roots.
 
 Definition update_root_for_id
   (addr_id : addr_id_t)
-  (new_root : cm_root) 
+  (new_root : cm_root)
   (roots : list cm_root) : list cm_root :=
   let idx := index_of (fun elem => bool_decide (elem.(r_id) = addr_id)) roots in
   list_insert idx new_root roots.
@@ -237,8 +237,8 @@ Record casemate_model_state := mk_casemate_model_state {
   cms_lock_addr : casemate_model_lock_owner_map;
   cms_lock_state : casemate_model_lock_state_map
 }.
-#[export] Instance eta_casemate_model_state : Settable _ := 
-  settable! mk_casemate_model_state 
+#[export] Instance eta_casemate_model_state : Settable _ :=
+  settable! mk_casemate_model_state
     <cms_roots; cms_memory; cms_initialised; cms_thrd_ctxt; cms_lock_addr; cms_lock_state>.
 
 Definition cms_init := {|
@@ -248,7 +248,7 @@ Definition cms_init := {|
   cms_thrd_ctxt := ∅;
   cms_lock_addr := ∅;
   cms_lock_state := ∅;
-|}.    
+|}.
 
 Definition is_initialised (st : casemate_model_state) (addr : phys_addr_t) : bool :=
   match st.(cms_initialised) !! ((bv_shiftr_64 (phys_addr_val addr) b12)) with
@@ -274,7 +274,7 @@ Definition get_lock_of_owner
   (owner : sm_owner_t)
   (cms : casemate_model_state) : option u64 :=
   lookup (phys_addr_val (owner_val owner)) cms.(cms_lock_addr).
- 
+
 
 Infix "!!" := get_location (at level 20).
 
@@ -315,7 +315,7 @@ Definition should_visit
   (cms : casemate_model_state) : bool :=
   match cms !! addr with
   | None => true
-  | Some location => 
+  | Some location =>
     match location.(sl_pte) with
     | None => true
     | Some pte =>
@@ -323,9 +323,9 @@ Definition should_visit
     end
   end.
 
-  Definition current_thread_context 
+  Definition current_thread_context
   (tid : thread_identifier)
-  (cms : casemate_model_state) : 
+  (cms : casemate_model_state) :
   option cm_thrd_ctxt :=
   let val := thread_identifier_to_val tid in
   lookup val cms.(cms_thrd_ctxt).
@@ -337,14 +337,14 @@ Definition update_current_thread_context
   (cms : casemate_model_state) :
   casemate_model_state :=
   let idx := thread_identifier_to_val tid in
-  let new_thrd_ctxt := 
+  let new_thrd_ctxt :=
     match current_thread_context tid cms with
     | Some thrd_ctxt =>
       match stage with
       | S1 => {| current_s1 := assoc_root_baddr; current_s2 := thrd_ctxt.(current_s2) |}
       | S2 => {| current_s1 := thrd_ctxt.(current_s2); current_s2 := assoc_root_baddr|}
       end
-    | None => 
+    | None =>
       match stage with (* TODO: pa0 to None? *)
       | S1 => {| current_s1 := assoc_root_baddr; current_s2 := Root pa0 |}
       | S2 => {| current_s1 := Root pa0; current_s2 := assoc_root_baddr|}
@@ -475,4 +475,3 @@ Definition Minsert_location
   | e => e
   end
 .
-
