@@ -221,6 +221,23 @@ void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t a
 	});
 }
 
+void __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address)
+{
+	casemate_model_step((struct casemate_model_step){
+		.tid = tid,
+		.src_loc = src_loc,
+		.kind = TRANS_ABS_STEP,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_TRYLOCK,
+				.lock_data =
+					(struct trans_lock_data){
+						.address = address,
+					},
+			},
+	});
+}
+
 void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
 	casemate_model_step((struct casemate_model_step){

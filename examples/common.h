@@ -70,6 +70,9 @@ int recv(void);
 #define LOCK(L) \
 	casemate_model_step_lock((u64)&(L))
 
+#define TRYLOCK(L) \
+	casemate_model_step_trylock((u64)&(L))
+
 #define UNLOCK(L) \
 	casemate_model_step_unlock((u64)&(L))
 

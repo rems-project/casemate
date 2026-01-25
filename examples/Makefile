@@ -23,6 +23,7 @@ build-objs += bad_no_bbm_stage1
 build-objs += bad_overlap_ASID
 build-objs += bad_EL2_ASID
 build-objs += good_release_table
+build-objs += good_trylock
 
 list-build-objs:
 	@echo $(build-objs)

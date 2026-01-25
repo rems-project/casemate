@@ -1693,30 +1693,68 @@ static void __step_lock(gsm_lock_addr_t lock_addr)
 	MODEL()->lock_state.address[len] = lock_addr;
 	MODEL()->lock_state.locker[len].id = cpu_id();
 	MODEL()->lock_state.locker[len].write_authorization = AUTHORIZED;
+	MODEL()->lock_state.locker[len].count = 1;
 
 	MODEL()->lock_state.len++;
 }
 
-static void __step_unlock(gsm_lock_addr_t lock_addr)
+static void __step_trylock(gsm_lock_addr_t lock_addr)
 {
 	int len = MODEL()->lock_state.len;
 	// look for the address in the map
 	for (int i = 0; i < len; i++) {
 		if (MODEL()->lock_state.address[i] == lock_addr) {
-			if (MODEL()->lock_state.locker[i].id == cpu_id()) {
-				// unlock the position
-				len--;
-				MODEL()->lock_state.locker[i] = MODEL()->lock_state.locker[len];
-				MODEL()->lock_state.address[i] = MODEL()->lock_state.address[len];
-				MODEL()->lock_state.len--;
-				return;
-			} else {
+			/* reacquiring lock */
+			struct lock_state *ls = &MODEL()->lock_state.locker[i];
+
+			if (ls->id != cpu_id())
 				GHOST_MODEL_CATCH_FIRE(
-					"Tried to unlock a cpmponent that was held by another thread");
-			}
+					"Tried to reacquire lock on different thread");
+
+			ls->count++;
+			return;
 		}
 	}
-	GHOST_MODEL_CATCH_FIRE("Tried to unlock a component that was not held");
+
+	/* not found: new lock */
+	__step_lock(lock_addr);
+}
+
+static void __step_unlock(gsm_lock_addr_t lock_addr)
+{
+	int i;
+	int len = MODEL()->lock_state.len;
+	struct lock_state *ls;
+	// look for the address in the map
+	for (i = 0; i < len; i++) {
+		if (MODEL()->lock_state.address[i] == lock_addr) {
+			ls = &MODEL()->lock_state.locker[i];
+			goto found;
+		}
+	}
+
+	/* not found */
+	if (opts()->check_opts.uninit_behavior == CM_ERR_ON_UNINIT)
+		GHOST_MODEL_CATCH_FIRE("Tried to unlock a component that was not held");
+
+	/* nothing to do */
+	return;
+
+found:
+	if (ls->id != cpu_id())
+		GHOST_MODEL_CATCH_FIRE(
+			"Tried to unlock a cpmponent that was held by another thread");
+
+	/* decrement counter */
+	if (--ls->count > 0)
+		/* still held */
+		return;
+
+	/* release lock */
+	len--;
+	MODEL()->lock_state.locker[i] = MODEL()->lock_state.locker[len];
+	MODEL()->lock_state.address[i] = MODEL()->lock_state.address[len];
+	MODEL()->lock_state.len--;
 }
 
 static void __do_plain_write(u64 phys_addr, u64 val)
@@ -1795,6 +1833,9 @@ static void step_abs(struct ghost_abs_step *step)
 	switch (step->kind) {
 	case GHOST_ABS_LOCK:
 		__step_lock((gsm_lock_addr_t)step->lock_data.address);
+		break;
+	case GHOST_ABS_TRYLOCK:
+		__step_trylock((gsm_lock_addr_t)step->lock_data.address);
 		break;
 	case GHOST_ABS_UNLOCK:
 		__step_unlock((gsm_lock_addr_t)step->lock_data.address);

@@ -520,6 +520,10 @@ void parse_trans(struct parser *p)
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_LOCK;
 		parse_lock_tail(p);
+	} else if (streq(prefix, "trylock")) {
+		p->out->kind = TRANS_ABS_STEP;
+		p->out->abs_step.kind = GHOST_ABS_TRYLOCK;
+		parse_lock_tail(p);
 	} else if (streq(prefix, "unlock")) {
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_UNLOCK;

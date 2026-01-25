@@ -431,6 +431,9 @@ void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t
 #define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
 void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address);
 
+#define casemate_model_step_trylock(...) __casemate_model_step_trylock(THREAD_ID, SRC_LOC, __VA_ARGS__)
+void __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address);
+
 #define casemate_model_step_unlock(...) \
 	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
 void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address);

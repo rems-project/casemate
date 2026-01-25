@@ -687,8 +687,8 @@ int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 	struct lock_state *state;
 
 	if (is_correctly_locked(locks->locks[i], &state))
-		ret = ghost_fprintf(arg, "(%16p,%16p, locked by thread %d, %s)",
-				    locks->owner_ids[i], locks->locks[i], state->id,
+		ret = ghost_fprintf(arg, "(%16p,%16p, locked %d times by thread %d, %s)",
+				    locks->owner_ids[i], locks->locks[i], state->count, state->id,
 				    state->write_authorization == AUTHORIZED ?
 					    "write authorized" :
 					    "write not authorized");

@@ -325,10 +325,12 @@ enum write_authorization {
  * struct lock_state - The current ghost state of a lock.
  * @id: The thread ID of the thread that currently owns the lock, or -1 if not held.
  * @write_authorization: what permission the owner of the lock has to the protected object.
+ * @count: number of times this lock has been locked.
  */
 struct lock_state {
 	thread_identifier id;
 	enum write_authorization write_authorization;
+	u64 count;
 };
 
 /**

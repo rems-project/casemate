@@ -190,7 +190,7 @@ Acquire/release of a pagetable-owning lock.
 
 ----
 LOCK =
-    ("lock" | "unlock"),
+    ("lock" | "trylock" | "unlock"),
          "(", "address", u64, ")"
 ----
 
