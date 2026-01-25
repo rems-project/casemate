@@ -681,6 +681,48 @@ int gp_print_cm_roots(void *arg, char *name, struct roots *roots)
 	return ghost_fprintf(arg, "]");
 }
 
+int gp_print_cm_unclean_locations(void *arg, char *name, struct location_set *locs)
+{
+	int ret;
+
+	ret = ghost_fprintf(arg, "%s: [", name);
+	if (ret)
+		return ret;
+
+	if (locs->len > 0) {
+		u64 addr = locs->locations[0];
+		ret = ghost_fprintf(arg, "%lx", addr);
+		if (ret)
+			return ret;
+
+		for (u64 i = 1; i < locs->len; i++) {
+			u64 addr = locs->locations[0];
+			ret = ghost_fprintf(arg, ", ");
+			if (ret)
+				return ret;
+
+			ret = ghost_fprintf(arg, "%lx", addr);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return ghost_fprintf(arg, "]");
+}
+
+int gp_print_cm_thrd_contexts(void *arg, struct cm_thrd_ctxt *contexts)
+{
+	int ret = 0;
+	struct lock_state *state;
+
+	for (int i = 0; i < MAX_CPU; i++) {
+		struct cm_thrd_ctxt *ctx = &contexts[i];
+		TRY(ghost_fprintf(arg, "[Thread %d]", i));
+	}
+
+	return ret;
+}
+
 int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 {
 	int ret;
@@ -725,6 +767,10 @@ int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 			  "nr_roots:........%16lx\n",
 			  s->base_addr, s->size, s->roots.len));
 	TRY(gp_print_cm_roots(arg, "roots", &s->roots));
+	TRY(ghost_fprintf(arg, "\n"));
+	TRY(gp_print_cm_thrd_contexts(arg, s->thread_context));
+	TRY(ghost_fprintf(arg, "\n"));
+	TRY(gp_print_cm_unclean_locations(arg, "unclean_locations", &s->unclean_locations));
 	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_locks(arg, &s->locks));
 	TRY(ghost_fprintf(arg, "\n"));
