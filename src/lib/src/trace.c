@@ -54,6 +54,7 @@ static const char *hw_step_names[] = {
 
 static const char *abs_step_names[] = {
 	[GHOST_ABS_LOCK] = "lock", //
+	[GHOST_ABS_TRYLOCK] = "trylock", //
 	[GHOST_ABS_UNLOCK] = "unlock", //
 	[GHOST_ABS_INIT] = "mem-init", //
 	[GHOST_ABS_FREE] = "mem-free", //
@@ -161,6 +162,7 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 	int ret;
 	switch (step->kind) {
 	case GHOST_ABS_LOCK:
+	case GHOST_ABS_TRYLOCK:
 	case GHOST_ABS_UNLOCK:
 		TRY_PUT_KV("address", sb_putxn(buf, step->lock_data.address, 64));
 		return 0;
