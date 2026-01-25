@@ -2,3 +2,5 @@
 4ce1ce14b51dacc70de15536e37a80618984e514
 # (clang-format) deploy fmt on casemate-check-c
 d366fc3363345e0f1897eb75f9c58190d60cc2c8
+# fmt: whitespace and newlines
+7123c80c226a0e28c2c40eb09a86ab91522f87d8
