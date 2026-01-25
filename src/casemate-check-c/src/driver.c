@@ -86,6 +86,7 @@ void *initialise_casemate(void)
 	opts.enable_checking = SHOULD_CHECK;
 	opts.check_opts.enable_printing = SHOULD_PRINT_DIFF | SHOULD_PRINT_STATE;
 	opts.check_opts.print_opts = CM_PRINT_NONE;
+	opts.check_opts.uninit_behavior = UNINIT_BEHAVIOR;
 	opts.track_watchpoints = SHOULD_TRACK_ONLY_WATCHPOINTS;
 	if (SHOULD_PRINT_ONLY_UNCLEANS)
 		opts.check_opts.print_opts |= CM_PRINT_ONLY_UNCLEAN;
