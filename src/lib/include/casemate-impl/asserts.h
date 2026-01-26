@@ -9,6 +9,7 @@
 #define ghost_assert(expr) \
 	if (! (expr)) { \
 		GHOST_WARN(#expr); \
+		ensure_traced_current_transition(true); \
 		side_effect()->abort("assertion failed: " #expr " in " __FILE__); \
 		__builtin_unreachable(); \
 	}
