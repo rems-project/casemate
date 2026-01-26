@@ -15,6 +15,7 @@ casemate_h="${libdir}/casemate.h"
 lib_includes="${libdir}/include"
 
 arch=`uname -m`
+host=`uname -s`
 cross_prefix=
 clangd=1
 
@@ -124,6 +125,12 @@ else
   exit 1
 fi
 
+host_libs=
+
+if [ "$host" = "FreeBSD" ]; then
+	host_libs+=stdthreads;
+fi
+
 if [ ${warned} -eq 1 ]; then
   echo "configure: warning suppressed, writing config anyway"
 elif [ ${warned} -gt 1 ]; then
@@ -143,6 +150,7 @@ ARCH = ${arch_name}
 
 CLANG-FORMAT = ${clang_format}
 
+LIBS = ${host_libs}
 CFLAGS = -Wall -MD -g -gdwarf-4 -D__${arch_name}__
 LDFLAGS =
 

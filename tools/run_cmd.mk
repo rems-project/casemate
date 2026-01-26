@@ -27,7 +27,7 @@ endef
 
 define run_cc_as_ld
 $(call run_cmd,LD,$2, \
-		$(CC) $(CFLAGS) $(CFLAGS-$2) $1 -o $2 \
+		$(CC) $(CFLAGS) $(CFLAGS-$2) $(foreach lib,$(LIBS),-Wl,-l$(lib)) $1 -o $2 \
 	)
 endef
 
