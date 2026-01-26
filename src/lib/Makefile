@@ -8,10 +8,12 @@ build-objs += casemate.o.S
 build: $(addprefix $(src)/,$(build-objs)) $(src)/compile_commands.json
 
 CFLAGS += -I$(src)/include/
-CFLAGS += -fno-omit-frame-pointer -fno-unwind-tables
+CFLAGS += -ffreestanding -fno-common -nostdlib
+CFLAGS += -fno-strict-aliasing
 ifeq ($(ARCH),AARCH64)
-  CFLAGS += -fPIC -fno-PIE
-  CFLAGS += -march=armv8-a+nofp -mstrict-align
+  CFLAGS += -fPIC
+  CFLAGS += -march=armv8-a+nofp
+  CFLAGS += -mstrict-align
 endif
 CFLAGS += -fno-common -nostdlib
 
@@ -35,6 +37,16 @@ CFLAGS += \
 # platform-specific target rules
 CFLAGS += -DCONFIG_PLATFORM_$(CONFIG_TARGET_PLATFORM)
 ifeq ($(CONFIG_TARGET_PLATFORM),FREEBSD)
+# same flags as FreeBSD uses to build its own files
+CFLAGS += -target aarch64-unknown-freebsd15.0
+CFLAGS += -std=gnu17
+CFLAGS += -mgeneral-regs-only -ffixed-x18
+CFLAGS += -mbranch-protection=standard
+CFLAGS += -mno-outline-atomics
+CFLAGS += -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
+CFLAGS += -fno-unwind-tables -fno-asynchronous-unwind-tables
+
+
 ifeq ($(CONFIG_VMM_nVHE),y)
 bsd-build-obj := casemate.bsd.hyp.o
 CFLAGS += -DVMM_nVHE
@@ -78,7 +90,7 @@ $(src)/include/casemate.h: $(headers-deps)
 		$(src)/tools/generate_header.py \
 	)
 
-LDFLAGS-$(src)/casemate.o := -r
+LDFLAGS-$(src)/casemate.o += -r
 $(src)/casemate.o: $(addprefix $(src)/,$(casemate-obj))
 	$(call run_ld,$^,$@)
 
