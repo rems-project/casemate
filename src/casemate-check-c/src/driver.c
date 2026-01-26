@@ -129,6 +129,7 @@ void *initialise_casemate(void)
 	opts.check_opts.check_synchronisation = SHOULD_CHECK_LOCKS;
 
 	opts.enable_tracing = SHOULD_TRACE;
+	opts.enable_safety_checks = HARDEN;
 
 	st = malloc(sm_size);
 	err = initialise_casemate_model(&opts, 0, 0, st, sm_size);
