@@ -1,0 +1,13 @@
+#ifndef CASEMATE_FREEBSD_H
+#define CASEMATE_FREEBSD_H
+
+#define CONFIG_FREEBSD
+
+#ifndef VMM_nVHE
+#define CONFIG_HAS_STRLEN
+#define CONFIG_HAS_MEMSET
+#define CONFIG_HAS_MEMCPY
+#define CONFIG_HAS_MEMMOVE
+#endif
+
+#endif /* CASEMATE_FREEBSD_H */

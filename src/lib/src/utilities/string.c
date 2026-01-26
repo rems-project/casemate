@@ -24,3 +24,56 @@ bool streq(const char *s1, const char *s2)
 
 	return streq(s1 + 1, s2 + 1);
 }
+
+#ifndef CONFIG_HAS_MEMCPY
+void *memcpy(void *dest, const void *src, u64 num)
+{
+	u64 i;
+	unsigned char *bs = (unsigned char *)src;
+	unsigned char *bd = (unsigned char *)dest;
+	for (i = 0; i < num; i++) {
+		bd[i] = bs[i];
+	}
+	return dest;
+}
+#endif /* CONFIG_HAS_MEMCPY */
+
+#ifndef CONFIG_HAS_MEMSET
+void *memset(void *ptr, int value, u64 num)
+{
+	u64 i;
+	unsigned char *dest = (unsigned char *)ptr;
+	for (i = 0; i < num; i++) {
+		dest[i] = value;
+	}
+	return ptr;
+}
+#endif /* CONFIG_HAS_MEMCPY */
+
+#ifndef CONFIG_HAS_MEMMOVE
+void *memmove(void *dest, const void *src, u64 num)
+{
+	u64 i;
+	unsigned char *bs = (unsigned char *)src;
+	unsigned char *bd = (unsigned char *)dest;
+
+	/* bd: |-------|
+	 *      ^-->
+	 * bs       |--------|
+	 */
+	if (bd < bs)
+		for (i = 0; i < num; i++)
+			bd[i] = bs[i];
+	else if (bd == bs)
+		return dest;
+	else
+		/* bd       |--------|
+		 *               <--^
+		 * bs: |-------|
+		 * copy bs starting from end of bd
+		 */
+		for (i = num; i > 0; i--)
+			bd[i - 1] = bs[i - 1];
+	return dest;
+}
+#endif /* CONFIG_HAS_MEMMOVE */
