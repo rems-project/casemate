@@ -6,6 +6,10 @@
 #ifdef __KVM_NVHE_HYPERVISOR__
 #include <linux/stdarg.h>
 #include <linux/types.h>
+#elif defined(__CASEMATE_FREEBSD__)
+#include <sys/stdarg.h>
+#include <sys/stdint.h>
+#include <sys/stdatomic.h>
 #else
 #include <stdarg.h>
 #include <stdint.h>
