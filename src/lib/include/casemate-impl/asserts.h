@@ -23,7 +23,7 @@
 	do { \
 		ghost_assert(false); \
 		__builtin_unreachable(); \
-	} while (0);
+	} while (0)
 
 #define GHOST_MODEL_CATCH_FIRE(msg) \
 	{ \
@@ -35,7 +35,7 @@
 	do { \
 		ghost_assert(false); \
 		__builtin_unreachable(); \
-	} while (0);
+	} while (0)
 #endif /* CONFIG_HAS_ASSERT */
 
 #endif /* CASEMATE_ASSERTS_H */
