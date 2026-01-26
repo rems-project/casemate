@@ -15,6 +15,7 @@ bool SHOULD_CHECK_LOCKS = true;
 bool SHOULD_TRACK_ONLY_WATCHPOINTS = false;
 bool SHOULD_TRACE = true;
 bool SHOULD_TRACE_CONDENSED = false;
+bool HARDEN = false;
 bool QUIET = false;
 bool COLOR = false;
 
@@ -38,6 +39,7 @@ static void print_help_and_quit(void)
 		"  -p --print     	print state out at each step\n" //
 		"  -C --dry-run   	do not run checks\n" //
 		"  -q             	quiet, do not print state, or trace steps, or show error messages\n" //
+		"  -H --harden          run with extra safety checks\n" //
 		"  --color        	print with ANSI escape color codes\n" //
 		"  -a --no-color  	ascii-only, no ANSI escape color codes\n" //
 		"  -D --debug     	debug mode\n" //
@@ -68,6 +70,7 @@ void parse_opts(int argc, char **argv)
 		{ "quiet", no_argument, 0, 'q' }, //
 		{ "trace", no_argument, 0, 't' }, //
 		{ "no-trace", no_argument, 0, 'T' }, //
+		{ "harden", no_argument, 0, 'H' }, //
 		{ "diff", no_argument, 0, 'd' }, //
 		{ "all", no_argument, 0, 'U' }, //
 		{ "dry-run", no_argument, 0, 'C' }, //
@@ -81,7 +84,7 @@ void parse_opts(int argc, char **argv)
 	};
 
 	int c;
-	while ((c = getopt_long(argc, argv, "acptTqdhUDRVW:", long_options, 0)) != -1) {
+	while ((c = getopt_long(argc, argv, "acptTHqdhUDRVW:", long_options, 0)) != -1) {
 		switch (c) {
 		case 'p':
 			SHOULD_PRINT_STATE = true;
@@ -100,6 +103,10 @@ void parse_opts(int argc, char **argv)
 
 		case 'T':
 			SHOULD_TRACE = false;
+			break;
+
+		case 'H':
+			HARDEN = true;
 			break;
 
 		case 'd':
