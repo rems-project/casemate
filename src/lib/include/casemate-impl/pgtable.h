@@ -61,6 +61,11 @@
 #define PTE_FIELD_S1_AP1_LO 6
 #define PTE_FIELD_S1_AP1_MASK BIT(6)
 
+#define PTE_FIELD_AF_LO 10
+#define PTE_FIELD_AF_MASK BIT(10)
+#define PTE_FIELD_AF_SET (1UL)
+#define PTE_FIELD_AF_NOTSET (0UL)
+
 #define PTE_FIELD_S1_XN_LO 54
 #define PTE_FIELD_S1_XN_MASK BIT(54)
 #define PTE_FIELD_S1_XN_NOT_EXEC_NEVER (0UL)
@@ -128,6 +133,10 @@ static inline bool __s2_is_xn(u64 pte)
 static inline bool __s2_is_x(u64 pte)
 {
 	return PTE_EXTRACT(PTE_FIELD_S2_XN, pte) != PTE_FIELD_S2_XN_NOT_EXEC_NEVER;
+}
+static inline bool __is_af_set(u64 pte)
+{
+	return PTE_EXTRACT(PTE_FIELD_AF, pte) == PTE_FIELD_AF_SET;
 }
 
 typedef struct {
