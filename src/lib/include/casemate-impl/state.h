@@ -184,6 +184,11 @@ struct entry_attributes {
 	enum entry_memtype_attr memtype;
 
 	/**
+	 * @af - access flag bit set
+	 */
+	bool af;
+
+	/**
 	 * @raw_arch_attrs: the raw descriptor, masked to the attribute bits
 	 * Not semantically meaningful, but used in printing and diffs.
 	 */

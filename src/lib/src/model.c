@@ -396,6 +396,14 @@ static bool requires_bbm(struct sm_location *loc, u64 before, u64 after)
 		return true;
 	}
 
+	/* if one entry would cause an Access flag fault then it could not be stored in a TLB
+	 * so all is well
+	 *
+	 * XXX: check for HWAF?
+	 */
+	if (before_descriptor.map_data.attrs.af || after_descriptor.map_data.attrs.af)
+		return false;
+
 	// TODO: BS: a change in memory type, shareability, or cacheability
 	// TODO: BS: FEAT_BBM (?)
 	// TODO: BS: global entries (?)

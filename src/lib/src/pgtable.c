@@ -157,6 +157,8 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 	// first fill in the permissions
 	enum entry_permissions perms;
 	enum entry_memtype_attr memtype_attr;
+	bool af = __is_af_set(desc);
+
 	switch (stage) {
 	case ENTRY_STAGE1: {
 		bool ro = __s1_is_ro(desc);
@@ -254,6 +256,7 @@ static struct entry_attributes parse_attrs(entry_stage_t stage, ghost_mair_t mai
 	return (struct entry_attributes){
 		.prot = perms,
 		.memtype = memtype_attr,
+		.af = af,
 		.raw_arch_attrs = desc & PTE_FIELD_ATTRS_MASK,
 	};
 }
