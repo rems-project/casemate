@@ -16,7 +16,7 @@ extern bool SHOULD_TRACE_CONDENSED;
 extern bool HARDEN;
 extern bool NO_DEFAULT_SYSREGS;
 extern bool UNINIT_BEHAVIOR;
-extern bool QUIET;
+extern int QUIET;
 extern bool COLOR;
 extern bool DEBUG;
 

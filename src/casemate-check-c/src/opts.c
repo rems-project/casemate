@@ -18,7 +18,7 @@ bool SHOULD_TRACE_CONDENSED = false;
 bool HARDEN = false;
 bool NO_DEFAULT_SYSREGS = false;
 bool UNINIT_BEHAVIOR = CM_ERR_ON_UNINIT;
-bool QUIET = false;
+int QUIET = 0;
 bool COLOR = false;
 
 bool DEBUG = false;
@@ -42,7 +42,7 @@ static void print_help_and_quit(void)
 		"  -U --all        	show all (including unclean) locations in states/diffs\n" //
 		"  -p --print     	print state out at each step\n" //
 		"  -C --dry-run   	do not run checks\n" //
-		"  -q             	quiet, do not print state, or trace steps, or show error messages\n" //
+		"  -q             	quiet, do not print state, or trace steps; pass twice to supress error messages also\n" //
 		"  -H --harden          run with extra safety checks\n" //
 		"  --color        	print with ANSI escape color codes\n" //
 		"  -a --no-color  	ascii-only, no ANSI escape color codes\n" //
@@ -100,7 +100,7 @@ void parse_opts(int argc, char **argv)
 			SHOULD_TRACE = false;
 			SHOULD_PRINT_STATE = false;
 			SHOULD_PRINT_DIFF = false;
-			QUIET = true;
+			++QUIET;
 			break;
 
 		case 't':

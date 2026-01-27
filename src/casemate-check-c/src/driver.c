@@ -39,7 +39,7 @@ u64 ghost_cm_read_sysreg(enum ghost_sysreg_kind sysreg)
 
 void ghost_cm_abort(const char *msg)
 {
-	if (! QUIET) {
+	if (QUIET < 2) {
 		if (COLOR)
 			printf(GHOST_WHITE_ON_RED);
 		printf("! %s", msg);
