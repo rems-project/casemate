@@ -1921,7 +1921,10 @@ void step(struct casemate_model_step trans)
 	GHOST_LOG(trans, trans);
 
 	/* XXX RO trans? */
-	trans.seq_id = STATE()->transition_id++;
+	if (! trans.seq_id)
+		trans.seq_id = STATE()->transition_id++;
+	else
+		STATE()->transition_id = trans.seq_id + 1;
 
 	STATE()->current_transition = trans;
 	STATE()->touched_watchpoint = false;
