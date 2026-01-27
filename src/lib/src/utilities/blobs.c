@@ -109,6 +109,16 @@ static bool check_sanity_of_no_blob(u64 phys)
 	return true;
 }
 
+bool check_sanity_uncleans(void)
+{
+	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
+		struct sm_location *loc = location(MODEL()->unclean_locations.locations[i]);
+		ghost_assert(is_unclean_location(loc));
+	}
+
+	return true;
+}
+
 /** BLOBINDX() - Given an order index return the index in the blob backing list
  */
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
@@ -230,6 +240,24 @@ bool blob_unclean(struct casemate_memory_blob *blob)
 	return false;
 }
 
+static bool sanity_check_location(u64 phys, struct sm_location *loc)
+{
+	ghost_assert(phys == loc->phys_addr);
+
+	if (! loc->initialised)
+		return true;
+
+	if (! loc->is_pte)
+		return true;
+
+	/* if see something unclean
+	 * double-check that the model thinks it's unclean */
+	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
+		ghost_assert(is_in_uncleans(loc->phys_addr));
+
+	return true;
+}
+
 /**
  * location() - Read an address from the ghost model state.
  * @phys: the physical address.
@@ -240,6 +268,7 @@ struct sm_location *location(u64 phys)
 	ghost_assert(blob);
 	ghost_safety_check(SLOT_OFFSET_IN_BLOB(phys) < SLOTS_PER_PAGE);
 	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
+	ghost_safety_check(sanity_check_location(phys, loc));
 	touch(phys);
 	return loc;
 }

@@ -501,6 +501,8 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 
 		uncleans->locations[i] = uncleans->locations[uncleans->len--];
 	}
+
+	ghost_safety_check(check_sanity_uncleans());
 }
 
 void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_stage_t stage,
