@@ -12,9 +12,22 @@ INCLUDE = ROOT / 'include'
 
 compile_commands = []
 
+def process_in_header(path):
+    return (
+        path.read_text()
+        .replace(
+            "/* clang-format off */\n",
+            ""
+        )
+        .replace(
+            "/* clang-format on */\n",
+            ""
+        )
+    )
+
 template = (INCLUDE / "casemate-in" / "casemate.out.h").read_text()
-transitions = (INCLUDE / "casemate-in" / "casemate-transitions.in.h").read_text()
-config = (INCLUDE / "casemate-in" / "casemate-config.in.h").read_text()
+transitions = process_in_header(INCLUDE / "casemate-in" / "casemate-transitions.in.h")
+config = process_in_header(INCLUDE / "casemate-in" / "casemate-config.in.h")
 version = (
     subprocess.run(["./tools/print_version.py"], cwd=CM_ROOT, capture_output=True, text=True).stdout.strip()
 )

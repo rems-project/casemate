@@ -72,9 +72,12 @@ struct casemate_checker_options {
 #define CASEMATE_DEFAULT_CHECK_OPTS \
 	(struct casemate_checker_options) \
 	{ \
-		.promote_DSB_nsh = false, .promote_TLBI_nsh = false, \
-		.promote_TLBI_by_id = false, .check_synchronisation = true, \
-		.enable_printing = false, .print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
+		.promote_DSB_nsh = false, \
+		.promote_TLBI_nsh = false, \
+		.promote_TLBI_by_id = false, \
+		.check_synchronisation = true, \
+		.enable_printing = false, \
+		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
 
 struct casemate_log_options {
@@ -92,7 +95,8 @@ struct casemate_log_options {
 #define CASEMATE_DEFAULT_LOG_OPTS \
 	(struct casemate_log_options) \
 	{ \
-		.log_format_version = 1, .condensed_format = false, \
+		.log_format_version = 1, \
+		.condensed_format = false, \
 	}
 
 /**
@@ -135,9 +139,12 @@ struct casemate_options {
 #define CASEMATE_DEFAULT_OPTS \
 	(struct casemate_options) \
 	{ \
-		.enable_tracing = false, .enable_checking = false, .track_watchpoints = false, \
+		.enable_tracing = false, \
+		.enable_checking = false, \
+		.track_watchpoints = false, \
 		.log_opts = CASEMATE_DEFAULT_LOG_OPTS, \
-		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, .enable_safety_checks = false, \
+		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, \
+		.enable_safety_checks = false, \
 	}
 
 enum ghost_sysreg_kind {
@@ -185,8 +192,12 @@ struct ghost_driver {
 #define CASEMATE_DEFAULT_EMPTY_DRIVER \
 	(struct ghost_driver) \
 	{ \
-		.print = NULL, .sprint_create_buffer = NULL, .halt = NULL, .read_physmem = NULL, \
-		.read_sysreg = NULL, .trace = NULL, \
+		.print = NULL, \
+		.sprint_create_buffer = NULL, \
+		.halt = NULL, \
+		.read_physmem = NULL, \
+		.read_sysreg = NULL, \
+		.trace = NULL, \
 	}
 
 /**

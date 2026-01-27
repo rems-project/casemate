@@ -48,13 +48,18 @@ struct casemate_checker_options {
 	casemate_print_opts_t print_opts;
 };
 
+/* clang-format off */
 #define CASEMATE_DEFAULT_CHECK_OPTS \
 	(struct casemate_checker_options) \
 	{ \
-		.promote_DSB_nsh = false, .promote_TLBI_nsh = false, \
-		.promote_TLBI_by_id = false, .check_synchronisation = true, \
-		.enable_printing = false, .print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
+		.promote_DSB_nsh = false, \
+		.promote_TLBI_nsh = false, \
+		.promote_TLBI_by_id = false, \
+		.check_synchronisation = true, \
+		.enable_printing = false, \
+		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
+/* clang-format on */
 
 struct casemate_log_options {
 	/**
@@ -68,11 +73,14 @@ struct casemate_log_options {
 	bool condensed_format;
 };
 
+/* clang-format off */
 #define CASEMATE_DEFAULT_LOG_OPTS \
 	(struct casemate_log_options) \
 	{ \
-		.log_format_version = 1, .condensed_format = false, \
+		.log_format_version = 1, \
+		.condensed_format = false, \
 	}
+/* clang-format on */
 
 /**
  * struct casemate_options - Global configuration of ghost model behaviour
@@ -111,13 +119,18 @@ struct casemate_options {
 	bool enable_safety_checks;
 };
 
+/* clang-format off */
 #define CASEMATE_DEFAULT_OPTS \
 	(struct casemate_options) \
 	{ \
-		.enable_tracing = false, .enable_checking = false, .track_watchpoints = false, \
+		.enable_tracing = false, \
+		.enable_checking = false, \
+		.track_watchpoints = false, \
 		.log_opts = CASEMATE_DEFAULT_LOG_OPTS, \
-		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, .enable_safety_checks = false, \
+		.check_opts = CASEMATE_DEFAULT_CHECK_OPTS, \
+		.enable_safety_checks = false, \
 	}
+/* clang-format on */
 
 enum ghost_sysreg_kind {
 	SYSREG_VTTBR,
@@ -161,12 +174,18 @@ struct ghost_driver {
 	trace_cb trace;
 };
 
+/* clang-format off */
 #define CASEMATE_DEFAULT_EMPTY_DRIVER \
 	(struct ghost_driver) \
 	{ \
-		.print = NULL, .sprint_create_buffer = NULL, .halt = NULL, .read_physmem = NULL, \
-		.read_sysreg = NULL, .trace = NULL, \
+		.print = NULL, \
+		.sprint_create_buffer = NULL, \
+		.halt = NULL, \
+		.read_physmem = NULL, \
+		.read_sysreg = NULL, \
+		.trace = NULL, \
 	}
+/* clang-format on */
 
 /**
  * casemate_watch_location() - Watch for changes to a particular physical address.
