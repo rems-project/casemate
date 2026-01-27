@@ -215,6 +215,30 @@ const char *next_word(struct parser *p)
 	return buf;
 }
 
+const char *next_str(struct parser *p)
+{
+	int i = 0;
+	int buf_size = 512;
+	char *buf;
+
+	consume_whitespace(p);
+
+	acceptc(p, '"');
+	buf = malloc(buf_size);
+	while (lookahead(p) != '"') {
+		buf[i++] = next(p);
+
+		if (i >= buf_size)
+			parse_error(p, "str of unexpectedly long length");
+	}
+	acceptc(p, '"');
+	buf[i] = '\0';
+
+	TRACE("consumed str '%s'", buf);
+	consume_whitespace(p);
+	return buf;
+}
+
 void accept_word(struct parser *p, const char *key)
 {
 	consume_whitespace(p);
@@ -302,6 +326,8 @@ bool parse_kv_or_v_head(struct parser *p, const char *k)
 #define PARSE_KV_DECIMAL(P, KEY) PARSE_KV_WITH(P, KEY, u64, next_decimal)
 
 #define PARSE_KV_HEX(P, KEY) PARSE_KV_WITH(P, KEY, u64, next_hex)
+
+#define PARSE_KV_STR(P, KEY) PARSE_KV_WITH(P, KEY, const char *, next_str)
 
 #define PARSE_KV_WORD(P, KEY) PARSE_KV_WITH(P, KEY, const char *, next_word)
 
@@ -465,12 +491,40 @@ void parse_lock_tail(struct parser *p)
 	p->out->abs_step.lock_data.address = PARSE_KV_HEX(p, "address");
 }
 
+static size_t strlen_partition_colon(struct parser *p, const char *s)
+{
+	char c;
+	size_t len = 0;
+
+	while ((c = *s++) != ':') {
+		len++;
+
+		if (c == '\0')
+			parse_error(p, "bad src format: expected FUNC:FILE:LINENO");
+	}
+
+	return len;
+}
+
 void parse_common_fields_tail(struct parser *p)
 {
 	// TODO: BS: parse srclocs
-	p->out->src_loc.file = PARSE_KV_WORD(p, "src");
+	const char *src_loc;
+	size_t file_len;
+	char *file;
+	u64 lineno;
+
+	src_loc = PARSE_KV_STR(p, "src");
+	file_len = strlen_partition_colon(p, src_loc);
+
+	file = malloc(file_len + 1);
+	strncpy(file, src_loc, file_len);
+	file[file_len] = '\0';
+	lineno = atoi(src_loc + file_len + 1);
+
+	p->out->src_loc.file = file;
 	p->out->src_loc.func = "";
-	p->out->src_loc.lineno = 0;
+	p->out->src_loc.lineno = lineno;
 }
 
 void parse_trans(struct parser *p)
