@@ -60,6 +60,27 @@ bool blob_unclean(struct casemate_memory_blob *blob);
 struct casemate_memory_blob *page(u64 phys);
 
 /**
+ * is_in_uncleans() - Is physical address in the fast uncleans lookup table
+ */
+static inline bool is_in_uncleans(u64 phys)
+{
+	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
+		if (MODEL()->unclean_locations.locations[i] == phys)
+			return true;
+	}
+
+	return false;
+}
+
+/** check_sanity_uncleans() - Safety check for unclean locations
+ *
+ * Place these between calls that might touch unclean locations,
+ * to ensure the step did not accidentally mess up something the model
+ * thinks is currently unclean
+ */
+bool check_sanity_uncleans(void);
+
+/**
  * location() - Retrieve the ghost-model memory for a given physical address
  */
 struct sm_location *location(u64 phys);
@@ -87,6 +108,20 @@ static inline bool is_on_write_transition(u64 p)
  * @was_table_descriptor() - Returns true for invalid (clean) entries that used to be tables
  */
 bool was_table_descriptor(struct sm_location *loc);
+
+/**
+ * is_unclean_location - Returns true if the given location is currently unclean
+ */
+static inline bool is_unclean_location(struct sm_location *loc)
+{
+	if (! loc->initialised)
+		return false;
+
+	if (! loc->is_pte)
+		return false;
+
+	return (loc->state.kind == STATE_PTE_INVALID_UNCLEAN);
+}
 
 static inline thread_identifier cpu_id(void)
 {

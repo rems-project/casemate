@@ -473,6 +473,8 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 
 		uncleans->locations[i] = uncleans->locations[uncleans->len--];
 	}
+
+	ghost_safety_check(check_sanity_uncleans());
 }
 
 static void finder_cb(struct pgtable_traverse_context *ctxt)
