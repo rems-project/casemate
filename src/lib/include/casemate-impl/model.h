@@ -83,6 +83,11 @@ static inline bool is_on_write_transition(u64 p)
 		CURRENT_TRANS().hw_step.write_data.phys_addr == p);
 }
 
+/**
+ * @was_table_descriptor() - Returns true for invalid (clean) entries that used to be tables
+ */
+bool was_table_descriptor(struct sm_location *loc);
+
 static inline thread_identifier cpu_id(void)
 {
 	return CURRENT_TRANS().tid;
