@@ -427,10 +427,36 @@ static void clean_reachability_checker_cb(struct pgtable_traverse_context *ctxt)
 	if (! loc->initialised)
 		return;
 
+	if (! loc->is_pte)
+		return;
+
 	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
 		bool *data = (bool *)ctxt->data;
 		*data = false;
 	}
+}
+
+static void old_table_descriptor(struct sm_location *loc, struct entry_exploded_descriptor *out)
+{
+	u64 old;
+	ghost_assert(loc->is_pte);
+	ghost_assert(loc->descriptor.kind == PTE_KIND_INVALID);
+
+	old = loc->state.invalid_unclean_state.old_valid_desc;
+	*out = deconstruct_pte(loc->descriptor.ia_region.range_start, old, loc->descriptor.level,
+			       loc->descriptor.stage);
+}
+
+bool is_table_descriptor(struct sm_location *loc)
+{
+	return loc->descriptor.kind == PTE_KIND_TABLE;
+}
+
+bool was_table_descriptor(struct sm_location *loc)
+{
+	struct entry_exploded_descriptor old_desc;
+	old_table_descriptor(loc, &old_desc);
+	return old_desc.kind == PTE_KIND_TABLE;
 }
 
 /*
@@ -529,16 +555,15 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 }
 
 /**
- * walker function to mark the PTE as not writable. This function is not exercised in
- * pKVM.
+ * walker function to mark the PTE as not writable.
+ * This function is not exercised in pKVM.
  */
-void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
+void freeze_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
 	if (loc->thread_owner >= 0)
-		GHOST_MODEL_CATCH_FIRE(
-			"The parent of an entry that is owned by a thread has been invalidated");
+		GHOST_MODEL_CATCH_FIRE("Cannot freeze a location that is thread-locally owned");
 
 	if (! loc->initialised) {
 		// unreachable
@@ -824,20 +849,13 @@ static void __update_descriptor_on_write(struct sm_location *loc, u64 val)
  * and not owned by another pgtable
  * then mark them as owned
  */
-static void step_write_table_mark_children(pgtable_traverse_cb visitor_cb,
-					   struct sm_location *loc)
+static void step_write_table_each_child(pgtable_traverse_cb visitor_cb, struct sm_location *loc)
 {
-	if (loc->descriptor.kind == PTE_KIND_TABLE) {
-		if (! pre_all_reachable_clean(loc)) {
-			GHOST_MODEL_CATCH_FIRE(
-				"BBM write table descriptor with unclean children");
-		}
+	ghost_assert(loc->descriptor.kind == PTE_KIND_TABLE);
 
-		traverse_pgtable_from(
-			loc->owner, loc->descriptor.table_data.next_level_table_addr,
-			loc->descriptor.ia_region.range_start, loc->descriptor.level + 1,
-			loc->descriptor.stage, visitor_cb, READ_UNLOCKED_LOCATIONS, NULL);
-	}
+	traverse_pgtable_from(loc->owner, loc->descriptor.table_data.next_level_table_addr,
+			      loc->descriptor.ia_region.range_start, loc->descriptor.level + 1,
+			      loc->descriptor.stage, visitor_cb, READ_UNLOCKED_LOCATIONS, NULL);
 }
 
 static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *loc, u64 val)
@@ -847,12 +865,18 @@ static void step_write_on_invalid(enum memory_order_t mo, struct sm_location *lo
 		return;
 	}
 
+	/* Ensure we do not silently overwrite a not cleaned table */
+	if (was_table_descriptor(loc))
+		if (! pre_all_reachable_clean(loc))
+			GHOST_MODEL_CATCH_FIRE(
+				"BBM write table descriptor with unclean children");
+
 	// update the descriptor
 	__update_descriptor_on_write(loc, val);
 
-	// check that if we're writing a TABLE entry
-	// that the new tables are all 'good'
-	step_write_table_mark_children(mark_cb, loc);
+	/* If installing a new table, start tracking all the children */
+	if (is_table_descriptor(loc))
+		step_write_table_each_child(mark_cb, loc);
 
 	// invalid -> valid
 	loc->state.kind = STATE_PTE_VALID;
@@ -897,7 +921,10 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	// Add location to the list of unclean locations
 	add_location_to_unclean_PTE(loc);
 
-	step_write_table_mark_children(mark_not_writable_cb, loc);
+	/* If removing a table, temporarily freeze the children
+	 * to prevent races */
+	if (is_table_descriptor(loc))
+		step_write_table_each_child(freeze_cb, loc);
 }
 
 static void step_write_on_frozen(struct sm_location *loc, u64 val)
