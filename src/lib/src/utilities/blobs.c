@@ -17,25 +17,80 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size)
 }
 
 /*
- * A simple and slow, but very robust, sanity check over the blobs.
+ * simple and slow, but very robust, sanity checks over the blobs.
  */
-static bool check_sanity_of_blobs(void)
-{
-	int c = 0;
 
+static bool check_sanity_of_ordered_blob_list(void)
+{
 	for (int i = 1; i < MODEL()->memory.nr_allocated_blobs; i++) {
 		if (! (blob_of(&MODEL()->memory, i - 1)->phys <
 		       blob_of(&MODEL()->memory, i)->phys))
 			return false;
 	}
 
-	for (int i = 0; i < MAX_BLOBS; i++) {
+	return true;
+}
+
+static bool check_sanity_of_nr_allocated_blobs(void)
+{
+	int c = 0;
+
+	ghost_safety_check(MODEL()->memory.nr_allocated_blobs <= MAX_BLOBS);
+
+	for (int i = 0; i < MAX_BLOBS; i++)
 		if (MODEL()->memory.blobs_backing[i].valid)
 			c++;
-	}
 
 	if (c != MODEL()->memory.nr_allocated_blobs)
 		return false;
+
+	return true;
+}
+
+static bool check_sanity_of_allocated_blobs_in_order_list(void)
+{
+	for (int i = 0; i < MAX_BLOBS; i++) {
+		struct casemate_memory_blob *blob = &MODEL()->memory.blobs_backing[i];
+
+		if (blob->valid) {
+			/* find it in the ordered blob list */
+			for (int j = 0; j < MODEL()->memory.nr_allocated_blobs; j++) {
+				if (blob_of(&MODEL()->memory, j)->phys == blob->phys)
+					goto found;
+			}
+			return false;
+
+found:
+			continue;
+		}
+	}
+
+	return true;
+}
+
+static bool check_sanity_of_ordered_list_valid(void)
+{
+	for (int i = 0; i < MODEL()->memory.nr_allocated_blobs; i++) {
+		if (! blob_of(&MODEL()->memory, i)->valid)
+			return false;
+	}
+
+	return true;
+}
+
+static bool check_sanity_of_blobs(void)
+{
+	/* ordered blob list well-ordered */
+	ghost_safety_check(check_sanity_of_ordered_blob_list());
+
+	/* nr_allocated_blobs matches number of valid blobs */
+	ghost_safety_check(check_sanity_of_nr_allocated_blobs());
+
+	/* all the allocated blobs appear in the ordered list */
+	ghost_safety_check(check_sanity_of_allocated_blobs_in_order_list());
+
+	/* all the blobs that appear in the ordered list are valid */
+	ghost_safety_check(check_sanity_of_ordered_list_valid());
 
 	return true;
 }
@@ -44,8 +99,8 @@ static bool check_sanity_of_no_blob(u64 phys)
 {
 	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
-	for (int i = 0; i < MAX_BLOBS; i++) {
-		struct casemate_memory_blob *b = &MODEL()->memory.blobs_backing[i];
+	for (int i = 0; i < MODEL()->memory.nr_allocated_blobs; i++) {
+		struct casemate_memory_blob *b = blob_of(&MODEL()->memory, i);
 		if (b->valid && b->phys == page) {
 			return false;
 		}
@@ -54,10 +109,14 @@ static bool check_sanity_of_no_blob(u64 phys)
 	return true;
 }
 
+/** BLOBINDX() - Given an order index return the index in the blob backing list
+ */
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
 
 struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i)
 {
+	ghost_safety_check(i < mem->nr_allocated_blobs);
+	ghost_safety_check(BLOBINDX(mem, i) < MAX_BLOBS);
 	return &mem->blobs_backing[BLOBINDX(mem, i)];
 }
 
@@ -92,6 +151,7 @@ struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 ph
 
 static void insert_blob_at_end(struct casemate_model_memory *mem, u64 b)
 {
+	ghost_safety_check(mem->nr_allocated_blobs < MAX_BLOBS);
 	mem->ordered_blob_list[mem->nr_allocated_blobs++] = b;
 }
 
@@ -131,7 +191,8 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 	if (this)
 		return this;
 
-	ghost_safety_check(check_sanity_of_no_blob(phys));
+	/* should be the case that there is no blob for this page */
+	ghost_safety_check(check_sanity_of_no_blob(blob_phys));
 
 	// otherwise, have to grab a new blob and insert it into the table
 	insert_blob_at_end(&MODEL()->memory, get_free_blob());
@@ -176,6 +237,8 @@ bool blob_unclean(struct casemate_memory_blob *blob)
 struct sm_location *location(u64 phys)
 {
 	struct casemate_memory_blob *blob = ensure_blob(phys);
+	ghost_assert(blob);
+	ghost_safety_check(SLOT_OFFSET_IN_BLOB(phys) < SLOTS_PER_PAGE);
 	struct sm_location *loc = &blob->slots[SLOT_OFFSET_IN_BLOB(phys)];
 	touch(phys);
 	return loc;

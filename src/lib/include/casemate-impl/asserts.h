@@ -9,6 +9,7 @@
 #define ghost_assert(expr) \
 	if (! (expr)) { \
 		GHOST_WARN(#expr); \
+		ensure_traced_current_transition(true); \
 		side_effect()->abort("assertion failed: " #expr " in " __FILE__); \
 		__builtin_unreachable(); \
 	}
@@ -22,7 +23,7 @@
 	do { \
 		ghost_assert(false); \
 		__builtin_unreachable(); \
-	} while (0);
+	} while (0)
 
 #define GHOST_MODEL_CATCH_FIRE(msg) \
 	{ \
@@ -34,7 +35,7 @@
 	do { \
 		ghost_assert(false); \
 		__builtin_unreachable(); \
-	} while (0);
+	} while (0)
 #endif /* CONFIG_HAS_ASSERT */
 
 #endif /* CASEMATE_ASSERTS_H */
