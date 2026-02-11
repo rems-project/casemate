@@ -72,7 +72,7 @@ $ cat example.log
 `casemate-check` can be used to check this log for violations:
 
 ----
-$ ./casemate-check examples/expected/good_bbm.log 
+$ ./casemate-check examples/expected/good_bbm.log
 [...]
 casemate-check: log checked successfully.
 ----

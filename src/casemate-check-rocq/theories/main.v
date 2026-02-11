@@ -21,7 +21,7 @@ Fixpoint steps
   end
 .
 
-Definition run_model 
+Definition run_model
   (transitions : list casemate_model_step) :
   casemate_model_result :=
   let res := steps transitions [] cms_init in
