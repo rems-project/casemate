@@ -61,7 +61,10 @@ struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i)
 	return &mem->blobs_backing[BLOBINDX(mem, i)];
 }
 
-struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
+/*
+ * given a physical address, get the index in the ordered list its blob is at.
+ */
+int __find_blob_index(struct casemate_model_memory *mem, u64 phys)
 {
 	int l, r;
 	struct casemate_memory_blob *this;
@@ -81,13 +84,23 @@ struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 ph
 		if (this->phys < page) {
 			l = m + 1;
 		} else if (page == this->phys) {
-			return this;
+			return m;
 		} else if (page < this->phys) {
 			r = m - 1;
 		}
 	}
 
-	return NULL;
+	return -1;
+}
+
+struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
+{
+	int i = __find_blob_index(mem, phys);
+
+	if (i < 0)
+		return NULL;
+
+	return blob_of(mem, i);
 }
 
 static void insert_blob_at_end(struct casemate_model_memory *mem, u64 b)
@@ -180,6 +193,46 @@ struct sm_location *location(u64 phys)
 	touch(phys);
 	return loc;
 }
+
+void __try_free_blob(struct casemate_memory_blob *blob)
+{
+	int i;
+	struct casemate_model_memory *mem = &the_ghost_state->memory;
+
+	for (int i = 0; i < SLOTS_PER_PAGE; i++) {
+		struct sm_location *slot = &blob->slots[i];
+		if (slot->initialised)
+			return;
+	}
+
+	/* the whole page is now free */
+	blob->valid = false;
+
+	/* ... and removed from the quick-search list */
+	i = __find_blob_index(mem, blob->phys);
+	ghost_assert(i > 0);
+
+	for (; i < mem->nr_allocated_blobs - 1; i++) {
+		BLOBINDX(mem, i) = BLOBINDX(mem, i+1);
+	}
+	mem->nr_allocated_blobs--;
+}
+
+/**
+ * forget_location() - Stop tracking a location.
+ */
+void forget_location(struct sm_location *loc)
+{
+	if (loc->is_pte)
+		GHOST_MODEL_CATCH_FIRE("cannot forget a PTE");
+
+	/* unmark it! */
+	loc->is_pte = false;
+	loc->initialised = false;
+
+	__try_free_blob(BLOB_CONTAINER_OF(loc));
+}
+
 
 /**
  * read_phys() - Read a location from the ghost model memory.
