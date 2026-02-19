@@ -425,33 +425,43 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage)
 {
 	struct sm_location *loc;
-	u64 *len = &MODEL()->unclean_locations.len;
+	struct location_set *uncleans = &MODEL()->unclean_locations;
 	struct pgtable_traverse_context ctx;
 
-	for (int i = 0; i < *len; i++) {
-		loc = MODEL()->unclean_locations.locations[i];
+	for (int i = 0; i < uncleans->len; i++) {
+		loc = uncleans->locations[i];
 
-		ghost_assert(loc->initialised);
-		ghost_assert(loc->is_pte);
-		ghost_assert(loc->state.kind == STATE_PTE_INVALID_UNCLEAN);
+		/* Steps on earlier locations
+		 * may touch later ones
+		 * e.g. from modifying parent tables
+		 *
+		 * so skip over those that are no longer needed to be cleaned
+		 */
+		if (! loc->initialised || ! loc->is_pte ||
+		    loc->state.kind != STATE_PTE_INVALID_UNCLEAN)
+			continue;
 
+		/* Since we are only traversing for some particular context
+		 * we skip those that, while potentially unclean, are out-of-context */
 		if (stage != ENTRY_STAGE_NONE)
 			if (stage != loc->descriptor.stage)
 				break;
 
-		// We rebuild the context from the descriptor of the location
+		// We rebuild the traversal context from the descriptor of the location
 		ctx = construct_context_from_pte(loc, data);
 		visitor_cb(&ctx);
-		// If the update resulted in cleaning the location, remove it from the list of
-		// unclean locations
-		if (loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
-			// Take the last location of the list and put it in the current cell
-			(*len)--;
-			MODEL()->unclean_locations.locations[i] =
-				MODEL()->unclean_locations.locations[*len];
-			// decrement i to run on the current cell
-			i--;
-		}
+	}
+
+	/* Go back through and discard any that no longer need cleaning
+	 */
+	for (int i = 0; i < uncleans->len; i++) {
+		loc = uncleans->locations[i];
+
+		if (loc->initialised && loc->is_pte &&
+		    loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
+			continue;
+
+		uncleans->locations[i] = uncleans->locations[uncleans->len--];
 	}
 }
 
