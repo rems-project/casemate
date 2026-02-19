@@ -13,6 +13,12 @@ void initialise_ghost_ptes_memory(phys_addr_t phys, u64 size)
 		MODEL()->memory.blobs_backing[i].valid = false;
 		MODEL()->memory.ordered_blob_list[i] = 0xDEADDEADDEADDEAD;
 	}
+	for (int i = 0; i < BLOB_FASTCACHE_SIZE; i++) {
+		MODEL()->memory.fastcache[i].phys = 0;
+		MODEL()->memory.fastcache[i].blob_idx = 0;
+		MODEL()->memory.fastcache[i].is_valid = false;
+	}
+	MODEL()->memory.fastcache_idx = 0;
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
@@ -130,11 +136,16 @@ struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i)
 	return &mem->blobs_backing[BLOBINDX(mem, i)];
 }
 
-struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
+static void fastcache_fill(struct casemate_model_memory *mem, struct casemate_memory_blob *this);
+static void fastcache_fill_entry(struct casemate_model_memory *mem,
+				 struct casemate_memory_blob *this);
+static int fastcache_next_index(struct casemate_model_memory *mem);
+
+static bool blob_search(struct casemate_model_memory *mem, u64 page, u64 *idx,
+			struct casemate_memory_blob **blob)
 {
 	int l, r;
 	struct casemate_memory_blob *this;
-	u64 page = ALIGN_DOWN_TO_BLOB(phys);
 
 	l = 0;
 	r = mem->nr_allocated_blobs - 1;
@@ -150,13 +161,87 @@ struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 ph
 		if (this->phys < page) {
 			l = m + 1;
 		} else if (page == this->phys) {
-			return this;
+			*idx = m;
+			*blob = this;
+			return true;
 		} else if (page < this->phys) {
 			r = m - 1;
 		}
 	}
 
+	return false;
+}
+
+static struct casemate_memory_blob *find_blob_fast(struct casemate_model_memory *mem, u64 phys)
+{
+	int i;
+	u64 page = ALIGN_DOWN_TO_BLOB(phys);
+
+	/* fast path: in the predictor cache
+	 */
+	for (i = 0; i < BLOB_FASTCACHE_SIZE; i++)
+		if (mem->fastcache[i].is_valid && mem->fastcache[i].phys == page)
+			return &mem->blobs_backing[mem->fastcache[i].blob_idx];
 	return NULL;
+}
+
+static struct casemate_memory_blob *find_blob_slow(struct casemate_model_memory *mem, u64 phys)
+{
+	u64 idx;
+	struct casemate_memory_blob *blob;
+
+	if (blob_search(mem, ALIGN_DOWN_TO_BLOB(phys), &idx, &blob))
+		return blob;
+
+	return NULL;
+}
+
+struct casemate_memory_blob *find_blob(struct casemate_model_memory *mem, u64 phys)
+{
+	struct casemate_memory_blob *this;
+
+	this = find_blob_fast(mem, phys);
+	if (! this)
+		this = find_blob_slow(mem, phys);
+
+	if (this)
+		fastcache_fill(mem, this);
+
+	return this;
+}
+
+static int fastcache_next_index(struct casemate_model_memory *mem)
+{
+	int idx = mem->fastcache_idx++;
+	mem->fastcache_idx = mem->fastcache_idx % BLOB_FASTCACHE_SIZE;
+	return idx;
+}
+
+static void fastcache_fill_entry(struct casemate_model_memory *mem,
+				 struct casemate_memory_blob *this)
+{
+	u64 blob_idx = (u64)(this - &mem->blobs_backing[0]);
+	int idx = fastcache_next_index(mem);
+	mem->fastcache[idx].blob_idx = blob_idx;
+	mem->fastcache[idx].phys = this->phys;
+	mem->fastcache[idx].is_valid = true;
+}
+
+static void fastcache_fill(struct casemate_model_memory *mem, struct casemate_memory_blob *this)
+{
+	ghost_assert(this->valid);
+
+	/* predict we'll find this page again */
+	fastcache_fill_entry(mem, this);
+
+	/* predict we'll hit the next pages too,
+	 * if they're valid */
+	for (int i = 1; i < 4; i++) {
+		if ((this + i >= &mem->blobs_backing[MAX_BLOBS]) || (! (this + i)->valid))
+			break;
+
+		fastcache_fill_entry(mem, this + i);
+	}
 }
 
 static void insert_blob_at_end(struct casemate_model_memory *mem, u64 b)
