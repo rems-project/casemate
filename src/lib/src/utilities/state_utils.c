@@ -1,5 +1,20 @@
 #include <casemate-impl.h>
 
+/// Address converters
+
+u64 virt2id(void *p)
+{
+	return (u64)(p) - (u64)STATE();
+}
+
+/**
+ * id2virt() - Convert opaque id back to virtual address
+ */
+void *id2virt(u64 id)
+{
+	return (void *)((id) + (u64)STATE());
+}
+
 /// Equality checks
 bool sm_aut_invalid_eq(struct aut_invalid *i1, struct aut_invalid *i2)
 {
