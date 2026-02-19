@@ -676,6 +676,40 @@ int gp_print_cm_roots(void *arg, char *name, struct roots *roots)
 	return ghost_fprintf(arg, "]");
 }
 
+int gp_print_cm_unclean_locations(void *arg, char *name, struct LL *locs)
+{
+	int ret;
+	struct LL *elem;
+	struct sm_location *loc;
+
+	TRY(ghost_fprintf(arg, "%s: [", name));
+
+	FOREACH_IN_LL(elem, locs)
+	{
+		loc = container_of(struct sm_location, uncleans, elem);
+
+		if (elem != ll_head(locs))
+			TRY(ghost_fprintf(arg, ", "));
+
+		TRY(ghost_fprintf(arg, "%lx", loc->phys_addr));
+	}
+
+	return ghost_fprintf(arg, "]");
+}
+
+int gp_print_cm_thrd_contexts(void *arg, struct cm_thrd_ctxt *contexts)
+{
+	int ret = 0;
+	struct lock_state *state;
+
+	for (int i = 0; i < MAX_CPU; i++) {
+		struct cm_thrd_ctxt *ctx = &contexts[i];
+		TRY(ghost_fprintf(arg, "[Thread %d]", i));
+	}
+
+	return ret;
+}
+
 int gp_print_cm_lock(void *arg, struct lock_owner_map *locks, int i)
 {
 	int ret;
@@ -720,6 +754,8 @@ int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 			  "nr_roots:........%16lx\n",
 			  s->base_addr, s->size, s->roots.len));
 	TRY(gp_print_cm_roots(arg, "roots", &s->roots));
+	TRY(ghost_fprintf(arg, "\n"));
+	TRY(gp_print_cm_unclean_locations(arg, "unclean_locations", &s->uncleans));
 	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_locks(arg, &s->locks));
 	TRY(ghost_fprintf(arg, "\n"));

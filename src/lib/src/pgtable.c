@@ -424,18 +424,8 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 
 void add_location_to_unclean_PTE(struct sm_location *loc)
 {
-	// Check that the location is not already in the set
-	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
-		if (loc->phys_addr == MODEL()->unclean_locations.locations[i]) {
-			GHOST_WARN("A location was added twice to the unclean PTEs");
-			ghost_assert(false);
-		}
-	}
-
-	// Add it to the set
-	ghost_assert(MODEL()->unclean_locations.len < MAX_UNCLEAN_LOCATIONS);
-	MODEL()->unclean_locations.locations[MODEL()->unclean_locations.len] = loc->phys_addr;
-	MODEL()->unclean_locations.len++;
+	ghost_assert(! ll_contains(&MODEL()->uncleans, &loc->uncleans));
+	ll_push(&MODEL()->uncleans, &loc->uncleans);
 }
 
 static struct pgtable_traverse_context construct_context_from_pte(struct sm_location *loc,
@@ -459,14 +449,13 @@ static struct pgtable_traverse_context construct_context_from_pte(struct sm_loca
 
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage)
 {
-	u64 phys;
+	struct LL *elem;
 	struct sm_location *loc;
-	struct location_set *uncleans = &MODEL()->unclean_locations;
 	struct pgtable_traverse_context ctx;
 
-	for (int i = 0; i < uncleans->len; i++) {
-		phys = uncleans->locations[i];
-		loc = location(phys);
+	FOREACH_IN_LL(elem, &MODEL()->uncleans)
+	{
+		loc = container_of(struct sm_location, uncleans, elem);
 
 		/* Steps on earlier locations
 		 * may touch later ones
@@ -475,14 +464,16 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 		 * so skip over those that are no longer needed to be cleaned
 		 */
 		if (! loc->initialised || ! loc->is_pte ||
-		    loc->state.kind != STATE_PTE_INVALID_UNCLEAN)
+		    loc->state.kind != STATE_PTE_INVALID_UNCLEAN) {
+			/* removing from ll is safe: it still retains its next pointer to the right place */
+			ll_remove(&MODEL()->uncleans, elem);
 			continue;
+		}
 
 		/* Since we are only traversing for some particular context
 		 * we skip those that, while potentially unclean, are out-of-context */
-		if (stage != ENTRY_STAGE_NONE)
-			if (stage != loc->descriptor.stage)
-				break;
+		if (stage != ENTRY_STAGE_NONE && stage != loc->descriptor.stage)
+			continue;
 
 		// We rebuild the traversal context from the descriptor of the location
 		ctx = construct_context_from_pte(loc, data);
@@ -491,18 +482,13 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 
 	/* Go back through and discard any that no longer need cleaning
 	 */
-	for (int i = 0; i < uncleans->len; i++) {
-		phys = uncleans->locations[i];
-		loc = location(phys);
-
-		if (loc->initialised && loc->is_pte &&
-		    loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
-			continue;
-
-		uncleans->locations[i] = uncleans->locations[uncleans->len--];
+	FOREACH_IN_LL(elem, &MODEL()->uncleans)
+	{
+		loc = container_of(struct sm_location, uncleans, elem);
+		if (! loc->initialised || ! loc->is_pte ||
+		    loc->state.kind != STATE_PTE_INVALID_UNCLEAN)
+			ll_remove(&MODEL()->uncleans, elem);
 	}
-
-	ghost_safety_check(check_sanity_uncleans());
 }
 
 void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_stage_t stage,

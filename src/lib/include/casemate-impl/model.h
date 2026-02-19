@@ -3,6 +3,7 @@
 
 #include <casemate.h>
 
+#include <casemate-impl/ll.h>
 #include <casemate-impl/options.h>
 
 #include <casemate-impl/transitions.h>
@@ -67,23 +68,10 @@ struct casemate_memory_blob *page(u64 phys);
 /**
  * is_in_uncleans() - Is physical address in the fast uncleans lookup table
  */
-static inline bool is_in_uncleans(u64 phys)
+static inline bool is_in_uncleans(struct sm_location *loc)
 {
-	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
-		if (MODEL()->unclean_locations.locations[i] == phys)
-			return true;
-	}
-
-	return false;
+	return ll_contains(&MODEL()->uncleans, &loc->uncleans);
 }
-
-/** check_sanity_uncleans() - Safety check for unclean locations
- *
- * Place these between calls that might touch unclean locations,
- * to ensure the step did not accidentally mess up something the model
- * thinks is currently unclean
- */
-bool check_sanity_uncleans(void);
 
 /**
  * blob_uninitialised() - Are all slots completely uninitialised
