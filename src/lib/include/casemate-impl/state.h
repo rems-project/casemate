@@ -282,6 +282,14 @@ struct casemate_memory_blob {
 	struct sm_location slots[SLOTS_PER_PAGE];
 };
 
+#define BLOB_FASTCACHE_SIZE 16
+
+struct casemate_memory_blob_cache_entry {
+	u64 phys;
+	u64 blob_idx;
+	bool is_valid;
+};
+
 /**
  * struct casemate_model_memory - ghost model memory.
  * @blobs_backing: the set of memory blobs.
@@ -293,6 +301,9 @@ struct casemate_model_memory {
 
 	u64 nr_allocated_blobs;
 	u64 ordered_blob_list[MAX_BLOBS];
+
+	int fastcache_idx;
+	struct casemate_memory_blob_cache_entry fastcache[BLOB_FASTCACHE_SIZE];
 };
 
 /**
