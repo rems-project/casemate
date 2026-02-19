@@ -536,6 +536,18 @@ struct casemate_state {
 	struct casemate_model_state st[];
 };
 
+/**
+ * virt2id() - Convert a virtual address into an opaque identifier
+ *
+ * This id can be stored in the state and recovered later
+ */
+u64 virt2id(void *p);
+
+/**
+ * id2virt() - Convert opaque id back to virtual address
+ */
+void *id2virt(u64 id);
+
 extern struct ghost_driver driver;
 extern struct casemate_state *the_ghost_state;
 #define STATE() the_ghost_state
