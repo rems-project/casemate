@@ -3,6 +3,7 @@
 
 #include <casemate-impl/types.h>
 #include <casemate-impl/sync.h>
+#include <casemate-impl/ll.h>
 
 /*
  * Model types
@@ -233,6 +234,7 @@ struct entry_exploded_descriptor {
  * @owner: if initialised, the root of the tree that owns this location.
  * @thread_owner: if positive, the ID of the thread that can freely access this location
  * @frozen: if initialised, when true, writes to this location are forbidden.
+ * @uncleans: node header in list of unclean locations
  *
  * The owner and descriptor are here as helpful cached values,
  * and could be computed by doing translation table walks.
@@ -247,6 +249,8 @@ struct sm_location {
 	sm_owner_t owner;
 	int thread_owner;
 	bool frozen;
+
+	struct LL uncleans;
 };
 
 /*
@@ -272,10 +276,6 @@ struct sm_location {
 
 #ifndef MAX_ROOTS
 #define MAX_ROOTS 64
-#endif
-
-#ifndef MAX_UNCLEAN_LOCATIONS
-#define MAX_UNCLEAN_LOCATIONS 10
 #endif
 
 /**
@@ -314,14 +314,6 @@ struct casemate_model_memory {
 
 	int fastcache_idx;
 	struct casemate_memory_blob_cache_entry fastcache[BLOB_FASTCACHE_SIZE];
-};
-
-/**
- * struct location_set - set of locations
- */
-struct location_set {
-	u64 locations[MAX_UNCLEAN_LOCATIONS];
-	u64 len;
 };
 
 #ifndef MAX_LOCKS
@@ -477,7 +469,7 @@ struct cm_thrd_ctxt {
  * @base_addr: the physical address of the start of the (ghost) memory.
  * @size: the number of bytes in the ghost memory to track.
  * @memory: the actual ghost model memory.
- * @unclean_locations: set of all the unclean locations
+ * @uncleans: set of all the unclean locations
  * @roots: set of known pagetable roots.
  * @thread_context: per-CPU thread-local context.
  * @locks: map from root physical address to lock physical address.
@@ -488,7 +480,7 @@ struct casemate_model_state {
 	u64 size;
 	struct casemate_model_memory memory;
 
-	struct location_set unclean_locations;
+	struct LL uncleans;
 
 	struct roots roots;
 

@@ -68,7 +68,7 @@ static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 si
 	/* initialise the model memory */
 	initialise_ghost_ptes_memory(phys, size);
 
-	MODEL()->unclean_locations.len = 0;
+	ll_new(&MODEL()->uncleans);
 	init_roots(&MODEL()->roots);
 
 	for (int i = 0; i < MAX_CPU; i++)
