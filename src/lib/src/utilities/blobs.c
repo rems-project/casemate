@@ -115,16 +115,6 @@ static bool check_sanity_of_no_blob(u64 phys)
 	return true;
 }
 
-bool check_sanity_uncleans(void)
-{
-	for (int i = 0; i < MODEL()->unclean_locations.len; i++) {
-		struct sm_location *loc = location(MODEL()->unclean_locations.locations[i]);
-		ghost_assert(is_unclean_location(loc));
-	}
-
-	return true;
-}
-
 /** BLOBINDX() - Given an order index return the index in the blob backing list
  */
 #define BLOBINDX(mem, i) ((mem)->ordered_blob_list[(i)])
@@ -386,7 +376,7 @@ static bool sanity_check_location(u64 phys, struct sm_location *loc)
 	/* if see something unclean
 	 * double-check that the model thinks it's unclean */
 	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN)
-		ghost_assert(is_in_uncleans(loc->phys_addr));
+		ghost_assert(is_in_uncleans(loc));
 
 	return true;
 }
