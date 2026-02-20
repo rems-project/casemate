@@ -1239,6 +1239,7 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 static bool all_children_invalid(struct sm_location *loc)
 {
 	phys_addr_t table_addr;
+	struct casemate_memory_blob *table;
 	struct sm_location *child;
 
 	// Assert that we are on a table descriptor
@@ -1248,10 +1249,11 @@ static bool all_children_invalid(struct sm_location *loc)
 		return true;
 
 	table_addr = loc->descriptor.table_data.next_level_table_addr;
+	table = page(table_addr);
 
 	for (int i = 0; i < 512; i++) {
 		// For each child, check that it is an invalid child
-		child = location(table_addr + 8 * i);
+		child = &table->slots[i];
 		ghost_assert(child->initialised && child->is_pte);
 		ghost_assert(child->state.kind == STATE_PTE_NOT_WRITABLE);
 		if (child->descriptor.kind != PTE_KIND_INVALID) {
@@ -1380,13 +1382,6 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 	switch (tlbi->method.kind) {
 	case TLBI_OP_BY_INPUT_ADDR:
 
-		// If the PTE has valid children, the TLBI by VA is not enough
-		if (! ctxt->leaf) {
-			if (! all_children_invalid(ctxt->loc)) {
-				return false;
-			}
-		}
-
 		// Test if the VA address of the PTE is the same as the VA of the TLBI
 		if (! __should_perform_tlbi_matches_addr(ctxt, tlbi))
 			return false;
@@ -1404,6 +1399,13 @@ static bool should_perform_tlbi(struct pgtable_traverse_context *ctxt)
 		 */
 		if (! __should_perform_tlbi_matches_id(ctxt, tlbi))
 			return false;
+
+		// If the PTE has valid children, the TLBI by VA is not enough
+		if (! ctxt->leaf) {
+			if (! all_children_invalid(ctxt->loc)) {
+				return false;
+			}
+		}
 
 		break;
 

@@ -55,6 +55,11 @@ struct casemate_memory_blob *blob_of(struct casemate_model_memory *mem, u64 i);
 bool blob_unclean(struct casemate_memory_blob *blob);
 
 /**
+ * page() - Retrieve the ghost-model blob for a page-aligned physical location
+ */
+struct casemate_memory_blob *page(u64 phys);
+
+/**
  * location() - Retrieve the ghost-model memory for a given physical address
  */
 struct sm_location *location(u64 phys);
