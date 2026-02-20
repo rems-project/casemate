@@ -244,6 +244,14 @@ struct sm_location *location(u64 phys)
 	return loc;
 }
 
+struct casemate_memory_blob *page(u64 page_phys)
+{
+	ghost_assert(IS_PAGE_ALIGNED(page_phys));
+	struct casemate_memory_blob *blob = ensure_blob(page_phys);
+	ghost_assert(blob);
+	return blob;
+}
+
 /**
  * read_phys() - Read a location from the ghost model memory.
  * @pre: if true, read-from the memory before the transition.
