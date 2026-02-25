@@ -43,6 +43,13 @@ void __atomic_cas(volatile u64 *va, u64 old, u64 new)
 ///////////
 // locking
 
+/** LOCK_VAL() - Compute the `locked` state value
+ *
+ * Our locks are not re-entrant, so to detect attempting to re-lock the same lock
+ * we keep track of which thread owns the lock
+ */
+#define LOCK_VAL(cpu) ((cpu) << 1 | 1)
+
 void init_sm_lock(void)
 {
 	SM_LOCK()->locked = 0;
@@ -50,12 +57,16 @@ void init_sm_lock(void)
 
 void lock_sm(void)
 {
-	__atomic_cas(&SM_LOCK()->locked, 0, 1);
+	u64 cpu = casemate_cpu_id();
+	ghost_assert(LOAD_RLX(SM_LOCK()->locked) != LOCK_VAL(cpu));
+	__atomic_cas(&SM_LOCK()->locked, 0, LOCK_VAL(cpu));
 }
 
 void unlock_sm(void)
 {
-	__atomic_cas(&SM_LOCK()->locked, 1, 0);
+	u64 cpu = casemate_cpu_id();
+	ghost_assert(LOAD_RLX(SM_LOCK()->locked) == LOCK_VAL(cpu));
+	__atomic_cas(&SM_LOCK()->locked, LOCK_VAL(cpu), 0);
 }
 
 #elif defined(__X86__)
