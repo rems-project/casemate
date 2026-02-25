@@ -17,6 +17,13 @@ int main(int argc, char **argv)
 	FILE *f = fopen(trace_file_name, "r");
 	struct casemate_model_step step;
 
+	if (! f) {
+		fprintf(stderr, "casemate-check: cannot open '%s': ", trace_file_name);
+		perror(NULL);
+		ret = 1;
+		goto out_no_parser;
+	}
+
 	void *parser = make_parser(f, &step);
 	while (! parser_at_EOF(parser) && ! parser_at_exclamation(parser)) {
 		parse_record(parser);
@@ -36,6 +43,8 @@ int main(int argc, char **argv)
 	}
 
 	free(parser);
+
+out_no_parser:
 	free(st);
 
 	return ret;
