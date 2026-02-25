@@ -58,7 +58,8 @@ checks: check-examples check-rocq
 
 clean:
 	$(call run_clean,$(src)/common.o,$(common_obj) $(call obj-aux-files, $(common_obj)))
-	$(call run_clean,$(src)/tests/,$(src-build-objs) $(call obj-aux-files, $(src-build-objs)))
+	$(call run_clean,$(src)/,$(src-build-objs) $(call obj-aux-files, $(src-build-objs)))
+	$(call run_clean,$(src)/tests/,$(test_objs) $(call obj-aux-files, $(test_objs)))
 
 clean-expected:
 	$(call run_clean,$(src)/$(EXPECTEDDIR),rm -f $(src)/$(EXPECTEDDIR)/*.log)
