@@ -11,6 +11,8 @@
 ////////////////
 // Parser buffer
 
+#define PARSER_NR_ALLOCS 32
+
 struct parser {
 	FILE *stream;
 	bool at_EOF;
@@ -22,6 +24,9 @@ struct parser {
 	unsigned int column;
 
 	struct casemate_model_step *out;
+
+	unsigned int alloc_len;
+	void *allocations[PARSER_NR_ALLOCS];
 };
 
 #define parse_error(P, FMT, ...) \
@@ -30,6 +35,24 @@ struct parser {
 			(P)->column, ##__VA_ARGS__); \
 		assert(false); \
 	} while (0)
+
+static void *parser_malloc(struct parser *p, size_t len)
+{
+	if (p->alloc_len >= PARSER_NR_ALLOCS)
+		parse_error(p, "bad parser_malloc, over-allocation");
+
+	void *buf = malloc(len);
+	p->allocations[p->alloc_len++] = buf;
+	return buf;
+}
+
+static void parser_free(struct parser *p)
+{
+	for (int i = 0; i < p->alloc_len; i++)
+		free(p->allocations[i]);
+
+	p->alloc_len = 0;
+}
 
 int maybe_next(struct parser *p)
 {
@@ -193,7 +216,7 @@ const char *next_word(struct parser *p)
 	char c;
 
 	consume_whitespace(p);
-	buf = malloc(buf_size);
+	buf = parser_malloc(p, buf_size);
 	buf[i++] = next(p);
 	do {
 		r = maybe_lookahead(p);
@@ -224,7 +247,7 @@ const char *next_str(struct parser *p)
 	consume_whitespace(p);
 
 	acceptc(p, '"');
-	buf = malloc(buf_size);
+	buf = parser_malloc(p, buf_size);
 	while (lookahead(p) != '"') {
 		buf[i++] = next(p);
 
@@ -262,7 +285,6 @@ u64 next_hex(struct parser *p)
 	r = hextoi(word + offs, &h);
 	if (r < 0)
 		parse_error(p, "expected hex integer, but got '%s'", word);
-	free((void *)word);
 	return h;
 }
 
@@ -272,7 +294,6 @@ u64 next_decimal(struct parser *p)
 	const char *word;
 	word = next_word(p);
 	r = atoi(word);
-	free((void *)word);
 	return r;
 }
 
@@ -292,8 +313,9 @@ int next_enum(struct parser *p, struct enum_map *map)
 	const char *word = next_word(p);
 
 	for (int i = 0; i < map->count; i++) {
-		if (streq(word, map->entries[i].key))
+		if (streq(word, map->entries[i].key)) {
 			return map->entries[i].val;
+		}
 	}
 
 	parse_error(p, "unexpected word '%s', expected a %s", word, map->name);
@@ -515,7 +537,7 @@ void parse_common_fields_tail(struct parser *p)
 	src_loc = PARSE_KV_STR(p, "src");
 	file_len = strlen_partition_colon(p, src_loc);
 
-	file = malloc(file_len + 1);
+	file = parser_malloc(p, file_len + 1);
 	strncpy(file, src_loc, file_len);
 	file[file_len] = '\0';
 	lineno = atoi(src_loc + file_len + 1);
@@ -577,6 +599,12 @@ void parse_trans(struct parser *p)
 	accept_close_bracket(p);
 }
 
+static void parser_reinit(struct parser *p)
+{
+	/* free any allocations from previous parse */
+	parser_free(p);
+}
+
 //////////
 // Top-level API
 
@@ -590,6 +618,7 @@ void *make_parser(FILE *f, struct casemate_model_step *step)
 	p->column = 0;
 	p->lookahead_c = '\0';
 	p->out = step;
+	p->alloc_len = 0;
 	return (void *)p;
 }
 
@@ -616,5 +645,11 @@ bool parser_at_exclamation(void *arg)
 
 void parse_record(void *p)
 {
-	parse_trans((struct parser *)p);
+	struct parser *parser = (struct parser *)p;
+
+	/* cleanup from previous */
+	parser_reinit(parser);
+
+	/* parse the record */
+	parse_trans(parser);
 }
