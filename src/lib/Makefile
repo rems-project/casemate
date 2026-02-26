@@ -15,6 +15,10 @@ ifeq ($(ARCH),AARCH64)
 endif
 CFLAGS += -fno-common -nostdlib
 
+ifeq ($(CONFIG_OPT),y)
+  CFLAGS += -O2
+endif
+
 # platform-specific target rules
 CFLAGS += -DCONFIG_PLATFORM_$(CONFIG_TARGET_PLATFORM)
 ifeq ($(CONFIG_TARGET_PLATFORM),FREEBSD)
