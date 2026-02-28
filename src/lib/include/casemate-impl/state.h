@@ -449,7 +449,7 @@ struct casemate_state {
 	struct casemate_model_step current_transition;
 
 	/**
-	 * traced_current_trans - Whether the current step has been traced so far 
+	 * traced_current_trans - Whether the current step has been traced so far
 	 */
 	bool traced_current_trans;
 
