@@ -5,6 +5,8 @@
 #include <casemate-impl/platform/linux.h>
 #elif defined(CONFIG_PLATFORM_FREEBSD)
 #include <casemate-impl/platform/FreeBSD.h>
+#elif defined(CONFIG_PLATFORM_STD)
+#include <casemate-impl/platform/std.h>
 #endif
 
 #endif /* CASEMATE_PLATFORM_H */
