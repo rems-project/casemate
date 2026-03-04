@@ -28,7 +28,6 @@ bool sm_pte_state_eq(struct sm_pte_state *s1, struct sm_pte_state *s2)
 	case STATE_PTE_INVALID_UNCLEAN:
 		return sm_aut_invalid_eq(&s1->invalid_unclean_state, &s2->invalid_unclean_state);
 	case STATE_PTE_VALID:
-	case STATE_PTE_NOT_WRITABLE:
 		// TODO: per-CPU LVS
 		return true;
 
@@ -49,6 +48,9 @@ bool sm_loc_eq(struct sm_location *loc1, struct sm_location *loc2)
 		return false;
 
 	if (loc1->is_pte != loc2->is_pte)
+		return false;
+
+	if (loc1->frozen != loc2->frozen)
 		return false;
 
 	if (! sm_pte_state_eq(&loc1->state, &loc2->state))
