@@ -178,6 +178,11 @@ void step(struct casemate_model_step trans);
 int dump_state(void *arg, struct casemate_model_state *s);
 
 /**
+ * put_trans() - Prints a trace event directly
+ */
+void put_step(struct casemate_model_step *trans);
+
+/**
  * trace_step() - Generate a trace record for a given transition and give it to the driver.
  */
 void trace_step(struct casemate_model_step *trans);
@@ -186,5 +191,48 @@ void trace_step(struct casemate_model_step *trans);
  * ensure_traced_current_transition() - Trace current transition, if applicable, if not already done so.
  */
 void ensure_traced_current_transition(bool force);
+
+/**
+ * output_error_context() - Dump info about what Casemate knows of a location
+ */
+void output_error_context(const char *msg);
+
+static inline void ERROR_REMEMBER_LOC(struct sm_location *loc)
+{
+	struct casemate_error_context *ctx = &STATE()->error_ctx;
+
+	/* if already remembered, just increment */
+	for (int i = 0; i < ctx->nr_locs; i++) {
+		if (ctx->loc[i] == loc) {
+			ctx->refcounts[i]++;
+			return;
+		}
+	}
+
+	/* remember it */
+	if (ctx->nr_locs < MAX_REMEMBERED_LOCATIONS) {
+		int i = ctx->nr_locs++;
+		ctx->loc[i] = loc;
+		ctx->refcounts[i] = 1;
+	}
+}
+
+static inline void ERROR_FORGET_LOC(struct sm_location *loc)
+{
+	struct casemate_error_context *ctx = &STATE()->error_ctx;
+
+	for (int i = 0; i < ctx->nr_locs; i++) {
+		if (ctx->loc[i] == loc) {
+			ctx->refcounts[i]--;
+
+			if (ctx->refcounts[i] == 0) {
+				ctx->loc[i] = ctx->loc[ctx->nr_locs - 1];
+				ctx->nr_locs--;
+			}
+
+			return;
+		}
+	}
+}
 
 #endif /* CASEMATE_MODEL_STATE_H */
