@@ -22,13 +22,13 @@ u64 l;
 int write_pte1(void *arg)
 {
 	WRITE_RELEASE(table[1], 1);
-	send((tid_t)2, 1);
+	thr_send((tid_t)2, 1);
 	return 0;
 }
 
 int write_pte2(void *arg)
 {
-	recv();
+	thr_recv();
 	WRITE_RELEASE(table[1], 1);
 	return 0;
 }
@@ -44,9 +44,9 @@ int main(int argc, char **argv)
 
 	/* track table as the root of a tree */
 	MSR(SYSREG_VTTBR, (u64)table);
-	spawn_thread(write_pte1);
-	spawn_thread(write_pte2);
-	join();
+	thr_spawn(write_pte1);
+	thr_spawn(write_pte2);
+	thr_join();
 
 	return 0;
 }
