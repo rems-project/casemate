@@ -387,24 +387,15 @@ static void one_way_diff_blob_slots(struct diff_container *container,
 				    struct casemate_memory_blob *b1,
 				    struct casemate_memory_blob *b2, bool add)
 {
-	bool saw_unclean = false;
-
 	for (u64 i = 0; i < SLOTS_PER_PAGE; i++) {
 		struct sm_location *loc1 = &b1->slots[i];
 		struct sm_location *loc2 = &b2->slots[i];
 
-		// only show the diffs if one side is unclean
-		if (loc1->state.kind == STATE_PTE_INVALID_UNCLEAN ||
-		    loc2->state.kind == STATE_PTE_INVALID_UNCLEAN) {
-			if (loc1->is_pte && loc2->is_pte)
-				ghost_diff_attach(container,
-						  diff_pair(TSMLOC(loc1), TSMLOC(loc2)));
-			else if (loc1->is_pte)
-				ghost_diff_attach(container, diff_pm(add, TSMLOC_TRACK(loc1)));
-			else if (loc2->is_pte)
-				ghost_diff_attach(container, diff_pm(! add, TSMLOC_TRACK(loc2)));
-			saw_unclean = true;
-		}
+		bool unclean = (loc1->state.kind == STATE_PTE_INVALID_UNCLEAN ||
+				loc2->state.kind == STATE_PTE_INVALID_UNCLEAN);
+
+		if (unclean || ! should_print_unclean_only())
+			ghost_diff_attach(container, diff_pair(TSMLOC(loc1), TSMLOC(loc2)));
 	}
 }
 
@@ -447,7 +438,7 @@ static void one_way_diff_roots(struct diff_container *container, struct roots *l
 		struct root *rhs_root = NULL;
 		found = false;
 		for (u64 j = 0; j < rhs->len; j++) {
-			rhs_root = &lhs->roots[i];
+			rhs_root = &rhs->roots[i];
 			if (rhs_root->baddr == lhs_root->baddr)
 				found = true;
 		}
@@ -481,11 +472,7 @@ static void ghost_diff_sm_roots(struct diff_container *node, const char *name,
 static void ghost_diff_sm_state(struct diff_container *node, struct casemate_model_state *s1,
 				struct casemate_model_state *s2)
 {
-	ghost_diff_field(node, "base", diff_pair(TU64(s1->base_addr), TU64(s2->base_addr)));
-	ghost_diff_field(node, "size", diff_pair(TU64(s1->size), TU64(s2->size)));
-
 	ghost_diff_sm_roots(node, "roots", &s1->roots, &s2->roots);
-
 	ghost_diff_sm_mem(node, &s1->memory, &s2->memory);
 }
 

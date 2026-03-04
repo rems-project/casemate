@@ -470,6 +470,7 @@ static u64 __read_phys(u64 addr, bool pre)
 	// but we only need to check for locations we are supposedly tracking
 	if (loc->is_pte && side_effect()->read_physmem &&
 	    (phys_val = side_effect()->read_physmem((u64)addr)) != value) {
+		ERROR_REMEMBER_LOC(loc);
 		GHOST_LOG_CONTEXT_ENTER();
 		GHOST_LOG(value, u64);
 		GHOST_LOG(phys_val, u64);

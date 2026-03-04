@@ -48,8 +48,7 @@ static inline bool should_print_state(void)
 
 static inline bool should_print_unclean_only(void)
 {
-	return (opts()->check_opts.enable_printing &&
-		((opts()->check_opts.print_opts & CM_PRINT_ONLY_UNCLEAN) != 0));
+	return ((opts()->check_opts.print_opts & CM_PRINT_ONLY_UNCLEAN) != 0);
 }
 
 static inline bool should_print_diffs(void)
@@ -65,7 +64,7 @@ static inline bool should_track_only_watchpoints(void)
 
 static inline bool should_trace_condensed(void)
 {
-	return (opts()->enable_tracing && opts()->log_opts.condensed_format);
+	return (opts()->log_opts.condensed_format);
 }
 
 #endif /* CASEMATE_OPTIONS_H */

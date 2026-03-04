@@ -355,6 +355,7 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		GHOST_LOG_INNER("loop", pte_phys, u64);
 
 		loc = location(pte_phys);
+		ERROR_REMEMBER_LOC(loc);
 
 		if (! loc->initialised) {
 			if (BITS_SET(flag, IGNORE_UNINITIALISED))
@@ -383,6 +384,8 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		ctxt.exploded_descriptor = deconstruct_pte(pte_ia, desc, level, stage);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
+
+		ERROR_FORGET_LOC(loc);
 
 		/* visitor can't have changed the actual descriptor ... */
 		ghost_safety_check(read_phys(pte_phys) == desc);
@@ -456,6 +459,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 	FOREACH_IN_LL(elem, &MODEL()->uncleans)
 	{
 		loc = container_of(struct sm_location, uncleans, elem);
+		ERROR_REMEMBER_LOC(loc);
 
 		/* Steps on earlier locations
 		 * may touch later ones
@@ -478,6 +482,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 		// We rebuild the traversal context from the descriptor of the location
 		ctx = construct_context_from_pte(loc, data);
 		visitor_cb(&ctx);
+		ERROR_FORGET_LOC(loc);
 	}
 
 	/* Go back through and discard any that no longer need cleaning
@@ -512,6 +517,7 @@ void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_sta
 
 		pte_phys = table + Ln_IA_OFF(lvl, ia);
 		loc = location(pte_phys);
+		ERROR_REMEMBER_LOC(loc);
 
 		if (! loc->initialised) {
 			if (BITS_SET(flag, IGNORE_UNINITIALISED))
@@ -532,6 +538,8 @@ void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_sta
 		ctxt.exploded_descriptor = deconstruct_pte(ia, loc->val, lvl, stage);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
+
+		ERROR_FORGET_LOC(loc);
 
 		switch (ctxt.exploded_descriptor.kind) {
 		case PTE_KIND_TABLE:
