@@ -1,0 +1,9 @@
+#ifndef CASEMATE_STD_H
+#define CASEMATE_STD_H
+
+#define CONFIG_HAS_STRLEN
+#define CONFIG_HAS_MEMSET
+#define CONFIG_HAS_MEMCPY
+#define CONFIG_HAS_MEMMOVE
+
+#endif /* CASEMATE_STD */
