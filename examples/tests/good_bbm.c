@@ -11,9 +11,7 @@
 /* locations we can pretend are pagetables
  */
 __attribute__((aligned(4096)))
-u64 root[512];
-u64 child[512];
-u64 new_child[512];
+u64 root[512],child[512],new_child[512];
 u64 l;
 
 int main(int argc, char **argv)
@@ -39,9 +37,7 @@ int main(int argc, char **argv)
 	LOCK(l);
 	WRITE_ONCE(root[0], 0);
 	DSB(ish);
-	TLBI_ADDR(ipas2e1is,0,3);
-	DSB(ish);
-	TLBI_ALL(vmalle1is);
+	TLBI_ALL(alle1is);
 	DSB(ish);
 	WRITE_ONCE(root[0], (u64)new_child | 0b11);
 	UNLOCK(l);

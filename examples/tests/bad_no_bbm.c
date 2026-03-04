@@ -11,8 +11,7 @@
 /* locations we can pretend are pagetables
  */
 __attribute__((aligned(4096)))
-u64 root[512];
-u64 child[512];
+u64 root[512], child[512];
 u64 l;
 
 int main(int argc, char **argv)

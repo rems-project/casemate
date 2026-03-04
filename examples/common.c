@@ -260,9 +260,7 @@ void common_init(int argc, char **argv)
 		opts.check_opts.print_opts |= CM_PRINT_WHOLE_STATE_ON_STEP;
 	opts.log_opts.condensed_format = SHOULD_TRACE_CONDENSED;
 
-	/* TODO: for now ... */
-	opts.check_opts.promote_TLBI_by_id = true;
-
+	opts.check_opts.promote_TLBI_by_id = false;
 	opts.enable_tracing = SHOULD_TRACE;
 
 	sm_size = sizeof_casemate_model(&opts);

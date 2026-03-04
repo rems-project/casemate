@@ -1,7 +1,3 @@
-/**
- * A very simple test of the tracer and driver,
- * generates a sequence of all the transitions over dummy variables and traces them.
- */
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -11,35 +7,39 @@
 /* locations we can pretend are pagetables
  */
 __attribute__((aligned(4096)))
-u64 root[512];
-u64 child[512];
-u64 new_child[512];
+u64 l0[512], l1[512], l2[512], l3[512];
 u64 l;
 
 int main(int argc, char **argv)
 {
 	common_init(argc, argv);
 
-	/* tell the modle pud and pgd tables exist,
-	 * and logically associate them with the lock. */
-	TRANS_MEM_INIT((u64)root, 4096);
-	TRANS_MEM_INIT((u64)child, 4096);
-	TRANS_MEM_INIT((u64)new_child, 4096);
-	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)root, (u64)&l);
-	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)child, (u64)root);
-	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)new_child, (u64)root);
+	TRANS_MEM_INIT((u64)l0, 4096);
+	TRANS_MEM_INIT((u64)l1, 4096);
+	TRANS_MEM_INIT((u64)l2, 4096);
+	TRANS_MEM_INIT((u64)l3, 4096);
 
-	/* make root[0] point to child */
-	WRITE_ONCE(root[0], (u64)child | 0b11);
+	HINT(GHOST_HINT_SET_ROOT_LOCK, (u64)l0, (u64)&l);
 
-	/* track pud as the root */
-	MSR(SYSREG_VTTBR, (u64)root);
+	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)l1, (u64)l0);
+	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)l2, (u64)l0);
+	HINT(GHOST_HINT_SET_OWNER_ROOT, (u64)l3, (u64)l0);
+
+	/* make tree */
+	WRITE_ONCE(l0[0], (u64)l1 | 0b11);
+	WRITE_ONCE(l1[0], (u64)l2 | 0b11);
+	WRITE_ONCE(l2[0], (u64)l3 | 0b11);
+	WRITE_ONCE(l3[0], (u64)0xDEAD000 | 0b11);
+
+	/* track tree */
+	MSR(SYSREG_VTTBR, (u64)l0);
 	MSR(SYSREG_HCR_EL2, HCR_MMU_ON);
 
 	LOCK(l);
-	WRITE_ONCE(root[0], 0);
+	WRITE_ONCE(l3[0], 0);
 	DSB(ish);
+	/* no TLBI */
 	DSB(ish);
-	WRITE_ONCE(root[0], (u64)new_child | 0b11);
+	WRITE_ONCE(l3[0], 0xBEEF000 | 0b11);
 	UNLOCK(l);
 }
