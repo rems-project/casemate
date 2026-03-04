@@ -176,7 +176,7 @@ struct channel {
 struct channel channel[4];
 mtx_t m;
 
-void spawn_thread(thrd_start_t fn)
+void thr_spawn(thrd_start_t fn)
 {
 	int err;
 
@@ -185,7 +185,7 @@ void spawn_thread(thrd_start_t fn)
 	assert(err == thrd_success);
 }
 
-void join(void)
+void thr_join(void)
 {
 	for (int i = 0; i < no_spawned_threads; i++) {
 		int err = thrd_join(threads[i], NULL);
@@ -193,7 +193,7 @@ void join(void)
 	}
 }
 
-void send(tid_t to, int v) {
+void thr_send(tid_t to, int v) {
 	while (1) {
 		mtx_lock(&m);
 		if (channel[to].full) {
@@ -208,7 +208,7 @@ void send(tid_t to, int v) {
 	}
 }
 
-int recv(void) {
+int thr_recv(void) {
 	int v;
 	tid_t tid = casemate_cpu_id();
 	while (1) {

@@ -1,2 +1,3 @@
 # Empty configuration
 CONFIG_OPT=y
+CONFIG_SAN=y

@@ -12,10 +12,10 @@ extern u64 VTCR_EL2;
 extern u64 MAIR_EL2;
 
 typedef u64 tid_t;
-void spawn_thread(int fn(void*));
-void join(void);
-void send(tid_t to, int v);
-int recv(void);
+void thr_spawn(int fn(void*));
+void thr_join(void);
+void thr_send(tid_t to, int v);
+int thr_recv(void);
 
 /*
  * Macros that require input of a maximum size
