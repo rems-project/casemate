@@ -5,6 +5,7 @@
 #include <casemate-impl/types.h>
 
 void common_init(int argc, char **argv);
+void common_init_thread(void);
 
 /* dummy variables pretending to be hypervisor system registers */
 extern u64 TCR_EL2;

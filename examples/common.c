@@ -260,9 +260,7 @@ void common_init(int argc, char **argv)
 		opts.check_opts.print_opts |= CM_PRINT_WHOLE_STATE_ON_STEP;
 	opts.log_opts.condensed_format = SHOULD_TRACE_CONDENSED;
 
-	/* TODO: for now ... */
-	opts.check_opts.promote_TLBI_by_id = true;
-
+	opts.check_opts.promote_TLBI_by_id = false;
 	opts.enable_tracing = SHOULD_TRACE;
 
 	sm_size = sizeof_casemate_model(&opts);
@@ -273,12 +271,16 @@ void common_init(int argc, char **argv)
 		exit(1);
 	}
 	initialise_ghost_driver(&sm_driver);
+	mtx_init(&m, mtx_plain);
+	common_init_thread();
+}
+
+void common_init_thread(void)
+{
 
 	casemate_model_step_msr(SYSREG_VTCR_EL2, VTCR_EL2);
 	casemate_model_step_msr(SYSREG_TCR_EL2, TCR_EL2);
 	casemate_model_step_msr(SYSREG_MAIR_EL2, MAIR_EL2);
 	casemate_model_step_msr(SYSREG_HCR_EL2, HCR_EL2);
 	casemate_model_step_msr(SYSREG_SCTLR_EL2, SCTLR_EL2);
-
-	mtx_init(&m, mtx_plain);
 }
