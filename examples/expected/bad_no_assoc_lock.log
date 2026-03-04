@@ -1,4 +1,10 @@
-(mem-init (id 0) (tid 0) (address 0xaaaacbf54000) (size 0x1000) (src "examples/tests/bad_no_assoc_lock.c:17"))
-(sysreg-write (id 1) (tid 0) (sysreg vttbr_el2) (value 0xaaaacbf54000) (src "examples/tests/bad_no_assoc_lock.c:18"))
-(mem-write (id 2) (tid 0) (mem-order plain) (address 0xaaaacbf54000) (value 0x0) (src "examples/tests/bad_no_assoc_lock.c:19"))
-! must have associated owner with a root
+(sysreg-write (id 0) (tid 0) (sysreg vtcr_el2) (value 10) (src "examples/common.c:277"))
+(sysreg-write (id 1) (tid 0) (sysreg tcr_el2) (value 10) (src "examples/common.c:278"))
+(sysreg-write (id 2) (tid 0) (sysreg mair_el2) (value 0) (src "examples/common.c:279"))
+(sysreg-write (id 3) (tid 0) (sysreg hcr_el2) (value 0) (src "examples/common.c:280"))
+(sysreg-write (id 4) (tid 0) (sysreg sctlr_el2) (value 0) (src "examples/common.c:281"))
+(mem-init (id 5) (tid 0) (address 23f000) (size 1000) (src "examples/tests/bad_no_assoc_lock.c:17"))
+(sysreg-write (id 6) (tid 0) (sysreg vttbr_el2) (value 23f000) (src "examples/tests/bad_no_assoc_lock.c:18"))
+(sysreg-write (id 7) (tid 0) (sysreg hcr_el2) (value 1) (src "examples/tests/bad_no_assoc_lock.c:19"))
+(mem-write (id 8) (tid 0) (mem-order plain) (address 23f000) (value 0) (src "examples/tests/bad_no_assoc_lock.c:20"))
+! must have associated root with a lock
