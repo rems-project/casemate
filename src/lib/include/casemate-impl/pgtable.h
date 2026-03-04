@@ -256,6 +256,8 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage);
 void add_location_to_unclean_PTE(struct sm_location *loc);
 
+void walk_pgtable_to(u64 root, u64 ia, entry_stage_t stage);
+
 struct pgtable_walk_result {
 	u64 requested_pte;
 	bool found;

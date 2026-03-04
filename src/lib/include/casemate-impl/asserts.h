@@ -27,7 +27,8 @@
 
 #define GHOST_MODEL_CATCH_FIRE(msg) \
 	{ \
-		ensure_traced_current_transition(true); \
+		ensure_traced_current_transition(false); \
+		output_error_context(); \
 		side_effect()->abort(msg); \
 	}
 

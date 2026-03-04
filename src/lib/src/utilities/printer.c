@@ -111,14 +111,34 @@ int sb_putx(struct string_builder *buf, u32 x)
 int sb_putxn(struct string_builder *buf, u64 x, u32 n)
 {
 	int i = n >> 2;
+	u8 b;
 
 	while (i--) {
-		/*
-		 * skip leading 0s
-		 */
+		b = (x >> (4 * i)) & 0xf;
+
+		// skip leading zeros
 		if (i == 0 || (x >> (4 * i)) != 0)
-			TRY(sb_putx(buf, (x >> (4 * i)) & 0xf));
+			TRY(sb_putx(buf, b));
 	}
+
+	return 0;
+}
+
+int sb_putxn_fixed(struct string_builder *buf, u64 x, u32 n)
+{
+	int i = n >> 2;
+	u8 b;
+
+	while (i--) {
+		b = (x >> (4 * i)) & 0xf;
+
+		// pad the left-hand side with . up to width
+		if (i == 0 || (x >> (4 * i)) != 0)
+			TRY(sb_putx(buf, b));
+		else
+			TRY(sb_putc(buf, '.'));
+	}
+
 	return 0;
 }
 
@@ -222,21 +242,19 @@ int put_decimal(struct string_builder *buf, char **p, u64 width, _Bool is_signed
 	return sb_putd(buf, x);
 }
 
-int put_hex(struct string_builder *buf, char **p, u64 width, enum arg_length len, u64 x)
+int put_hex(struct string_builder *buf, char **p, int width, enum arg_length len, u64 x)
 {
-	// pad the left-hand side with . up to width
-	int n = 2 + (len >> 2);
-	if (n < width)
-		TRY(__putic(buf, width - n, '.'));
-
-	return sb_putxn(buf, x, len);
+	if (width > 0)
+		return sb_putxn_fixed(buf, x, width << 2);
+	else
+		return sb_putxn(buf, x, len);
 }
 
 int put_raw_ptr(struct string_builder *buf, char **p, void *arg)
 {
 	u64 x = (u64)arg;
 	TRY_PUTS("0x");
-	return sb_putxn(buf, x, 64);
+	return sb_putxn_fixed(buf, x, 64);
 }
 
 bool __matches(char *p, const char *kind)
@@ -429,11 +447,6 @@ int ghost_fprintf(void *arg, const char *fmt, ...)
 	ret = sb_vprintf(arg, fmt, ap);
 	va_end(ap);
 
-	/* retain NUL
-	 * so we can overwrite it by successive calls to sprintf */
-	if (arg != NULL)
-		sb_putc(arg, '\0');
-
 	/* instead of returning error codes, really just fail,
 	 * as no recovery on printing to UART. */
 	if (ret)
@@ -463,9 +476,9 @@ static const char *automaton_state_names[] = {
 };
 
 static const char *pte_kind_names[] = {
-	ID_STRING(PTE_KIND_TABLE),
-	ID_STRING(PTE_KIND_MAP),
-	ID_STRING(PTE_KIND_INVALID),
+	[PTE_KIND_TABLE] = "  table",
+	[PTE_KIND_MAP] = "    map",
+	[PTE_KIND_INVALID] = "invalid",
 };
 
 static const int KIND_PREFIX_LEN = 2;
@@ -518,6 +531,55 @@ int gp_print_cm_pte_state(void *arg, struct sm_pte_state *st)
 	}
 }
 
+int gp_print_entry_attrs(void *arg, struct entry_attributes *attrs)
+{
+	char r = (attrs->prot & ENTRY_PERM_R) ? 'r' : '-';
+	char w = (attrs->prot & ENTRY_PERM_W) ? 'w' : '-';
+	char x = (attrs->prot & ENTRY_PERM_X) ? 'x' : '-';
+
+	const char *mt;
+	switch (attrs->memtype) {
+	case ENTRY_MEMTYPE_DEVICE:
+		mt = "device";
+		break;
+	case ENTRY_MEMTYPE_NORMAL_CACHEABLE:
+		mt = "normal";
+		break;
+	default:
+		mt = "unknown";
+		break;
+	}
+
+	const char *af;
+	if (attrs->af)
+		af = "af";
+	else
+		af = "~af";
+
+	return ghost_fprintf(arg, "(%c%c%c, mt:%s, %s)", r, w, x, mt, af);
+}
+
+int gp_print_cm_desc(void *arg, struct entry_exploded_descriptor *entry)
+{
+	TRY(ghost_fprintf(arg, "(l%d %s", entry->level, pte_kind_names[entry->kind]));
+
+	switch (entry->kind) {
+	case PTE_KIND_TABLE:
+		TRY(ghost_fprintf(arg, ", table:%p)", entry->table_data.next_level_table_addr));
+		break;
+	case PTE_KIND_MAP:
+		TRY(ghost_fprintf(arg, ", oa:%p ", entry->map_data.oa_region.range_start));
+		TRY(gp_print_entry_attrs(arg, &entry->map_data.attrs));
+		TRY(ghost_fprintf(arg, ")"));
+		break;
+	case PTE_KIND_INVALID:
+		TRY(ghost_fprintf(arg, ")"));
+		break;
+	}
+
+	return 0;
+}
+
 int gp_print_cm_loc(void *arg, struct sm_location *loc)
 {
 	char *init = loc->initialised ? "*" : "!";
@@ -532,13 +594,16 @@ int gp_print_cm_loc(void *arg, struct sm_location *loc)
 
 		char freeze = (loc->frozen ? '$' : ' ');
 
-		TRY(ghost_fprintf(arg, "%s%c[%16p]=%16lx (S%c pte_st:", init, freeze,
+		TRY(ghost_fprintf(arg, "%s%c[%16p]=0x%16lx (S%c pte_st:", init, freeze,
 				  loc->phys_addr, loc->val, stage));
 		TRY(gp_print_cm_pte_state(arg, &loc->state));
-		TRY(ghost_fprintf(arg, " root:%16p, range:%16lx-%16lx)", loc->owner, start, end));
+		TRY(ghost_fprintf(arg, " root:%16p, range:0x%16lx-0x%16lx, desc:", loc->owner,
+				  start, end));
+		TRY(gp_print_cm_desc(arg, &loc->descriptor));
+		TRY(ghost_fprintf(arg, ")"));
 		return 0;
 	} else {
-		return ghost_fprintf(arg, "%s[%16p]=%16lx", init, loc->phys_addr, loc->val);
+		return ghost_fprintf(arg, "%s [%16p]=0x%16lx", init, loc->phys_addr, loc->val);
 	}
 }
 
@@ -651,7 +716,7 @@ int gp_print_cm_roots(void *arg, char *name, struct roots *roots)
 {
 	int ret;
 
-	ret = ghost_fprintf(arg, "%s roots: [", name);
+	ret = ghost_fprintf(arg, "%s: [", name);
 	if (ret)
 		return ret;
 
@@ -691,7 +756,7 @@ int gp_print_cm_unclean_locations(void *arg, char *name, struct LL *locs)
 		if (elem != ll_head(locs))
 			TRY(ghost_fprintf(arg, ", "));
 
-		TRY(ghost_fprintf(arg, "%lx", loc->phys_addr));
+		TRY(ghost_fprintf(arg, "%p", loc->phys_addr));
 	}
 
 	return ghost_fprintf(arg, "]");
@@ -747,12 +812,7 @@ int gp_print_cm_locks(void *arg, struct lock_owner_map *locks)
 
 int ghost_dump_model_state(void *arg, struct casemate_model_state *s)
 {
-	TRY(ghost_fprintf(arg,
-			  ""
-			  "base_addr:.......%16p\n"
-			  "size:............%16lx\n"
-			  "nr_roots:........%16lx\n",
-			  s->base_addr, s->size, s->roots.len));
+	TRY(ghost_fprintf(arg, "state:\n"));
 	TRY(gp_print_cm_roots(arg, "roots", &s->roots));
 	TRY(ghost_fprintf(arg, "\n"));
 	TRY(gp_print_cm_unclean_locations(arg, "unclean_locations", &s->uncleans));

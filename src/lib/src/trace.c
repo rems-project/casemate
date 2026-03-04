@@ -281,11 +281,10 @@ static int record_cm_trans(struct string_builder *buf, struct casemate_model_ste
 	return 0;
 }
 
-void put_trans(void *arg)
+void put_step(struct casemate_model_step *step)
 {
 	int ret;
 	DEFINE_STRING_BUFFER(sb, 256);
-	struct casemate_model_step *step = (struct casemate_model_step *)arg;
 	ret = record_cm_trans(&sb, step);
 	if (ret)
 		side_effect()->abort("trace record too long");

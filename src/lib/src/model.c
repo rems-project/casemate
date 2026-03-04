@@ -431,6 +431,7 @@ static void clean_reachability_checker_cb(struct pgtable_traverse_context *ctxt)
 		return;
 
 	if (loc->state.kind == STATE_PTE_INVALID_UNCLEAN) {
+		ERROR_REMEMBER_LOC(loc);
 		bool *data = (bool *)ctxt->data;
 		*data = false;
 	}
@@ -522,11 +523,10 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
-	if (! loc->initialised) {
+	if (! loc->initialised)
 		initialise_location(loc, ctxt->descriptor);
-	} else if (loc->is_pte) {
+	else if (loc->is_pte)
 		GHOST_MODEL_CATCH_FIRE("double-use pte");
-	}
 
 	// mark that this location is now an active pte
 	// and start following the automata
@@ -542,12 +542,11 @@ void unmark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
-	if (! loc->initialised) {
+	if (! loc->initialised)
 		initialise_location(loc, ctxt->descriptor);
-	} else if (! loc->is_pte) {
+	else if (! loc->is_pte)
 		// TODO: BS: is this catch-fire or simply unreachable?
 		GHOST_MODEL_CATCH_FIRE("unmark non-PTE");
-	}
 
 	// mark that this location is no longer an active pte
 	// and stop following the automata
@@ -562,8 +561,10 @@ void freeze_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
 
-	if (loc->thread_owner >= 0)
+	if (loc->thread_owner >= 0) {
+		ERROR_REMEMBER_LOC(loc);
 		GHOST_MODEL_CATCH_FIRE("Cannot freeze a location that is thread-locally owned");
+	}
 
 	if (! loc->initialised) {
 		// unreachable
@@ -1066,6 +1067,9 @@ static void step_write(struct ghost_hw_step *step)
 
 	// look inside memory at `addr`
 	loc = location(step->write_data.phys_addr);
+
+	/* remember the location, if we error later */
+	ERROR_REMEMBER_LOC(loc);
 
 	if (! loc->initialised) {
 		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT)
@@ -1658,8 +1662,10 @@ static void step_hint_set_owner_root(u64 phys, u64 root)
 	for (u64 p = PAGE_ALIGN_DOWN(phys); p < PAGE_ALIGN(phys); p += 8) {
 		struct sm_location *loc = location(p);
 
-		if (loc->is_pte)
+		if (loc->is_pte) {
+			ERROR_REMEMBER_LOC(loc);
 			GHOST_MODEL_CATCH_FIRE("cannot change owned root if already in a tree");
+		}
 
 		loc->owner = root;
 	}
@@ -1697,6 +1703,7 @@ static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
 {
 	// TODO: mark all the parents as immutable
 	struct sm_location *loc = location(phys);
+	ERROR_REMEMBER_LOC(loc);
 
 	if (! loc->initialised) {
 		if (opts()->check_opts.uninit_behavior == CM_IGNORE_UNINIT) {
@@ -1849,6 +1856,7 @@ static void __step_init(u64 phys_addr, u64 size)
 	u64 p;
 	for (p = phys_addr; p < phys_addr + size; p += 8) {
 		struct sm_location *loc = location(p);
+		ERROR_REMEMBER_LOC(loc);
 
 		if (! loc->initialised)
 			initialise_location(loc, 0);
@@ -1856,6 +1864,8 @@ static void __step_init(u64 phys_addr, u64 size)
 			/* re-initialising locations is okay,
 			 * but only if the location is still 0 */
 			GHOST_MODEL_CATCH_FIRE("cannot initialise used location");
+
+		ERROR_FORGET_LOC(loc);
 	}
 }
 
@@ -1870,8 +1880,10 @@ static void __step_free(u64 phys_addr, u64 size)
 			continue;
 
 		/* check none are currently tracked as PTEs */
-		if (loc->initialised && loc->is_pte)
+		if (loc->initialised && loc->is_pte) {
+			ERROR_REMEMBER_LOC(loc);
 			GHOST_MODEL_CATCH_FIRE("can't free location which is currently a PTE");
+		}
 
 		loc->initialised = false;
 	}
@@ -1945,6 +1957,55 @@ static inline bool should_print_diff_on_step(void)
 	return true;
 }
 
+int gp_print_cm_loc(void *arg, struct sm_location *loc);
+
+void output_error_context(void)
+{
+	struct casemate_error_context *ctx = &STATE()->error_ctx;
+	int nr_ctx_locs = ctx->nr_locs;
+
+	/* first, collect extra context about the locations if any
+	 * namely their parents */
+	for (int i = 0; i < ctx->nr_locs; i++) {
+		struct sm_location *loc = ctx->loc[i];
+
+		if (loc->initialised && loc->is_pte)
+			walk_pgtable_to(loc->owner, loc->descriptor.ia_region.range_start,
+					loc->descriptor.stage);
+	}
+
+	/* might have changed the number of relevant locations */
+	nr_ctx_locs = ctx->nr_locs;
+
+	ghost_printf("casemate error\n");
+
+	/* most cases, the error is for a particualr location
+	 * so we want to know what Casemate thinks that location is
+	 */
+	if (nr_ctx_locs > 0) {
+		ghost_printf("related locations:\n");
+		for (int i = 0; i < nr_ctx_locs; i++) {
+			struct sm_location *loc = ctx->loc[i];
+			gp_print_cm_loc(NULL, loc);
+			ghost_printf("\n");
+		}
+	}
+
+	ghost_printf("on event: ");
+	put_step(&STATE()->current_transition);
+	ghost_printf("\n");
+}
+
+static void reset_error_context(void)
+{
+	struct casemate_error_context *ctx = &STATE()->error_ctx;
+
+	for (int i = 0; i < MAX_REMEMBERED_LOCATIONS; i++)
+		ctx->loc[i] = 0;
+
+	ctx->nr_locs = 0;
+}
+
 void ensure_traced_current_transition(bool force)
 {
 	if (STATE()->traced_current_trans)
@@ -1986,6 +2047,7 @@ void step(struct casemate_model_step trans)
 	STATE()->current_transition = trans;
 	STATE()->touched_watchpoint = false;
 	STATE()->traced_current_trans = false;
+	reset_error_context();
 
 	if (! STATE()->is_initialised)
 		goto out;

@@ -492,6 +492,17 @@ struct casemate_model_state {
 
 int ghost_dump_model_state(void *arg, struct casemate_model_state *st);
 
+#define MAX_REMEMBERED_LOCATIONS 16
+
+/** struct casemate_error_context - Information to give to user on an error
+ *
+ * These CAN contain pointers, as the lifetime is a single call.
+ */
+struct casemate_error_context {
+	u64 nr_locs;
+	struct sm_location *loc[MAX_REMEMBERED_LOCATIONS];
+};
+
 /**
  * struct casemate_state - Top-level casemate state
  */
@@ -505,6 +516,11 @@ struct casemate_state {
 	 * current_transition - The step currently being executed.
 	 */
 	struct casemate_model_step current_transition;
+
+	/**
+	 * error_ctx - Information about the error
+	 */
+	struct casemate_error_context error_ctx;
 
 	/**
 	 * traced_current_trans - Whether the current step has been traced so far 

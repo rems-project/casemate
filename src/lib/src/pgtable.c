@@ -24,6 +24,16 @@ static const u64 MAP_SIZES[] = {
 	[3] = KiB(4ULL),
 };
 
+#define L0_IA_L0 39
+#define L1_IA_L0 30
+
+#define Ln_IA_OFFS_WIDTH 9
+#define Ln_IA_LO(LVL) (12 + Ln_IA_OFFS_WIDTH * (3 - LVL))
+#define Ln_IA_HI(LVL) (Ln_IA_LO(LVL) + Ln_IA_OFFS_WIDTH - 1)
+#define Ln_IA_MASK(LVL) (BITMASK(Ln_IA_HI(LVL), Ln_IA_LO(LVL)))
+#define Ln_IA_IDX(LVL, VA) ((Ln_IA_MASK(LVL) & (VA)) >> Ln_IA_LO(LVL))
+#define Ln_IA_OFF(LVL, VA) (Ln_IA_IDX(LVL, VA) << 3)
+
 // G.b p2742 4KB translation granule has a case split on whether "the Effective value of TCR_ELx.DS or VTCR_EL2.DS is 1".
 // DS is for 52-bit output addressing with FEAT_LPA2, and is zero in the register values we see; I'll hard-code that for now.  Thus, G.b says:
 // - For a level 1 Block descriptor, bits[47:30] are bits[47:30] of the output address. This output address specifies a 1GB block of memory.
@@ -330,6 +340,7 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		GHOST_LOG_INNER("loop", pte_phys, u64);
 
 		loc = location(pte_phys);
+		ERROR_REMEMBER_LOC(loc);
 
 		if (! loc->initialised) {
 			GHOST_WARN("saw uninitialised PTE at 0x%lx when walking root:0x%lx",
@@ -355,6 +366,8 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		ctxt.exploded_descriptor = deconstruct_pte(pte_ia, desc, level, stage);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
+
+		ERROR_FORGET_LOC(loc);
 
 		/* visitor can't have changed the actual descriptor ... */
 		ghost_safety_check(read_phys(pte_phys) == desc);
@@ -428,6 +441,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 	FOREACH_IN_LL(elem, &MODEL()->uncleans)
 	{
 		loc = container_of(struct sm_location, uncleans, elem);
+		ERROR_REMEMBER_LOC(loc);
 
 		/* Steps on earlier locations
 		 * may touch later ones
@@ -450,6 +464,7 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 		// We rebuild the traversal context from the descriptor of the location
 		ctx = construct_context_from_pte(loc, data);
 		visitor_cb(&ctx);
+		ERROR_FORGET_LOC(loc);
 	}
 
 	/* Go back through and discard any that no longer need cleaning
@@ -460,6 +475,40 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 		if (! loc->initialised || ! loc->is_pte ||
 		    loc->state.kind != STATE_PTE_INVALID_UNCLEAN)
 			ll_remove(&MODEL()->uncleans, elem);
+	}
+}
+
+void walk_pgtable_to(u64 root, u64 ia, entry_stage_t stage)
+{
+	u64 start_level, table;
+	struct sm_location *loc;
+	struct entry_exploded_descriptor pte_desc;
+
+	start_level = discover_start_level(stage);
+	ghost_assert(IS_PAGE_ALIGNED(root));
+	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
+	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
+
+	table = root;
+
+	for (int lvl = 0; lvl < 4; lvl++) {
+		if (start_level > lvl)
+			continue;
+
+		loc = location(table + Ln_IA_OFF(lvl, ia));
+		ERROR_REMEMBER_LOC(loc);
+
+		/* do not error, instead just let the uninitialised location
+		 * be remembered and given to the user */
+		if (! loc->initialised)
+			return;
+
+		pte_desc = deconstruct_pte(ia, loc->val, lvl, stage);
+
+		if (pte_desc.kind != PTE_KIND_TABLE)
+			return;
+
+		table = pte_desc.table_data.next_level_table_addr;
 	}
 }
 
