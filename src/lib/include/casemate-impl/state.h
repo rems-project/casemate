@@ -97,13 +97,11 @@ struct aut_invalid_clean {
  * @STATE_PTE_INVALID_UNCLEAN: a thread has written an invalid descriptor to this location,
  *                             but any required break-before-make has not been completed yet.
  * @STATE_PTE_INVALID: all break-before-make requirements are complete and all cores agree the location is clean.
- * @STATE_PTE_NOT_WRITABLE: the location is frozen, and no thread is permitted to write to it.
  */
 enum automaton_state_kind {
 	STATE_PTE_VALID,
 	STATE_PTE_INVALID_UNCLEAN,
 	STATE_PTE_INVALID,
-	STATE_PTE_NOT_WRITABLE,
 };
 
 /**
@@ -233,6 +231,7 @@ struct entry_exploded_descriptor {
  * @state: if initialised and is_pte, the automata state for this location.
  * @owner: if initialised, the root of the tree that owns this location.
  * @thread_owner: if positive, the ID of the thread that can freely access this location
+ * @frozen: if initialised, when true, writes to this location are forbidden.
  *
  * The owner and descriptor are here as helpful cached values,
  * and could be computed by doing translation table walks.
@@ -246,6 +245,7 @@ struct sm_location {
 	struct sm_pte_state state;
 	sm_owner_t owner;
 	int thread_owner;
+	bool frozen;
 };
 
 /*
