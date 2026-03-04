@@ -12,6 +12,11 @@ FORCE:
 # all source files are configuration dependent
 CONFIG = $(root)/config.mk
 
+# repo-wide configuration
+ifeq ($(CONFIG_SAN),y)
+  CFLAGS += -g -fsanitize=address
+endif
+
 %.o: %.c $(CONFIG)
 	$(call run_cc,$<,$@)
 
