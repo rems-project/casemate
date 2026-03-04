@@ -460,7 +460,6 @@ static const char *automaton_state_names[] = {
 	ID_STRING(STATE_PTE_VALID), //
 	ID_STRING(STATE_PTE_INVALID_UNCLEAN), //
 	ID_STRING(STATE_PTE_INVALID), //
-	ID_STRING(STATE_PTE_NOT_WRITABLE), //
 };
 
 static const char *pte_kind_names[] = {
@@ -474,7 +473,6 @@ static const char *KIND_PREFIX_NAMES[] = {
 	[STATE_PTE_INVALID] = "I ",
 	[STATE_PTE_INVALID_UNCLEAN] = "IU",
 	[STATE_PTE_VALID] = "V ",
-	[STATE_PTE_NOT_WRITABLE] = "NW",
 };
 
 static const int LIS_NAME_LEN = 2;
@@ -515,11 +513,6 @@ int gp_print_cm_pte_state(void *arg, struct sm_pte_state *st)
 	case STATE_PTE_VALID:
 		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN);
 		return 0;
-	case STATE_PTE_NOT_WRITABLE:
-		TRY_INDENT(arg, PTE_STATE_LEN - KIND_PREFIX_LEN - LIS_NAME_LEN - 1 -
-					INVALIDATOR_TID_NAME_LEN);
-		return ghost_fprintf(arg, "%s%I%s %d", LIS_NAMES[st->invalid_unclean_state.lis],
-				     st->invalid_unclean_state.invalidator_tid);
 	default:
 		unreachable();
 	}
@@ -537,8 +530,10 @@ int gp_print_cm_loc(void *arg, struct sm_location *loc)
 			      loc->descriptor.stage == ENTRY_STAGE2 ? '2' :
 								      '?');
 
-		TRY(ghost_fprintf(arg, "%s[%16p]=%16lx (S%c pte_st:", init, loc->phys_addr,
-				  loc->val, stage));
+		char freeze = (loc->frozen ? '$' : ' ');
+
+		TRY(ghost_fprintf(arg, "%s%c[%16p]=%16lx (S%c pte_st:", init, freeze,
+				  loc->phys_addr, loc->val, stage));
 		TRY(gp_print_cm_pte_state(arg, &loc->state));
 		TRY(ghost_fprintf(arg, " root:%16p, range:%16lx-%16lx)", loc->owner, start, end));
 		return 0;

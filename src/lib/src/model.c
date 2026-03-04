@@ -505,6 +505,7 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 	// mark that this location is now an active pte
 	// and start following the automata
 	loc->is_pte = true;
+	loc->frozen = false;
 	loc->owner = (sm_owner_t)ctxt->root;
 	loc->descriptor = ctxt->exploded_descriptor;
 	loc->state = initial_state(ctxt->exploded_descriptor.ia_region.range_start,
@@ -547,7 +548,7 @@ void mark_not_writable_cb(struct pgtable_traverse_context *ctxt)
 		BUG();
 	} else {
 		// mark the child as not writable
-		loc->state.kind = STATE_PTE_NOT_WRITABLE;
+		loc->frozen = true;
 	}
 }
 
@@ -899,7 +900,7 @@ static void step_write_on_valid(enum memory_order_t mo, struct sm_location *loc,
 	step_write_table_mark_children(mark_not_writable_cb, loc);
 }
 
-static void step_write_on_unwritable(struct sm_location *loc, u64 val)
+static void step_write_on_frozen(struct sm_location *loc, u64 val)
 {
 	// If the write does not change anything, continue
 	if (loc->val == val)
@@ -978,6 +979,11 @@ static void step_write(struct ghost_hw_step *step)
 	// must own the lock on the pgtable this pte is in.
 	check_write_is_authorized(loc, step, val);
 
+	if (loc->frozen) {
+		step_write_on_frozen(loc, val);
+		goto done;
+	}
+
 	// actually is a pte, so have to do some checks...
 	switch (loc->state.kind) {
 	case STATE_PTE_VALID:
@@ -988,9 +994,6 @@ static void step_write(struct ghost_hw_step *step)
 		break;
 	case STATE_PTE_INVALID:
 		step_write_on_invalid(mo, loc, val);
-		break;
-	case STATE_PTE_NOT_WRITABLE:
-		step_write_on_unwritable(loc, val);
 		break;
 	default:
 		unreachable();
@@ -1293,7 +1296,7 @@ static bool all_children_invalid(struct sm_location *loc)
 		// For each child, check that it is an invalid child
 		child = &table->slots[i];
 		ghost_assert(child->initialised && child->is_pte);
-		ghost_assert(child->state.kind == STATE_PTE_NOT_WRITABLE);
+		ghost_assert(child->frozen);
 		if (child->descriptor.kind != PTE_KIND_INVALID) {
 			return false;
 		}
