@@ -5,6 +5,7 @@
 
 #define PTE_BIT_VALID BIT(0)
 #define PTE_BIT_TABLE BIT(1)
+#define PTE_BIT_PAGE BIT(1)
 #define PTE_BITS_TABLE_POINTER BITMASK(47, 12)
 #define PTE_BIT_OA_MSB 47
 
@@ -130,6 +131,17 @@ bool is_desc_table(u64 descriptor, u64 level, entry_stage_t stage)
 		return false;
 
 	return (descriptor & PTE_BIT_TABLE) == PTE_BIT_TABLE;
+}
+
+bool is_desc_map(u64 descriptor, u64 level, entry_stage_t stage)
+{
+	if (level == 0)
+		return false;
+
+	if (level == 3)
+		return (descriptor & PTE_BIT_PAGE) == PTE_BIT_PAGE;
+	else
+		return (descriptor & PTE_BIT_TABLE) != PTE_BIT_TABLE;
 }
 
 u64 extract_output_address(u64 desc, u64 level)
@@ -277,7 +289,7 @@ struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 		deconstructed.kind = PTE_KIND_TABLE;
 		deconstructed.table_data.next_level_table_addr = extract_table_address(desc);
 		return deconstructed;
-	} else {
+	} else if (is_desc_map(desc, level, stage)) {
 		ghost_mair_t mair;
 		deconstructed.kind = PTE_KIND_MAP;
 		deconstructed.map_data.oa_region = (struct addr_range){
@@ -296,6 +308,9 @@ struct entry_exploded_descriptor deconstruct_pte(u64 partial_ia, u64 desc, u64 l
 		deconstructed.map_data.attrs =
 			parse_attrs(stage, mair, desc, (u8)level, DUMMY_AAL);
 		return deconstructed;
+	} else {
+		GHOST_MODEL_CATCH_FIRE("Saw invalid pte encoding");
+		unreachable();
 	}
 }
 
