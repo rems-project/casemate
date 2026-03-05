@@ -32,6 +32,18 @@ typedef enum {
 
 #define CASEMATE_DEFAULT_UNINIT_BEHAVIOR CM_ERR_ON_UNINIT
 
+typedef enum {
+	/** @CM_NO_ERRORBACK - Do not print error contexts
+	 */
+	CM_NO_ERRORBACK = 0,
+
+	/** @CM_SHOW_ERROR - Show an error message with extra info
+	 */
+	CM_SHOW_ERROR = 1,
+} casemate_error_opt_t;
+
+#define CASEMATE_DEFAULT_ERROR_BEHAVIOR CM_SHOW_ERROR
+
 struct casemate_checker_options {
 	/**
 	 * @promote_DSB_nsh: Silently promote all DSB NSH to DSB ISH
@@ -61,6 +73,11 @@ struct casemate_checker_options {
 	casemate_uninit_opt_t uninit_behavior;
 
 	/**
+	 * @error_behavior: what to do on an error
+	 */
+	casemate_error_opt_t error_behavior;
+
+	/**
 	 * @enable_printing: print out the current state of the
 	 * @print_opts: logging to perform.
 	 */
@@ -77,6 +94,7 @@ struct casemate_checker_options {
 		.promote_TLBI_by_id = false, \
 		.check_synchronisation = true, \
 		.uninit_behavior = CASEMATE_DEFAULT_UNINIT_BEHAVIOR, \
+		.error_behavior = CASEMATE_DEFAULT_ERROR_BEHAVIOR, \
 		.enable_printing = false, \
 		.print_opts = CASEMATE_DEFAULT_PRINT_OPTS, \
 	}
