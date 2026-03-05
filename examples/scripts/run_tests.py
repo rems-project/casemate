@@ -23,7 +23,7 @@ EXAMPLES = (
 def runmsg(prefix, s):
     print(f'  {prefix:<8}\t\t\t{s}', file=sys.stderr)
 
-def check_expected(test_name):
+def check_expected(test_name, fine_grained=False):
     example_exe = EXAMPLES_ROOT / test_name
     out_path = (EXAMPLES_ROOT / "tests" / test_name).with_suffix(".log")
 
@@ -39,7 +39,7 @@ def check_expected(test_name):
     expected = (EXAMPLES_ROOT / "expected" / test_name).with_suffix(".log")
     runmsg("CHECK", test_name)
     subprocess.run(
-        ["python3", "./scripts/check_simulation.py", "-T", str(out_path), str(expected)],
+        ["python3", "./scripts/check_simulation.py", "-T" if not fine_grained else "", str(out_path), str(expected)],
         cwd=EXAMPLES_ROOT,
         check=True,
     )
@@ -74,13 +74,15 @@ def main(argv):
             if args.rocq:
                 check_rocq_trace(example)
             else:
-                check_expected(example)
+                check_expected(example, fine_grained=args.fine_grained)
 
 
 parser = argparse.ArgumentParser()
 grp = parser.add_mutually_exclusive_group(required=True)
 grp.add_argument("--rocq", action="store_true", default=False)
 grp.add_argument("--examples", action="store_true", default=False)
+
+parser.add_argument("--fine-grained", help="do step-by-step simulation checks", action="store_true", default=False)
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
