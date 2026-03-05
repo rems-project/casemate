@@ -1980,7 +1980,7 @@ void output_error_context(const char *msg)
 	struct casemate_error_context *ctx = &STATE()->error_ctx;
 	int nr_ctx_locs = ctx->nr_locs;
 
-	if (ctx->errored_on_step)
+	if (! should_show_error_context() || ctx->errored_on_step)
 		return;
 
 	/* do not re-enter this if below errors */

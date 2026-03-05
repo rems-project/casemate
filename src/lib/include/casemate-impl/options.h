@@ -67,4 +67,9 @@ static inline bool should_trace_condensed(void)
 	return (opts()->log_opts.condensed_format);
 }
 
+static inline bool should_show_error_context(void)
+{
+	return (opts()->check_opts.error_behavior == CM_SHOW_ERROR);
+}
+
 #endif /* CASEMATE_OPTIONS_H */
