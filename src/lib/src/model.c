@@ -1064,7 +1064,7 @@ static void step_dsb_invalid_unclean_unmark_children(struct sm_location *loc)
 
 		traverse_pgtable_from(loc->owner, old_desc.table_data.next_level_table_addr,
 				      loc->descriptor.ia_region.range_start,
-				      loc->descriptor.level, loc->descriptor.stage, unmark_cb,
+				      loc->descriptor.level + 1, loc->descriptor.stage, unmark_cb,
 				      READ_UNLOCKED_LOCATIONS, NULL);
 	}
 
