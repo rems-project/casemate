@@ -882,6 +882,11 @@ static void step_write(struct ghost_hw_step *step)
 	// look inside memory at `addr`
 	loc = location(step->write_data.phys_addr);
 
+	if (! loc->initialised) {
+		GHOST_MODEL_CATCH_FIRE("Attempted write to uninitialised location");
+		goto done;
+	}
+
 	if (! loc->is_pte) {
 		goto done;
 	}
