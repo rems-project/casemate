@@ -22,6 +22,12 @@ Model options:
 
 * `-C | --dry-run`    do not run checks
 
+* `-S | --no-sysreg`    do not use default system register values
+
+* `-I | --ignore-uninit`    ignore steps to uninitialised locations
+
+* `-H | --harden`	include extra internal safety checks as it runs
+
 
 Output options:
 

@@ -1,5 +1,6 @@
-The Casemate model tracks each location with a finite state machine
-which encodes the protocol that the location should be following, e.g. _break-before-make_.
+Casemate maintains a shadow state,
+tracking a finite state machine for each pagetable location
+which encodes the protocol that the location should be following.
 This automaton takes steps on each operation:
 page table write, TLB maintenace, system register update, and barrier.
 When an operation that is not supported by the current state of that location takes place,
