@@ -7,11 +7,9 @@ updates to the system configuration, and so on.
 Software must ensure that particular protocols are observed when doing such an operation,
 and failure to do so can result in loss of service or security guarantees.
 
-On Arm, updates to page tables must follow a particular _break-before-make_ protocol.
-Failure to do so leads to an unpredictable state which invalidates many of the security guarantees
+Casemate checks pagetable code for Arm for various runtime errors.
+The presence of such errors could lead to an unpredictable state which invalidates many of the security guarantees
 a hypervisor or operating system, or other such isolation kernel, seek to provide.
-Casemate is powered by the Casemate model, which encodes a number of such protocols to monitor and validate
-that systems software is correctly following the protocols and to call out violations when they occur.
 
 Casemate has two modes of operation:
 
