@@ -17,6 +17,9 @@ int main(int argc, char **argv)
 {
 	common_init(argc, argv);
 
+	TRANS_MEM_INIT((u64)&x, 4096);
+	TRANS_MEM_INIT((u64)&y, 4096);
+
 	WRITE_ONCE(y, 0);
 	DSB(ish);
 	WRITE_ONCE(x, 0);
