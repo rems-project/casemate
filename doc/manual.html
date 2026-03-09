@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 2.0.16">
+<meta name="generator" content="Asciidoctor 2.0.26">
 <meta name="author" content="Ben Simner, Thomas Fourier, Yeji Han, David Kaloper Meršinjak, Thibaut Pérami, Peter Sewell, Jean Pichon-Pharabod">
 <title>Casemate</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Open+Sans:300,300italic,400,400italic,600,600italic%7CNoto+Serif:400,400italic,700,700italic%7CDroid+Sans+Mono:400,700">
@@ -85,10 +85,10 @@ code{font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;font-weight:400;
 ul,ol,dl{line-height:1.6;margin-bottom:1.25em;list-style-position:outside;font-family:inherit}
 ul,ol{margin-left:1.5em}
 ul li ul,ul li ol{margin-left:1.25em;margin-bottom:0}
-ul.square li ul,ul.circle li ul,ul.disc li ul{list-style:inherit}
-ul.square{list-style-type:square}
 ul.circle{list-style-type:circle}
 ul.disc{list-style-type:disc}
+ul.square{list-style-type:square}
+ul.circle ul:not([class]),ul.disc ul:not([class]),ul.square ul:not([class]){list-style:inherit}
 ol li ul,ol li ol{margin-left:1.25em;margin-bottom:0}
 dl dt{margin-bottom:.3125em;font-weight:bold}
 dl dd{margin-bottom:1.25em}
@@ -117,7 +117,6 @@ h1 strong,h2 strong,h3 strong,#toctitle strong,.sidebarblock>.content>.title str
 :not(pre):not([class^=L])>code{font-size:.9375em;font-style:normal!important;letter-spacing:0;padding:.1em .5ex;word-spacing:-.15em;background:#f7f7f8;border-radius:4px;line-height:1.45;text-rendering:optimizeSpeed}
 pre{color:rgba(0,0,0,.9);font-family:"Droid Sans Mono","DejaVu Sans Mono",monospace;line-height:1.45;text-rendering:optimizeSpeed}
 pre code,pre pre{color:inherit;font-size:inherit;line-height:inherit}
-pre>code{display:block}
 pre.nowrap,pre.nowrap pre{white-space:pre;word-wrap:normal}
 em em{font-style:normal}
 strong strong{font-weight:400}
@@ -141,7 +140,7 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #content::before{content:none}
 #header>h1:first-child{color:rgba(0,0,0,.85);margin-top:2.25rem;margin-bottom:0}
 #header>h1:first-child+#toc{margin-top:8px;border-top:1px solid #dddddf}
-#header>h1:only-child,body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
+#header>h1:only-child{border-bottom:1px solid #dddddf;padding-bottom:8px}
 #header .details{border-bottom:1px solid #dddddf;line-height:1.45;padding-top:.25em;padding-bottom:.25em;padding-left:.25em;color:rgba(0,0,0,.6);display:flex;flex-flow:row wrap}
 #header .details span:first-child{margin-left:-.125em}
 #header .details span.email a{color:rgba(0,0,0,.85)}
@@ -163,6 +162,7 @@ p a>code:hover{color:rgba(0,0,0,.9)}
 #toctitle{color:#7a2518;font-size:1.2em}
 @media screen and (min-width:768px){#toctitle{font-size:1.375em}
 body.toc2{padding-left:15em;padding-right:0}
+body.toc2 #header>h1:nth-last-child(2){border-bottom:1px solid #dddddf;padding-bottom:8px}
 #toc.toc2{margin-top:0!important;background:#f8f8f7;position:fixed;width:15em;left:0;top:0;border-right:1px solid #e7e7e9;border-top-width:0!important;border-bottom-width:0!important;z-index:1000;padding:1.25em 1em;height:100%;overflow:auto}
 #toc.toc2 #toctitle{margin-top:0;margin-bottom:.8rem;font-size:1.2em}
 #toc.toc2>ul{font-size:.9em;margin-bottom:0}
@@ -194,7 +194,8 @@ body.toc2.toc-right{padding-left:0;padding-right:20em}}
 #content h1>a.link:hover,h2>a.link:hover,h3>a.link:hover,#toctitle>a.link:hover,.sidebarblock>.content>.title>a.link:hover,h4>a.link:hover,h5>a.link:hover,h6>a.link:hover{color:#a53221}
 details,.audioblock,.imageblock,.literalblock,.listingblock,.stemblock,.videoblock{margin-bottom:1.25em}
 details{margin-left:1.25rem}
-details>summary{cursor:pointer;display:block;position:relative;line-height:1.6;margin-bottom:.625rem;-webkit-tap-highlight-color:transparent}
+details>summary{cursor:pointer;display:block;position:relative;line-height:1.6;margin-bottom:.625rem;outline:none;-webkit-tap-highlight-color:transparent}
+details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:"";border:solid transparent;border-left:solid;border-width:.3em 0 .3em .5em;position:absolute;top:.5em;left:-1.25rem;transform:translateX(15%)}
 details[open]>summary::before{border:solid transparent;border-top:solid;border-width:.5em .3em 0;transform:translateY(15%)}
 details>summary::after{content:"";width:1.25rem;height:1em;position:absolute;top:.3em;left:-1.25rem}
@@ -208,19 +209,17 @@ table.tableblock.fit-content>caption.title{white-space:nowrap;width:0}
 .admonitionblock>table td.content{padding-left:1.125em;padding-right:1.25em;border-left:1px solid #dddddf;color:rgba(0,0,0,.6);word-wrap:anywhere}
 .admonitionblock>table td.content>:last-child>:last-child{margin-bottom:0}
 .exampleblock>.content{border:1px solid #e6e6e6;margin-bottom:1.25em;padding:1.25em;background:#fff;border-radius:4px}
-.exampleblock>.content>:first-child{margin-top:0}
-.exampleblock>.content>:last-child{margin-bottom:0}
 .sidebarblock{border:1px solid #dbdbd6;margin-bottom:1.25em;padding:1.25em;background:#f3f3f2;border-radius:4px}
-.sidebarblock>:first-child{margin-top:0}
-.sidebarblock>:last-child{margin-bottom:0}
 .sidebarblock>.content>.title{color:#7a2518;margin-top:0;text-align:center}
-.exampleblock>.content>:last-child>:last-child,.exampleblock>.content .olist>ol>li:last-child>:last-child,.exampleblock>.content .ulist>ul>li:last-child>:last-child,.exampleblock>.content .qlist>ol>li:last-child>:last-child,.sidebarblock>.content>:last-child>:last-child,.sidebarblock>.content .olist>ol>li:last-child>:last-child,.sidebarblock>.content .ulist>ul>li:last-child>:last-child,.sidebarblock>.content .qlist>ol>li:last-child>:last-child{margin-bottom:0}
+.exampleblock>.content>:first-child,.sidebarblock>.content>:first-child{margin-top:0}
+.exampleblock>.content>:last-child,.exampleblock>.content>:last-child>:last-child,.exampleblock>.content .olist>ol>li:last-child>:last-child,.exampleblock>.content .ulist>ul>li:last-child>:last-child,.exampleblock>.content .qlist>ol>li:last-child>:last-child,.sidebarblock>.content>:last-child,.sidebarblock>.content>:last-child>:last-child,.sidebarblock>.content .olist>ol>li:last-child>:last-child,.sidebarblock>.content .ulist>ul>li:last-child>:last-child,.sidebarblock>.content .qlist>ol>li:last-child>:last-child{margin-bottom:0}
 .literalblock pre,.listingblock>.content>pre{border-radius:4px;overflow-x:auto;padding:1em;font-size:.8125em}
 @media screen and (min-width:768px){.literalblock pre,.listingblock>.content>pre{font-size:.90625em}}
 @media screen and (min-width:1280px){.literalblock pre,.listingblock>.content>pre{font-size:1em}}
 .literalblock pre,.listingblock>.content>pre:not(.highlight),.listingblock>.content>pre[class=highlight],.listingblock>.content>pre[class^="highlight "]{background:#f7f7f8}
 .literalblock.output pre{color:#f7f7f8;background:rgba(0,0,0,.9)}
 .listingblock>.content{position:relative}
+.listingblock pre>code{display:block}
 .listingblock code[data-lang]::before{display:none;content:attr(data-lang);position:absolute;font-size:.75em;top:.425rem;right:.5rem;line-height:1;text-transform:uppercase;color:inherit;opacity:.5}
 .listingblock:hover code[data-lang]::before{display:block}
 .listingblock.terminal pre .command::before{content:attr(data-prompt);padding-right:.5em;color:inherit;opacity:.5}
@@ -236,9 +235,8 @@ pre.prettyprint li:not(:first-child) code[data-lang]::before{display:none}
 table.linenotable{border-collapse:separate;border:0;margin-bottom:0;background:none}
 table.linenotable td[class]{color:inherit;vertical-align:top;padding:0;line-height:inherit;white-space:normal}
 table.linenotable td.code{padding-left:.75em}
-table.linenotable td.linenos{border-right:1px solid;opacity:.35;padding-right:.5em}
-pre.pygments .lineno{border-right:1px solid;opacity:.35;display:inline-block;margin-right:.75em}
-pre.pygments .lineno::before{content:"";margin-right:-.125em}
+table.linenotable td.linenos,pre.pygments .linenos{border-right:1px solid;opacity:.35;padding-right:.5em;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
+pre.pygments span.linenos{display:inline-block;margin-right:.75em}
 .quoteblock{margin:0 1em 1.25em 1.5em;display:table}
 .quoteblock:not(.excerpt)>.title{margin-left:-1.5em;margin-bottom:.75em}
 .quoteblock blockquote,.quoteblock p{color:rgba(0,0,0,.85);font-size:1.15rem;line-height:1.75;word-spacing:.1em;letter-spacing:0;font-style:italic;text-align:justify}
@@ -275,7 +273,7 @@ table.frame-none>colgroup+*>:first-child>*,table.frame-sides>colgroup+*>:first-c
 table.frame-none>:last-child>:last-child>*,table.frame-sides>:last-child>:last-child>*{border-bottom-width:0}
 table.frame-none>*>tr>:first-child,table.frame-ends>*>tr>:first-child{border-left-width:0}
 table.frame-none>*>tr>:last-child,table.frame-ends>*>tr>:last-child{border-right-width:0}
-table.stripes-all tr,table.stripes-odd tr:nth-of-type(odd),table.stripes-even tr:nth-of-type(even),table.stripes-hover tr:hover{background:#f8f8f7}
+table.stripes-all>*>tr,table.stripes-odd>*>tr:nth-of-type(odd),table.stripes-even>*>tr:nth-of-type(even),table.stripes-hover>*>tr:hover{background:#f8f8f7}
 th.halign-left,td.halign-left{text-align:left}
 th.halign-right,td.halign-right{text-align:right}
 th.halign-center,td.halign-center{text-align:center}
@@ -291,10 +289,11 @@ ol{margin-left:1.75em}
 ul li ol{margin-left:1.5em}
 dl dd{margin-left:1.125em}
 dl dd:last-child,dl dd:last-child>:last-child{margin-bottom:0}
-ol>li p,ul>li p,ul dd,ol dd,.olist .olist,.ulist .ulist,.ulist .olist,.olist .ulist{margin-bottom:.625em}
+li p,ul dd,ol dd,.olist .olist,.ulist .ulist,.ulist .olist,.olist .ulist{margin-bottom:.625em}
 ul.checklist,ul.none,ol.none,ul.no-bullet,ol.no-bullet,ol.unnumbered,ul.unstyled,ol.unstyled{list-style-type:none}
 ul.no-bullet,ol.no-bullet,ol.unnumbered{margin-left:.625em}
 ul.unstyled,ol.unstyled{margin-left:0}
+li>p:empty:only-child::before{content:"";display:inline-block}
 ul.checklist>li>p:first-child{margin-left:-1em}
 ul.checklist>li>p:first-child>.fa-square-o:first-child,ul.checklist>li>p:first-child>.fa-check-square-o:first-child{width:1.25em;font-size:.8em;position:relative;bottom:.125em}
 ul.checklist>li>p:first-child>input[type=checkbox]:first-child{margin-right:.25em}
@@ -330,15 +329,13 @@ a.image{text-decoration:none;display:inline-block}
 a.image object{pointer-events:none}
 sup.footnote,sup.footnoteref{font-size:.875em;position:static;vertical-align:super}
 sup.footnote a,sup.footnoteref a{text-decoration:none}
-sup.footnote a:active,sup.footnoteref a:active{text-decoration:underline}
+sup.footnote a:active,sup.footnoteref a:active,#footnotes .footnote a:first-of-type:active{text-decoration:underline}
 #footnotes{padding-top:.75em;padding-bottom:.75em;margin-bottom:.625em}
 #footnotes hr{width:20%;min-width:6.25em;margin:-.25em 0 .75em;border-width:1px 0 0}
 #footnotes .footnote{padding:0 .375em 0 .225em;line-height:1.3334;font-size:.875em;margin-left:1.2em;margin-bottom:.2em}
 #footnotes .footnote a:first-of-type{font-weight:bold;text-decoration:none;margin-left:-1.05em}
 #footnotes .footnote:last-of-type{margin-bottom:0}
 #content #footnotes{margin-top:-.625em;margin-bottom:0;padding:.75em 0}
-.gist .file-data>table{border:0;background:#fff;width:100%;margin-bottom:0}
-.gist .file-data>table td.line-data{width:99%}
 div.unbreakable{page-break-inside:avoid}
 .big{font-size:larger}
 .small{font-size:smaller}
@@ -395,7 +392,7 @@ b.conum *{color:inherit!important}
 dt,th.tableblock,td.content,div.footnote{text-rendering:optimizeLegibility}
 h1,h2,p,td.content,span.alt,summary{letter-spacing:-.01em}
 p strong,td.content strong,div.footnote strong{letter-spacing:-.005em}
-p,blockquote,dt,td.content,span.alt,summary{font-size:1.0625rem}
+p,blockquote,dt,td.content,td.hdlist1,span.alt,summary{font-size:1.0625rem}
 p{margin-bottom:1.25rem}
 .sidebarblock p,.sidebarblock dt,.sidebarblock td.content,p.tableblock{font-size:1em}
 .exampleblock>.content{background:#fffef7;border-color:#e0e0dc;box-shadow:0 1px 4px #e0e0dc}
@@ -472,8 +469,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <span id="author5" class="author">Thibaut Pérami</span><br>
 <span id="author6" class="author">Peter Sewell</span><br>
 <span id="author7" class="author">Jean Pichon-Pharabod</span><br>
-<span id="revnumber">version 2.0.0,</span>
-<span id="revdate">2025-02-07</span>
+<span id="revnumber">version 2.2.3,</span>
+<span id="revdate">2026-03-04</span>
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Table of Contents</div>
@@ -500,7 +497,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <ul class="sectlevel2">
 <li><a href="#casemate-model-init">Compiling, linking, and the Ghost driver</a>
 <ul class="sectlevel3">
-<li><a href="#casemate-model-cfg">Casemate Model initialisation and configuration</a></li>
+<li><a href="#casemate-model-cfg">Casemate Model initialisation and configuration</a>
+<ul class="sectlevel4">
+<li><a href="#_multi_instance_loading">Multi-instance loading</a></li>
+</ul>
+</li>
 <li><a href="#casemate-model-driver">Ghost driver</a></li>
 </ul>
 </li>
@@ -522,6 +523,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <li><a href="#_mem_write">mem-write</a></li>
 <li><a href="#_mem_read">mem-read</a></li>
 <li><a href="#_mem_init">mem-init</a></li>
+<li><a href="#_mem_free">mem-free</a></li>
 <li><a href="#_mem_set">mem-set</a></li>
 <li><a href="#_barrier">barrier</a></li>
 <li><a href="#_tlbis">TLBIs</a></li>
@@ -553,11 +555,9 @@ Software must ensure that particular protocols are observed when doing such an o
 and failure to do so can result in loss of service or security guarantees.</p>
 </div>
 <div class="paragraph">
-<p>On Arm, updates to page tables must follow a particular <em>break-before-make</em> protocol.
-Failure to do so leads to an unpredictable state which invalidates many of the security guarantees
-a hypervisor or operating system, or other such isolation kernel, seek to provide.
-Casemate is powered by the Casemate model, which encodes a number of such protocols to monitor and validate
-that systems software is correctly following the protocols and to call out violations when they occur.</p>
+<p>Casemate checks pagetable code for Arm for various runtime errors.
+The presence of such errors could lead to an unpredictable state which invalidates many of the security guarantees
+a hypervisor or operating system, or other such isolation kernel, seek to provide.</p>
 </div>
 <div class="paragraph">
 <p>Casemate has two modes of operation:</p>
@@ -601,8 +601,9 @@ that systems software is correctly following the protocols and to call out viola
 <h2 id="_the_casemate_model">The Casemate model</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>The Casemate model tracks each location with a finite state machine
-which encodes the protocol that the location should be following, e.g. <em>break-before-make</em>.
+<p>Casemate maintains a shadow state,
+tracking a finite state machine for each pagetable location
+which encodes the protocol that the location should be following.
 This automaton takes steps on each operation:
 page table write, TLB maintenace, system register update, and barrier.
 When an operation that is not supported by the current state of that location takes place,
@@ -688,6 +689,15 @@ reporting a violation if two threads try to access the same page table tree at t
 </li>
 <li>
 <p><code>-C | --dry-run</code>    do not run checks</p>
+</li>
+<li>
+<p><code>-S | --no-sysreg</code>    do not use default system register values</p>
+</li>
+<li>
+<p><code>-I | --ignore-uninit</code>    ignore steps to uninitialised locations</p>
+</li>
+<li>
+<p><code>-H | --harden</code>	include extra internal safety checks as it runs</p>
 </li>
 </ul>
 </div>
@@ -1005,9 +1015,12 @@ casemate-check: log checked successfully.</pre>
 <div class="sect2">
 <h3 id="casemate-model-init">Compiling, linking, and the Ghost driver</h3>
 <div class="paragraph">
-<p>Running <code>make</code> at the top-level should produce a <code>src/lib/casemate.o</code> object file and <code>src/lib/casemate.h</code> header.
-These are what <code>casemate-check</code> use to drive the model, but could be used by a third-party build process to link casemate into a pre-existing system.
+<p>Running <code>./configure</code> then <code>make</code> at the top-level should produce a <code>src/lib/casemate.o</code> object file and <code>src/lib/casemate.h</code> header.
+These are what <code>casemate-check</code> use to drive the model, but can also be used by a third-party build process to link casemate into a pre-existing system.
 Alternatively, one can build casemate directly in that toolchain, for example see <code>src/lib/Makefile.linux</code> for a Makefile which can be included from the Linux build system to include Casemate in the Linux kernel.</p>
+</div>
+<div class="paragraph">
+<p>Configuring Casemate is relatively straightforward, with some premade configs. e.g. to build for FreeBSD (Kernel) run <code>./configure --config=FREEBSD_KERN</code> and then a simple <code>make</code> will produce FreeBSD compatible object files.</p>
 </div>
 <div class="paragraph">
 <p>Once Casemate is available, the user needs call two initialisation functions:</p>
@@ -1015,42 +1028,39 @@ Alternatively, one can build casemate directly in that toolchain, for example se
 <div class="ulist">
 <ul>
 <li>
-<p><code>initialise_casemate_model</code> passing some memory for Casemate to use to store the model state, and the initial model configuration options; and</p>
+<p><code>initialise_ghost_driver</code> which provides Casemate a set of callbacks for performing side-effects in the system; and</p>
 </li>
 <li>
-<p><code>initialise_ghost_driver</code> which provides Casemate a set of callbacks for performing side-effects in the system.</p>
+<p><code>initialise_casemate_model</code> passing some memory for Casemate to use to store the model state, and the initial model configuration options; often used in conjunction with <code>sizeof_casemate_model</code> to calculate the required size.</p>
 </li>
 </ul>
 </div>
 <div class="listingblock">
 <div class="content">
 <pre>/* An example Casemate initialisation procedure */
-void initialise_casemate(u64 phys_memory_start, u64 phys_memory_size)
+struct casemate_options OPTS = CASEMATE_DEFAULT_OPTS;
+
+void *initialise_casemate(void)
 {
-	struct casemate_options opts = CASEMATE_DEFAULT_OPTS;
-	void *state_addr = malloc(sizeof(struct casemate_model_state)); // or 2x that if enabling diffing.
-	initialise_casemate_model(&amp;opts, phys_memory_start, phys_memory_size, state_addr, sizeof(struct casemate_model_state));
+	int err;
+	u64 size;
+	void *st;
+	struct casemate_options opts;
 
 	struct ghost_driver sm_driver = {
+		.putc = ...,
 		.read_physmem = NULL,
-		.read_sysreg = read_sysreg_callback,
-		...
+		.read_sysreg = NULL,
+		.abort = ...,
+		.trace = ...,
 	};
 	initialise_ghost_driver(&amp;sm_driver);
 
-	u64 pgtable_root = EXTRACT_ROOT(read_sysreg(ttbr0_el2));
-
-	/* Initialise the currently loaded pagetable's memory */
-	FOREACH_PGTABLE_NODE(table, pgtable_root) {
-		casemate_model_step_init(table, 4096);
-		FOREACH_ENTRY(entry, table) {
-			casemate_model_step_write(WMO_plain, virt_to_phys(entry), *entry);
-		}
-	}
-
-	/* tell the model it's owned by this lock and currently loaded */
-	casemate_model_step_hint(GHOST_HINT_SET_ROOT_LOCK, pgtable_root, virt_to_phys(pgtable_lock));
-	casemate_model_step_msr(SYSREG_TTBR_EL2, pgtable_root);
+	size = sizeof_casemate_model(&amp;OPTS);
+	st = malloc(size);
+	err = initialise_casemate_model(&amp;OPTS, 0, 0, st, sm_size);
+	assert(err == 0);
+	return st;
 }</pre>
 </div>
 </div>
@@ -1092,6 +1102,29 @@ void initialise_casemate(u64 phys_memory_start, u64 phys_memory_size)
 <p>The options should be passed to <code>initialise_casemate_model</code>, which takes a snapshot.
 Options cannot currently be changed after initialisation.</p>
 </div>
+<div class="sect4">
+<h5 id="_multi_instance_loading">Multi-instance loading</h5>
+<div class="paragraph">
+<p>Casemate can be loaded multiple times and access the same underlying state.</p>
+</div>
+<div class="paragraph">
+<p>To do this, the state must be initialised once with <code>initialise_casemate_model</code>,
+which also initialises that instance;
+<strong>each instance</strong> must have a driver initialised with <code>initialise_ghost_driver</code>;
+then each non-initialised instance must be 'attached' to the initialised model state
+with <code>attach_casemate_model</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>void load_second(void)
+{
+	/* already initialised MODEL in another component */
+	initialise_ghost_driver(&amp;driver);
+	attach_casemate_model(MODEL);
+}</pre>
+</div>
+</div>
+</div>
 </div>
 <div class="sect3">
 <h4 id="casemate-model-driver">Ghost driver</h4>
@@ -1115,43 +1148,10 @@ void __abort_cb(const char *msg)
 	exit(1);
 }
 
-/* callbacks for printing to string buffers
- * since Casemate cannot use printf/malloc it is all driven by the driver */
-struct _string_buffer {
-	char *buf;
-	int n;
-};
-
-int __sprintf_cb(void* arg, const char *format, va_list ap)
+/* outputs a single byte to 'stdout' */
+void __putc_cb(char c)
 {
-	int ret;
-	if (arg != NULL) {
-		struct _string_buffer *buf = arg;
-		ret = vsnprintf(buf-&gt;buf, buf-&gt;n, format, ap);
-		if (ret &lt; 0)
-			return ret;
-		buf-&gt;buf += ret;
-		buf-&gt;n -= ret;
-		return 0;
-	} else {
-		ret = vprintf(format, ap);
-		if (ret &lt; 0)
-			return ret;
-		return 0;
-	}
-}
-
-void *__malloc_stringbuf_cb(char* arg, u64 n)
-{
-	struct _string_buffer *buf = malloc(sizeof(struct _string_buffer));
-	buf-&gt;buf = arg;
-	buf-&gt;n = n;
-	return buf;
-}
-
-void __free_stringbuf_cb(void *buf)
-{
-	free(buf);
+	printf("%c", c);
 }
 
 /* logs a transition record */
@@ -1165,9 +1165,7 @@ struct ghost_driver sm_driver = {
   .read_physmem = NULL,  /* casemate-check never reads real memory */
   .read_sysreg = __read_sysreg_cb,
   .abort = __abort_cb,
-  .print = __sprintf_cb,
-  .sprint_create_buffer = __malloc_stringbuf_cb,
-  .sprint_destroy_buffer = __free_stringbuf_cb,
+  .putc = __putc_cb,
   .trace = __trace_cb,
 };</pre>
 </div>
@@ -1338,6 +1336,7 @@ TRANSITION =
     MEM-WRITE
   | MEM-READ
   | MEM-INIT
+  | MEM-FREE
   | MEM-SET
   | BARRIER
   | TLBI
@@ -1402,6 +1401,23 @@ or an integer key into an externally defined map from tracepoint to source locat
 <div class="content">
 <pre>MEM-INIT =
     "mem-init",
+         "(", "address", u64, ")",
+         "(", "size", u64, ")";</pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_mem_free">mem-free</h4>
+<div class="paragraph">
+<p>Stop tracking memory</p>
+</div>
+<div class="paragraph">
+<p>Must not currently be a PTE, and accesses after freeing are invalid</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>MEM-FREE =
+    "mem-free",
          "(", "address", u64, ")",
          "(", "size", u64, ")";</pre>
 </div>
@@ -1529,7 +1545,7 @@ HINT =
 <div class="listingblock">
 <div class="content">
 <pre>LOCK =
-    ("lock" | "unlock"),
+    ("lock" | "trylock" | "unlock"),
          "(", "address", u64, ")"</pre>
 </div>
 </div>
@@ -1640,8 +1656,8 @@ HINT =
 </div>
 <div id="footer">
 <div id="footer-text">
-Version 2.0.0<br>
-Last updated 2025-02-07 10:18:26 UTC
+Version 2.2.3<br>
+Last updated 2025-11-21 19:03:27 UTC
 </div>
 </div>
 </body>
