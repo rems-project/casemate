@@ -9,4 +9,6 @@
 /* align to a power of 2 boundary */
 #define ALIGN_UP_TO(V, A) (V) + (((A)-1) & (1 + ((V) ^ -1)))
 
+#define BITS_SET(V, MASK) (((V) & (MASK)) == (MASK))
+
 #endif /* BITWISE_H */

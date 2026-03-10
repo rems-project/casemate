@@ -226,8 +226,10 @@ struct pgtable_traverse_context {
 };
 
 enum pgtable_traversal_flag {
-	READ_UNLOCKED_LOCATIONS,
-	NO_READ_UNLOCKED_LOCATIONS,
+	READ_UNLOCKED_LOCATIONS = BIT(0),
+	NO_READ_UNLOCKED_LOCATIONS = 0,
+	IGNORE_UNINITIALISED = BIT(1),
+	NO_IGNORE_UNINITIALISED = 0,
 };
 
 typedef void (*pgtable_traverse_cb)(struct pgtable_traverse_context *ctxt);
@@ -240,6 +242,8 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 
 void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_stage_t stage);
 void add_location_to_unclean_PTE(struct sm_location *loc);
+void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_stage_t stage,
+		     enum pgtable_traversal_flag flag, void *data);
 
 struct pgtable_walk_result {
 	u64 requested_pte;

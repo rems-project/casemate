@@ -25,6 +25,16 @@ static const u64 MAP_SIZES[] = {
 	[3] = KiB(4ULL),
 };
 
+#define L0_IA_L0 39
+#define L1_IA_L0 30
+
+#define Ln_IA_OFFS_WIDTH 9
+#define Ln_IA_LO(LVL) (12 + Ln_IA_OFFS_WIDTH * (3 - LVL))
+#define Ln_IA_HI(LVL) (Ln_IA_LO(LVL) + Ln_IA_OFFS_WIDTH - 1)
+#define Ln_IA_MASK(LVL) (BITMASK(Ln_IA_HI(LVL), Ln_IA_LO(LVL)))
+#define Ln_IA_IDX(LVL, VA) ((Ln_IA_MASK(LVL) & (VA)) >> Ln_IA_LO(LVL))
+#define Ln_IA_OFF(LVL, VA) (Ln_IA_IDX(LVL, VA) << 3)
+
 // G.b p2742 4KB translation granule has a case split on whether "the Effective value of TCR_ELx.DS or VTCR_EL2.DS is 1".
 // DS is for 52-bit output addressing with FEAT_LPA2, and is zero in the register values we see; I'll hard-code that for now.  Thus, G.b says:
 // - For a level 1 Block descriptor, bits[47:30] are bits[47:30] of the output address. This output address specifies a 1GB block of memory.
@@ -344,13 +354,16 @@ void traverse_pgtable_from(u64 root, u64 table_start, u64 partial_ia, u64 level,
 		loc = location(pte_phys);
 
 		if (! loc->initialised) {
+			if (BITS_SET(flag, IGNORE_UNINITIALISED))
+				return;
+
 			GHOST_WARN("saw uninitialised PTE at 0x%lx when walking root:0x%lx",
 				   pte_phys, root);
-			GHOST_MODEL_CATCH_FIRE("uninitialised PTE on pgtable walk");
+			GHOST_MODEL_CATCH_FIRE("Saw uninitialised PTE on pgtable traversal");
 		}
 
 		// If the location is owned by another thread, then don't keep going
-		if (flag == NO_READ_UNLOCKED_LOCATIONS && loc->thread_owner >= 0 &&
+		if (BITS_SET(flag, NO_READ_UNLOCKED_LOCATIONS) && loc->thread_owner >= 0 &&
 		    loc->thread_owner != cpu_id()) {
 			GHOST_LOG_CONTEXT_EXIT_INNER("loop");
 			break;
@@ -481,6 +494,58 @@ void traverse_all_unclean_PTE(pgtable_traverse_cb visitor_cb, void *data, entry_
 			continue;
 
 		uncleans->locations[i] = uncleans->locations[uncleans->len--];
+	}
+}
+
+void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_stage_t stage,
+		     enum pgtable_traversal_flag flag, void *data)
+{
+	u64 pte_phys;
+	u64 start_level, table;
+	struct sm_location *loc;
+	struct pgtable_traverse_context ctxt;
+
+	start_level = discover_start_level(stage);
+	ghost_assert(IS_PAGE_ALIGNED(root));
+	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
+	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
+
+	table = root;
+
+	for (int lvl = 0; lvl < 4; lvl++) {
+		if (start_level > lvl)
+			continue;
+
+		pte_phys = table + Ln_IA_OFF(lvl, ia);
+		loc = location(pte_phys);
+
+		if (! loc->initialised) {
+			if (BITS_SET(flag, IGNORE_UNINITIALISED))
+				return;
+
+			GHOST_WARN(
+				"Saw uninitialised PTE at 0x%lx when walking root:0x%lx to 0x%lx",
+				pte_phys, root, ia);
+			GHOST_MODEL_CATCH_FIRE("Saw uninitialised PTE on pgtable walk");
+		}
+
+		ctxt.root = root;
+		ctxt.stage = stage;
+		ctxt.loc = loc;
+		ctxt.data = data;
+		ctxt.level = lvl;
+		ctxt.descriptor = loc->val;
+		ctxt.exploded_descriptor = deconstruct_pte(ia, loc->val, lvl, stage);
+		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
+		visitor_cb(&ctxt);
+
+		switch (ctxt.exploded_descriptor.kind) {
+		case PTE_KIND_TABLE:
+			table = ctxt.exploded_descriptor.table_data.next_level_table_addr;
+			break;
+		default:
+			return;
+		}
 	}
 }
 
