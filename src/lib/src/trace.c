@@ -185,7 +185,7 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 		TRY_PUT(' ');
 		TRY_PUT_KV("size", sb_putxn(buf, step->memset_data.size, 64));
 		TRY_PUT(' ');
-		TRY_PUT_KV("value", sb_putxn(buf, step->memset_data.size, 8));
+		TRY_PUT_KV("value", sb_putxn(buf, step->memset_data.value, 8));
 		return 0;
 
 	default:
@@ -251,7 +251,7 @@ static int record_prefix(struct string_builder *buf, struct casemate_model_step 
 		break;
 
 	case TRANS_ABS_STEP:
-		prefix = abs_step_names[trans->hw_step.kind];
+		prefix = abs_step_names[trans->abs_step.kind];
 		break;
 
 	case TRANS_HINT:
