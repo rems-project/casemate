@@ -2036,61 +2036,70 @@ static void reset_error_context(void)
 
 #define IS_IN_ENUM_RANGE(VAL, FIRST, LAST) ((FIRST) <= (VAL) && (VAL) <= (LAST))
 
-static void validate_hw_step(struct ghost_hw_step *step)
+#define ERROR(ERR, MSG) \
+	({ \
+		GHOST_WARN("invalid transition: " MSG); \
+		-(ERR); \
+	})
+
+static int validate_hw_step(struct ghost_hw_step *step)
 {
 	if (! IS_IN_ENUM_RANGE(step->kind, HW_MEM_WRITE, HW_MSR))
-		GHOST_MODEL_CATCH_FIRE("invalid transition: bad hardware step");
+		return ERROR(EINVAL, "bad hardware step");
 
 	switch (step->kind) {
 	case HW_MEM_WRITE:
 		if (! IS_IN_ENUM_RANGE(step->write_data.mo, WMO_plain, WMO_release))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad memory order");
+			return ERROR(EINVAL, "bad memory order");
 		break;
 	case HW_BARRIER:
 		if (! IS_IN_ENUM_RANGE(step->barrier_data.kind, BARRIER_DSB, BARRIER_ISB))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad barrier kind");
+			return ERROR(EINVAL, "bad barrier kind");
 		if (step->barrier_data.kind == BARRIER_DSB &&
 		    ! IS_IN_ENUM_RANGE(step->barrier_data.dxb_data, DxB_ish, DxB_nsh))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad DSB kind");
+			return ERROR(EINVAL, "bad DSB kind");
 		break;
 	case HW_TLBI:
 		if (! IS_IN_ENUM_RANGE(step->tlbi_data.tlbi_kind, TLBI_vmalls12e1,
 				       TLBI_ipas2e1is))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad TLBI kind");
+			return ERROR(EINVAL, "bad TLBI kind");
 		break;
 	case HW_MSR:
 		if (! IS_IN_ENUM_RANGE(step->msr_data.sysreg, SYSREG_VTTBR, MAX_SYSREG - 1))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad sysreg");
+			return ERROR(EINVAL, "bad sysreg");
 		break;
 	default:
 		break;
 	}
+
+	return 0;
 }
 
-static void validate_transition(struct casemate_model_step *trans)
+static int validate_transition(struct casemate_model_step *trans)
 {
 	if (trans->tid >= MAX_CPU)
-		GHOST_MODEL_CATCH_FIRE("invalid transition: tid out of range");
+		return ERROR(EINVAL, "tid out of range");
 
 	if (! IS_IN_ENUM_RANGE(trans->kind, TRANS_HW_STEP, TRANS_HINT))
-		GHOST_MODEL_CATCH_FIRE("invalid transition: bad step kind");
+		return ERROR(EINVAL, "bad step kind");
 
 	switch (trans->kind) {
 	case TRANS_HW_STEP:
-		validate_hw_step(&trans->hw_step);
-		break;
+		return validate_hw_step(&trans->hw_step);
 	case TRANS_ABS_STEP:
 		if (! IS_IN_ENUM_RANGE(trans->abs_step.kind, GHOST_ABS_LOCK, GHOST_ABS_MEMSET))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad abstract step");
+			return ERROR(EINVAL, "bad abstract step");
 		break;
 	case TRANS_HINT:
 		if (! IS_IN_ENUM_RANGE(trans->hint_step.kind, GHOST_HINT_SET_ROOT_LOCK,
 				       GHOST_HINT_SET_PTE_THREAD_OWNER))
-			GHOST_MODEL_CATCH_FIRE("invalid transition: bad hint step");
+			return ERROR(EINVAL, "bad hint step");
 		break;
 	default:
 		break;
 	}
+
+	return 0;
 }
 
 void ensure_traced_current_transition(bool force)
@@ -2138,7 +2147,10 @@ int step(struct casemate_model_step trans)
 	STATE()->touched_watchpoint = false;
 	STATE()->traced_current_trans = false;
 	reset_error_context();
-	validate_transition(&STATE()->current_transition);
+
+	err = validate_transition(&STATE()->current_transition);
+	if (err)
+		goto out;
 
 	if (! STATE()->is_initialised)
 		goto out;
