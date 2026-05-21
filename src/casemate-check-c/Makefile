@@ -12,6 +12,7 @@ build: $(check-obj) $(build-objs) $(src)/compile_commands.json $(root)/casemate-
 
 CFLAGS += -I$(src)/include
 CFLAGS += -I$(lib_includes)
+CFLAGS += -DCONFIG_PLATFORM_$(CONFIG_TARGET_PLATFORM)
 
 $(check-obj): $(casemate_o) $(build-objs)
 	$(call run_cc_as_ld,$^,$@)
