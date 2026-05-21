@@ -33,7 +33,7 @@ struct parser {
 	do { \
 		fprintf(stderr, "! parse error at line%u col%u: " FMT "\n", (P)->line, \
 			(P)->column, ##__VA_ARGS__); \
-		assert(false); \
+		exit(1); \
 	} while (0)
 
 static void *parser_malloc(struct parser *p, size_t len)
@@ -42,6 +42,8 @@ static void *parser_malloc(struct parser *p, size_t len)
 		parse_error(p, "bad parser_malloc, over-allocation");
 
 	void *buf = malloc(len);
+	if (! buf)
+		parse_error(p, "out of memory");
 	p->allocations[p->alloc_len++] = buf;
 	return buf;
 }
@@ -227,10 +229,9 @@ const char *next_word(struct parser *p)
 		if (is_whitespace(c) || is_bracket(c))
 			break;
 
-		buf[i++] = next(p);
-
-		if (i >= buf_size)
+		if (i >= buf_size - 1)
 			parse_error(p, "word of unexpectedly long length");
+		buf[i++] = next(p);
 	} while (1);
 	buf[i] = '\0';
 	TRACE("consumed word '%s'", buf);
@@ -249,10 +250,9 @@ const char *next_str(struct parser *p)
 	acceptc(p, '"');
 	buf = parser_malloc(p, buf_size);
 	while (lookahead(p) != '"') {
-		buf[i++] = next(p);
-
-		if (i >= buf_size)
+		if (i >= buf_size - 1)
 			parse_error(p, "str of unexpectedly long length");
+		buf[i++] = next(p);
 	}
 	acceptc(p, '"');
 	buf[i] = '\0';
@@ -365,8 +365,13 @@ bool parse_kv_or_v_head(struct parser *p, const char *k)
 
 void parse_common_fields(struct parser *p)
 {
+	u64 tid;
+
 	p->out->seq_id = PARSE_KV_DECIMAL(p, "id");
-	p->out->tid = PARSE_KV_DECIMAL(p, "tid");
+	tid = PARSE_KV_DECIMAL(p, "tid");
+	if (tid >= MAX_CPU)
+		parse_error(p, "tid out of range");
+	p->out->tid = tid;
 }
 
 /* clang-format off */
@@ -598,6 +603,8 @@ void parse_trans(struct parser *p)
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_UNLOCK;
 		parse_lock_tail(p);
+	} else {
+		parse_error(p, "unexpected transition kind '%s'", prefix);
 	}
 	parse_common_fields_tail(p);
 	accept_close_bracket(p);
@@ -615,6 +622,10 @@ static void parser_reinit(struct parser *p)
 void *make_parser(FILE *f, struct casemate_model_step *step)
 {
 	struct parser *p = malloc(sizeof(struct parser));
+	if (! p) {
+		fprintf(stderr, "! out of memory\n");
+		exit(1);
+	}
 	p->stream = f;
 	p->at_EOF = false;
 	p->has_lookahead = false;
