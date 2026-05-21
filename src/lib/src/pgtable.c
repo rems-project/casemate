@@ -57,7 +57,18 @@ static u64 read_start_level(u64 tcr)
 	// min = 21 (only level 3 table)
 	// each 9 bits in-between increases start by 1 level
 	u64 ia_bits = 64 - t0sz;
-	return (48 - ia_bits) / 9;
+	if (ia_bits < 21 || ia_bits > 48) {
+		GHOST_MODEL_CATCH_FIRE("unsupported input address size");
+		return 0;
+	}
+
+	u64 start_level = (48 - ia_bits) / 9;
+	if (start_level >= 4) {
+		GHOST_MODEL_CATCH_FIRE("unsupported translation table start level");
+		return 0;
+	}
+
+	return start_level;
 }
 
 static u64 discover_start_level(entry_stage_t stage)
@@ -111,7 +122,11 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	// compute start level
 	start_level = discover_start_level(ENTRY_STAGE2);
 	t0sz = (read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
-	iasize = 1 << (64 - t0sz);
+	if (t0sz < 16 || t0sz > 43) {
+		GHOST_MODEL_CATCH_FIRE("unsupported input address size");
+		return 1;
+	}
+	iasize = 1ULL << (64 - t0sz);
 
 	/* RHRSBS
 	 * For a stage 2 translation, if the translation table in the initial lookup level
