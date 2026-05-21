@@ -25,6 +25,9 @@ bool DEBUG = false;
 
 const char *trace_file_name = NULL;
 
+u64 passed_watchpoints[CASEMATE_MAX_WATCHPOINTS];
+u64 passed_watchpoints_len = 0;
+
 static void print_help_and_quit(void)
 {
 	printf( //
@@ -151,9 +154,15 @@ void parse_opts(int argc, char **argv)
 					optarg);
 				exit(1);
 			}
-			assert(optarg && optarg[0] == '0' && optarg[1] == 'x');
-			assert(! hextoi(optarg + 2, &val));
-			casemate_watch_location(val);
+			if (hextoi(optarg + 2, &val)) {
+				fprintf(stderr, "-W expects hex argument, not '%s'\n", optarg);
+				exit(1);
+			}
+			if (passed_watchpoints_len >= CASEMATE_MAX_WATCHPOINTS) {
+				fprintf(stderr, "too many watchpoints\n");
+				exit(1);
+			}
+			passed_watchpoints[passed_watchpoints_len++] = val;
 			SHOULD_TRACK_ONLY_WATCHPOINTS = true;
 			break;
 		}

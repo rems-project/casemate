@@ -22,6 +22,9 @@ extern bool DEBUG;
 
 extern const char *trace_file_name;
 
+extern u64 passed_watchpoints[CASEMATE_MAX_WATCHPOINTS];
+extern u64 passed_watchpoints_len;
+
 #define TRACE(FMT, ...) \
 	if (DEBUG) { \
 		fprintf(stderr, "[TRACE] %s:%u: " FMT "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
