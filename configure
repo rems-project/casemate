@@ -32,6 +32,8 @@ usage() {
   echo " --cross-prefix=PREFIX   compilation tool prefix";
   echo " --cc=CC                 compiler";
   echo " --ld=LD                 linker";
+  echo " --objcopy=OBJCOPY       objcopy tool";
+  echo " --objdump=OBJDUMP       objdump tool";
   echo " --arch=ARCH             machine architecture (aarch64 or x86)";
   echo " --[no-]clangd           force enable/disable clangd targets";
   echo " --clang-format=CC       formatter";
@@ -72,6 +74,12 @@ while [[ "$1" = -* ]]; do
     --ld)
         ld="$arg"
         ;;
+    --objcopy)
+        objcopy="$arg"
+        ;;
+    --objdump)
+        objdump="$arg"
+        ;;
     --clangd)
         clangd=1
         ;;
@@ -102,6 +110,22 @@ ld=${tool_prefix}${ld}
 objcopy=${tool_prefix}${objcopy}
 objdump=${tool_prefix}${objdump}
 
+check_for_tool () {
+  if which $1 >/dev/null; then
+    echo $1
+    return 0
+  else
+    return 1
+  fi
+}
+
+default_tool () {
+  check_for_tool $1 || check_for_tool llvm-$1 || echo $1
+}
+
+objcopy=$(default_tool ${objcopy})
+objdump=$(default_tool ${objdump})
+
 # check for existence of tools
 check_tool () {
   if ! which $2 >/dev/null; then
@@ -130,10 +154,16 @@ else
   exit 1
 fi
 
+host_cflags=
+
 host_libs=
 
 if [ "$host" = "FreeBSD" ]; then
 	host_libs+=stdthreads;
+fi
+
+if [ "$host" = "Darwin" ]; then
+	host_cflags+=" -std=c11";
 fi
 
 if [ ${warned} -eq 1 ]; then
@@ -165,7 +195,7 @@ ARCH = ${arch_name}
 CLANG-FORMAT = ${clang_format}
 
 LIBS = ${host_libs}
-CFLAGS = -Wall -MD -g -gdwarf-4 -D__${arch_name}__
+CFLAGS = -Wall -MD -g -gdwarf-4 -D__${arch_name}__ ${host_cflags}
 LDFLAGS =
 
 CLANGD = ${clangd}
