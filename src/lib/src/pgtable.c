@@ -112,7 +112,7 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 
 	/* stage1 is never concatenated */
 	if (stage == ENTRY_STAGE1)
-		return 1;
+		return 0;
 
 	/* as per J.a D8-5832 */
 
@@ -124,7 +124,7 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	t0sz = (read_sysreg(SYSREG_VTCR_EL2) & 0b111111);
 	if (t0sz < 16 || t0sz > 43) {
 		GHOST_MODEL_CATCH_FIRE("unsupported input address size");
-		return 1;
+		unreachable();
 	}
 	iasize = 1ULL << (64 - t0sz);
 
@@ -137,12 +137,17 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 	 *   translation table entries at the previously initial lookup level are
 	 *   concatenated at that next lookup level.
 	 */
-	nr_start_entries = (512 * MAP_SIZES[start_level] - iasize) / MAP_SIZES[start_level];
+	nr_start_entries = iasize / MAP_SIZES[start_level];
 
-	if (nr_start_entries <= 16)
+	if (nr_start_entries == 0)
+		/* iasize fits in first first-level table entry */
+		return 1;
+	else if (nr_start_entries <= 16)
+		/* n concatenated tables */
 		return nr_start_entries;
 	else
-		return 1;
+		/* if more than 16 first-level tables used, no concatenation at all */
+		return 0;
 }
 
 bool is_desc_valid(u64 descriptor)
@@ -434,7 +439,7 @@ void traverse_pgtable(u64 root, entry_stage_t stage, pgtable_traverse_cb visitor
 	// assume uses 4k granule, without multiple concatenated pagetables
 	//ghost_assert(start_level == 0);
 	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
-	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
+	ghost_assert(discover_nr_concatenated_pgtables(stage) == 0);
 
 	traverse_pgtable_from(root, root, 0, start_level, stage, visitor_cb, flag, data);
 	GHOST_LOG_CONTEXT_EXIT();
@@ -522,7 +527,7 @@ void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_sta
 	start_level = discover_start_level(stage);
 	ghost_assert(IS_PAGE_ALIGNED(root));
 	ghost_assert(discover_page_size(stage) == PAGE_SIZE);
-	ghost_assert(discover_nr_concatenated_pgtables(stage) == 1);
+	ghost_assert(discover_nr_concatenated_pgtables(stage) == 0);
 
 	table = root;
 
