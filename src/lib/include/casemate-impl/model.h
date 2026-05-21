@@ -170,7 +170,7 @@ void ghost_diff_and_print_sm_state(struct casemate_model_state *s1,
 /**
  * step() - Internal step.
  */
-void step(struct casemate_model_step trans);
+int step(struct casemate_model_step trans);
 
 /**
  * dump_state() - Print model state to `arg` using driver.

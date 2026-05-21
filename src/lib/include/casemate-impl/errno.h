@@ -4,6 +4,7 @@
 #ifndef CONFIG_HAS_ERRNO
 
 #define ENOMEM 12
+#define EFAULT 14
 #define EINVAL 22
 
 #endif /* CONFIG_HAS_ERRNO */
