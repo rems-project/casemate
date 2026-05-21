@@ -4,7 +4,7 @@
 #include <casemate-impl/bitwise.h>
 
 #define PAGE_SHIFT 12
-#define PAGE_SIZE (1 << PAGE_SHIFT)
+#define PAGE_SIZE (U64_C(1) << PAGE_SHIFT)
 
 #define OFFSET_IN_PAGE(x) (((x)&BITMASK(PAGE_SHIFT - 1, 0)))
 #define PAGE_ALIGN_DOWN(x) ((x) & ~BITMASK(PAGE_SHIFT - 1, 0))

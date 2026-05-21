@@ -1,9 +1,11 @@
 #ifndef BITWISE_H
 #define BITWISE_H
 
+#include <casemate-impl/types.h>
+
 #ifndef CONFIG_HAS_BITWISE
-#define BIT(I) (1UL << (I))
-#define BITMASK(HI, LO) (((1UL << ((HI) - (LO) + 1)) - 1UL) << (LO))
+#define BIT(I) (U64_C(1) << (I))
+#define BITMASK(HI, LO) (((U64_C(1) << ((HI) - (LO) + 1)) - U64_C(1)) << (LO))
 #endif /* CONFIG_HAS_BITWISE */
 
 /* align to a power of 2 boundary */

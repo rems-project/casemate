@@ -9,7 +9,7 @@
 #include <casemate-impl/transitions.h>
 #include <casemate-impl/state.h>
 
-#define BLOB_SIZE ((1UL) << BLOB_SHIFT)
+#define BLOB_SIZE (U64_C(1) << BLOB_SHIFT)
 #define BLOB_OFFSET_MASK BITMASK(BLOB_SHIFT - 1, 0)
 #define ALIGN_DOWN_TO_BLOB(x) ((x) & ~BLOB_OFFSET_MASK)
 #define OFFSET_IN_BLOB(x) ((x)&BLOB_OFFSET_MASK)
