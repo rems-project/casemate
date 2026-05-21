@@ -271,7 +271,8 @@ void common_init(int argc, char **argv)
 		exit(1);
 	}
 	initialise_ghost_driver(&sm_driver);
-	mtx_init(&m, mtx_plain);
+	err = mtx_init(&m, mtx_plain);
+	assert(err == thrd_success);
 	common_init_thread();
 }
 
