@@ -188,7 +188,7 @@ void parse_opts(int argc, char **argv)
 			break;
 
 		default:
-			assert(false);
+			exit(1);
 		}
 	}
 
