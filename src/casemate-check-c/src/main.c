@@ -27,7 +27,17 @@ int main(int argc, char **argv)
 	void *parser = make_parser(f, &step);
 	while (! parser_at_EOF(parser) && ! parser_at_exclamation(parser)) {
 		parse_record(parser);
-		casemate_model_step(step);
+		ret = casemate_model_step(step);
+		if (ret) {
+			if (ret == -EINVAL)
+				fprintf(stderr,
+					"casemate-check: failed to step model: invalid transition\n");
+			else
+				fprintf(stderr,
+					"casemate-check: failed to step model: error %d\n", ret);
+			ret = 1;
+			goto out;
+		}
 	}
 
 	if (parser_at_exclamation(parser)) {
@@ -42,6 +52,7 @@ int main(int argc, char **argv)
 		ret = 0;
 	}
 
+out:
 	free_parser(parser);
 
 out_no_parser:
