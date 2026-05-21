@@ -626,6 +626,13 @@ void *make_parser(FILE *f, struct casemate_model_step *step)
 	return (void *)p;
 }
 
+void free_parser(void *arg)
+{
+	struct parser *p = (struct parser *)arg;
+	parser_free(p);
+	free(p);
+}
+
 bool parser_at_EOF(void *arg)
 {
 	struct parser *p = (struct parser *)arg;
