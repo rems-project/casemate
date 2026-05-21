@@ -145,24 +145,23 @@ extern uint64_t casemate_cpu_id(void);
 
 #define casemate_model_step_write(...) \
 	__casemate_model_step_write(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo,
-				 uint64_t phys, uint64_t val);
+int __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo,
+				uint64_t phys, uint64_t val);
 
 #define casemate_model_step_read(...) __casemate_model_step_read(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys,
-				uint64_t val);
+int __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys, uint64_t val);
 
 #define casemate_model_step_dsb(...) __casemate_model_step_dsb(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind);
+int __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind);
 
 #define casemate_model_step_isb() __casemate_model_step_isb(THREAD_ID, SRC_LOC)
-void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc);
+int __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc);
 
 #define casemate_model_step_tlbi_reg(...) \
 	__casemate_model_step_tlbi_reg(THREAD_ID, SRC_LOC, __VA_ARGS__)
 
-void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind,
-				    uint64_t value);
+int __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind,
+				   uint64_t value);
 
 #define casemate_model_step_tlbi(...) __casemate_model_step_tlbi(THREAD_ID, SRC_LOC, __VA_ARGS__)
 #define casemate_model_step_tlbi_va(TLBI_KIND, ADDR, TTL, ASID) \
@@ -171,36 +170,36 @@ void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum t
 #define casemate_model_step_tlbi_ipa(TLBI_KIND, ADDR, TTL) \
 	casemate_model_step_tlbi_reg((TLBI_KIND), (ADDR) | ((TTL) << 44ULL))
 
-void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind);
+int __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind);
 
 #define casemate_model_step_msr(...) __casemate_model_step_msr(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc,
-			       enum ghost_sysreg_kind sysreg, uint64_t val);
+int __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg,
+			      uint64_t val);
 
 #define casemate_model_step_hint(...) __casemate_model_step_hint(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind,
-				uint64_t location, uint64_t value);
+int __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind,
+			       uint64_t location, uint64_t value);
 
 #define casemate_model_step_init(...) __casemate_model_step_init(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				uint64_t size);
+int __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
+			       uint64_t size);
 
 #define casemate_model_step_free(...) __casemate_model_step_free(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				uint64_t size);
+int __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
+			       uint64_t size);
 
 #define casemate_model_step_memset(...) \
 	__casemate_model_step_memset(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				  uint64_t value, uint64_t size);
+int __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				 uint64_t value, uint64_t size);
 
 #define casemate_model_step_lock(...) __casemate_model_step_lock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address);
+int __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address);
 
 #define casemate_model_step_trylock(...) \
 	__casemate_model_step_trylock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address);
+int __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address);
 
 #define casemate_model_step_unlock(...) \
 	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
-void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address);
+int __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address);

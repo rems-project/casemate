@@ -198,7 +198,7 @@ struct casemate_model_step {
 /**
  * casemate_model_step() - Take a step in the ghost model.
  */
-void casemate_model_step(struct casemate_model_step trans);
+int casemate_model_step(struct casemate_model_step trans);
 
 /**
  * is_read_step() - Returns TRUE if the given transition is a hardware memory read step

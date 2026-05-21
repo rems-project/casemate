@@ -2122,8 +2122,9 @@ do_trace:
 ///////////////////////////
 /// Generic Step
 
-void step(struct casemate_model_step trans)
+int step(struct casemate_model_step trans)
 {
+	int err = 0;
 	GHOST_LOG_CONTEXT_ENTER();
 	GHOST_LOG(trans, trans);
 
@@ -2179,29 +2180,33 @@ void step(struct casemate_model_step trans)
 out:
 	ensure_traced_current_transition(false);
 	GHOST_LOG_CONTEXT_EXIT();
+	return err;
 }
 
-void casemate_model_step(struct casemate_model_step trans)
+int casemate_model_step(struct casemate_model_step trans)
 {
+	int err;
 #ifdef CONFIG_MASK_INTERRUPTS
 	u64 irq_mask;
 #endif
 
 	if (! LOAD_RLX(STATE()))
-		return;
+		return -EFAULT;
 
 	if (! LOAD_RLX(STATE()->is_initialised))
-		return;
+		return -EFAULT;
 
 #ifdef CONFIG_MASK_INTERRUPTS
 	irq_mask = mask_interrupts();
 #endif
 
 	lock_sm();
-	step(trans);
+	err = step(trans);
 	unlock_sm();
 
 #ifdef CONFIG_MASK_INTERRUPTS
 	restore_interrupts(irq_mask);
 #endif
+
+	return err;
 }

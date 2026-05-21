@@ -2,10 +2,10 @@
 
 #include <casemate-impl.h>
 
-void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo,
-				 uint64_t phys, uint64_t val)
+int __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memory_order_t mo,
+				uint64_t phys, uint64_t val)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -22,9 +22,9 @@ void __casemate_model_step_write(uint64_t tid, struct src_loc src_loc, enum memo
 	});
 }
 
-void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys, uint64_t val)
+int __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t phys, uint64_t val)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -40,9 +40,9 @@ void __casemate_model_step_read(uint64_t tid, struct src_loc src_loc, uint64_t p
 	});
 }
 
-void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind)
+int __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_kind kind)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -58,9 +58,9 @@ void __casemate_model_step_dsb(uint64_t tid, struct src_loc src_loc, enum dxb_ki
 	});
 }
 
-void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc)
+int __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -75,10 +75,10 @@ void __casemate_model_step_isb(uint64_t tid, struct src_loc src_loc)
 	});
 }
 
-void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind,
-				    uint64_t value)
+int __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind,
+				   uint64_t value)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -94,9 +94,9 @@ void __casemate_model_step_tlbi_reg(uint64_t tid, struct src_loc src_loc, enum t
 	});
 }
 
-void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind)
+int __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_kind kind)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -111,10 +111,10 @@ void __casemate_model_step_tlbi(uint64_t tid, struct src_loc src_loc, enum tlbi_
 	});
 }
 
-void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc,
-			       enum ghost_sysreg_kind sysreg, uint64_t val)
+int __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc, enum ghost_sysreg_kind sysreg,
+			      uint64_t val)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HW_STEP,
@@ -130,10 +130,10 @@ void __casemate_model_step_msr(uint64_t tid, struct src_loc src_loc,
 	});
 }
 
-void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind,
-				uint64_t location, uint64_t value)
+int __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost_hint_kind kind,
+			       uint64_t location, uint64_t value)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_HINT,
@@ -146,10 +146,10 @@ void __casemate_model_step_hint(uint64_t tid, struct src_loc src_loc, enum ghost
 	});
 }
 
-void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				uint64_t size)
+int __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t location,
+			       uint64_t size)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
@@ -165,10 +165,10 @@ void __casemate_model_step_init(uint64_t tid, struct src_loc src_loc, uint64_t l
 	});
 }
 
-void __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				uint64_t size)
+int __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t location,
+			       uint64_t size)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
@@ -184,10 +184,10 @@ void __casemate_model_step_free(uint64_t tid, struct src_loc src_loc, uint64_t l
 	});
 }
 
-void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
-				  uint64_t value, uint64_t size)
+int __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t location,
+				 uint64_t value, uint64_t size)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
@@ -204,9 +204,9 @@ void __casemate_model_step_memset(uint64_t tid, struct src_loc src_loc, uint64_t
 	});
 }
 
-void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address)
+int __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
@@ -221,9 +221,9 @@ void __casemate_model_step_lock(uint64_t tid, struct src_loc src_loc, uint64_t a
 	});
 }
 
-void __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address)
+int __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,
@@ -238,9 +238,9 @@ void __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_
 	});
 }
 
-void __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address)
+int __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address)
 {
-	casemate_model_step((struct casemate_model_step){
+	return casemate_model_step((struct casemate_model_step){
 		.tid = tid,
 		.src_loc = src_loc,
 		.kind = TRANS_ABS_STEP,

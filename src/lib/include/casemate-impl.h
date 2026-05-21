@@ -11,6 +11,7 @@
 #include <casemate-impl/types.h>
 #include <casemate-impl/string.h>
 #include <casemate-impl/ll.h>
+#include <casemate-impl/errno.h>
 
 #include <casemate-impl/bitwise.h>
 #include <casemate-impl/asserts.h>
