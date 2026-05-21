@@ -17,6 +17,10 @@ typedef uint8_t u8;
 typedef uint64_t phys_addr_t;
 #endif /* CONFIG_HAS_STDINT */
 
+#define U64_C(N) UINT64_C(N)
+#define U32_C(N) UINT32_C(N)
+#define U8_C(N) UINT8_C(N)
+
 #ifndef NULL
 #define NULL ((void *)0)
 #endif

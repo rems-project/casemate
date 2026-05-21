@@ -9,9 +9,9 @@
 #define PTE_BITS_TABLE_POINTER BITMASK(47, 12)
 #define PTE_BIT_OA_MSB 47
 
-#define KiB_SHIFT 10ULL
-#define MiB_SHIFT 20ULL
-#define GiB_SHIFT 30ULL
+#define KiB_SHIFT U64_C(10)
+#define MiB_SHIFT U64_C(20)
+#define GiB_SHIFT U64_C(30)
 
 #define KiB(n) ((n) << KiB_SHIFT)
 #define MiB(n) ((n) << MiB_SHIFT)
@@ -19,10 +19,10 @@
 
 // how much memory a map at level [N] maps
 static const u64 MAP_SIZES[] = {
-	[0] = GiB(512ULL),
-	[1] = GiB(1ULL),
-	[2] = MiB(2ULL),
-	[3] = KiB(4ULL),
+	[0] = GiB(U64_C(512)),
+	[1] = GiB(U64_C(1)),
+	[2] = MiB(U64_C(2)),
+	[3] = KiB(U64_C(4)),
 };
 
 #define L0_IA_L0 39
@@ -126,7 +126,7 @@ static u64 discover_nr_concatenated_pgtables(entry_stage_t stage)
 		GHOST_MODEL_CATCH_FIRE("unsupported input address size");
 		unreachable();
 	}
-	iasize = 1ULL << (64 - t0sz);
+	iasize = U64_C(1) << (64 - t0sz);
 
 	/* RHRSBS
 	 * For a stage 2 translation, if the translation table in the initial lookup level
