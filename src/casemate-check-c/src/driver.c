@@ -116,5 +116,11 @@ void *initialise_casemate(void)
 		assert(false);
 
 	initialise_ghost_driver(&sm_driver);
+
+	/* now we've initialised:
+	 * start watching the locations passed on the CLI */
+	for (u64 i = 0; i < passed_watchpoints_len; i++)
+		if (casemate_watch_location(passed_watchpoints[i]))
+			assert(false);
 	return st;
 }
