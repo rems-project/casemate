@@ -308,6 +308,14 @@ struct enum_map {
 	struct enum_map_entry entries[];
 };
 
+#define DEFINE_ENUM_MAP(VAR, NAME, ...) \
+	struct enum_map VAR = { \
+		.count = sizeof((struct enum_map_entry[]){ __VA_ARGS__ }) / \
+			 sizeof(struct enum_map_entry), \
+		.name = NAME, \
+		.entries = { __VA_ARGS__ }, \
+	}
+
 int next_enum(struct parser *p, struct enum_map *map)
 {
 	const char *word = next_word(p);
@@ -361,14 +369,11 @@ void parse_common_fields(struct parser *p)
 	p->out->tid = PARSE_KV_DECIMAL(p, "tid");
 }
 
-struct enum_map memory_orders_map = {
-	.count = 2,
-	.name = "memory_order",
-	.entries = {
-		{"plain", WMO_plain},
-		{"release", WMO_release},
-	},
-};
+/* clang-format off */
+DEFINE_ENUM_MAP(memory_orders_map, "memory_order",
+	{ "plain", WMO_plain },
+	{ "release", WMO_release });
+/* clang-format on */
 
 void parse_mem_write_tail(struct parser *p)
 {
@@ -396,28 +401,20 @@ void parse_mem_set_tail(struct parser *p)
 	p->out->abs_step.memset_data.value = PARSE_KV_HEX(p, "value");
 }
 
-struct enum_map barrier_map = {
-	.count = 2,
-	.name = "barrier_kind",
-	.entries = {
-		{"dsb", BARRIER_DSB},
-		{"isb", BARRIER_ISB},
-	},
-};
+/* clang-format off */
+DEFINE_ENUM_MAP(barrier_map, "barrier_kind",
+	{ "dsb", BARRIER_DSB },
+	{ "isb", BARRIER_ISB });
 
 #define DXB_KIND(K) \
 	{ \
 #K, DxB_##K \
 	}
-struct enum_map barrier_dxb_map = {
-	.count = 3,
-	.name = "barrier_dxb_kind",
-	.entries = {
-		DXB_KIND(nsh),
-		DXB_KIND(ish),
-		DXB_KIND(ishst),
-	},
-};
+DEFINE_ENUM_MAP(barrier_dxb_map, "barrier_dxb_kind",
+	DXB_KIND(nsh),
+	DXB_KIND(ish),
+	DXB_KIND(ishst));
+/* clang-format on */
 
 void parse_barrier_tail(struct parser *p)
 {
@@ -432,24 +429,21 @@ void parse_barrier_tail(struct parser *p)
 	{ \
 #k, TLBI_##k \
 	}
-struct enum_map tlbi_map = {
-	.count = 8,
-	.name = "tlbi_kind",
-	.entries = {
-		TLBI_ENTRY(vmalls12e1),
-		TLBI_ENTRY(vmalls12e1is),
-		TLBI_ENTRY(vmalle1is),
-		TLBI_ENTRY(vmalle1),
-		TLBI_ENTRY(alle1),
-		TLBI_ENTRY(alle1is),
-		TLBI_ENTRY(alle2),
-		TLBI_ENTRY(alle2is),
-		// TLBI_ENTRY(vae2),
-		TLBI_ENTRY(vale2is),
-		TLBI_ENTRY(vae2is),
-		TLBI_ENTRY(ipas2e1is),
-	},
-};
+/* clang-format off */
+DEFINE_ENUM_MAP(tlbi_map, "tlbi_kind",
+	TLBI_ENTRY(vmalls12e1),
+	TLBI_ENTRY(vmalls12e1is),
+	TLBI_ENTRY(vmalle1is),
+	TLBI_ENTRY(vmalle1),
+	TLBI_ENTRY(alle1),
+	TLBI_ENTRY(alle1is),
+	TLBI_ENTRY(alle2),
+	TLBI_ENTRY(alle2is),
+	/* TLBI_ENTRY(vae2), */
+	TLBI_ENTRY(vale2is),
+	TLBI_ENTRY(vae2is),
+	TLBI_ENTRY(ipas2e1is));
+/* clang-format on */
 
 void parse_tlbi_tail(struct parser *p)
 {
@@ -476,19 +470,16 @@ void parse_tlbi_tail(struct parser *p)
 	}
 }
 
-struct enum_map sysreg_map = {
-	.count = 7,
-	.name = "sysreg",
-	.entries = {
-		{"vttbr_el2", SYSREG_VTTBR},
-		{"ttbr0_el2", SYSREG_TTBR_EL2},
-		{"vtcr_el2", SYSREG_VTCR_EL2},
-		{"hcr_el2", SYSREG_HCR_EL2},
-		{"tcr_el2", SYSREG_TCR_EL2},
-		{"sctlr_el2", SYSREG_SCTLR_EL2},
-		{"mair_el2", SYSREG_MAIR_EL2},
-	},
-};
+/* clang-format off */
+DEFINE_ENUM_MAP(sysreg_map, "sysreg",
+	{ "vttbr_el2", SYSREG_VTTBR },
+	{ "ttbr0_el2", SYSREG_TTBR_EL2 },
+	{ "vtcr_el2", SYSREG_VTCR_EL2 },
+	{ "hcr_el2", SYSREG_HCR_EL2 },
+	{ "tcr_el2", SYSREG_TCR_EL2 },
+	{ "sctlr_el2", SYSREG_SCTLR_EL2 },
+	{ "mair_el2", SYSREG_MAIR_EL2 });
+/* clang-format on */
 
 void parse_sysreg_write_tail(struct parser *p)
 {
@@ -496,16 +487,13 @@ void parse_sysreg_write_tail(struct parser *p)
 	p->out->hw_step.msr_data.val = PARSE_KV_HEX(p, "value");
 }
 
-struct enum_map hint_map = {
-	.count = 4,
-	.name = "hint",
-	.entries = {
-		{"set_root_lock", GHOST_HINT_SET_ROOT_LOCK},
-		{"set_owner_root", GHOST_HINT_SET_OWNER_ROOT},
-		{"release_table", GHOST_HINT_RELEASE_TABLE},
-		{"set_pte_thread_owner", GHOST_HINT_SET_PTE_THREAD_OWNER},
-	},
-};
+/* clang-format off */
+DEFINE_ENUM_MAP(hint_map, "hint",
+	{ "set_root_lock", GHOST_HINT_SET_ROOT_LOCK },
+	{ "set_owner_root", GHOST_HINT_SET_OWNER_ROOT },
+	{ "release_table", GHOST_HINT_RELEASE_TABLE },
+	{ "set_pte_thread_owner", GHOST_HINT_SET_PTE_THREAD_OWNER });
+/* clang-format on */
 
 void parse_hint_tail(struct parser *p)
 {
