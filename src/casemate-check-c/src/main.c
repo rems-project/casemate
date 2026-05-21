@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 		ret = 0;
 	}
 
-	free(parser);
+	free_parser(parser);
 
 out_no_parser:
 	free(st);
