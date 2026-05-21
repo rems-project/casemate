@@ -1,9 +1,9 @@
 #include <casemate-impl.h>
 
 #ifndef CONFIG_HAS_STRLEN
-u64 strlen(const char *s)
+unsigned long strlen(const char *s)
 {
-	u64 i = 0;
+	unsigned long i = 0;
 
 	while (*s != '\0') {
 		s++;
@@ -39,9 +39,9 @@ void *memcpy(void *dest, const void *src, u64 num)
 #endif /* CONFIG_HAS_MEMCPY */
 
 #ifndef CONFIG_HAS_MEMSET
-void *memset(void *ptr, int value, u64 num)
+void *memset(void *ptr, int value, unsigned long num)
 {
-	u64 i;
+	unsigned long i;
 	unsigned char *dest = (unsigned char *)ptr;
 	for (i = 0; i < num; i++) {
 		dest[i] = value;
