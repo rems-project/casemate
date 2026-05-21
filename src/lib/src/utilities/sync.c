@@ -13,7 +13,7 @@ void __atomic_cas(volatile u64 *va, u64 old, u64 new)
 	 * equivalent to an atomic:
 	 * <while (*va != old); *va = new>;
 	 */
-	asm volatile(
+	__asm__ volatile(
 		/* dont wait on first read */
 		"sevl\n"
 
