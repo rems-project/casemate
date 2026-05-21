@@ -5,7 +5,26 @@
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
-#define ID_STRING(x) [x] = #x
+#define NR_ELEMS(A) (sizeof(A) / sizeof((A)[0]))
+
+struct enum_map {
+	u64 count;
+	const char **names;
+};
+
+#define DEFINE_ENUM_MAP(MAP, NAMES) \
+	static struct enum_map MAP = { \
+		.count = NR_ELEMS(NAMES), \
+		.names = NAMES, \
+	}
+
+static const char *enum_map_lookup(struct enum_map *map, int value)
+{
+	if (value < 0 || (u64)value >= map->count || ! map->names[value])
+		return "???";
+
+	return map->names[value];
+}
 
 static const char *tlbi_kind_names[] = {
 	[TLBI_vmalls12e1] = "vmalls12e1", //
@@ -20,6 +39,7 @@ static const char *tlbi_kind_names[] = {
 	[TLBI_vae2is] = "vae2is", //
 	[TLBI_ipas2e1is] = "ipas2e1is", //
 };
+DEFINE_ENUM_MAP(tlbi_kind_map, tlbi_kind_names);
 
 static const char *sysreg_names[] = {
 	[SYSREG_VTTBR] = "vttbr_el2", //
@@ -30,22 +50,26 @@ static const char *sysreg_names[] = {
 	[SYSREG_SCTLR_EL2] = "sctlr_el2", //
 	[SYSREG_MAIR_EL2] = "mair_el2", //
 };
+DEFINE_ENUM_MAP(sysreg_map, sysreg_names);
 
 static const char *mem_order_names[] = {
 	[WMO_plain] = "plain",
 	[WMO_release] = "release",
 };
+DEFINE_ENUM_MAP(mem_order_map, mem_order_names);
 
 static const char *barrier_dxb_kind_names[] = {
 	[DxB_ish] = "ish",
 	[DxB_ishst] = "ishst",
 	[DxB_nsh] = "nsh",
 };
+DEFINE_ENUM_MAP(barrier_dxb_kind_map, barrier_dxb_kind_names);
 
 static const char *barrier_kind_names[] = {
 	[BARRIER_DSB] = "dsb",
 	[BARRIER_ISB] = "isb",
 };
+DEFINE_ENUM_MAP(barrier_kind_map, barrier_kind_names);
 
 static const char *hw_step_names[] = {
 	[HW_MEM_WRITE] = "mem-write", //
@@ -54,6 +78,7 @@ static const char *hw_step_names[] = {
 	[HW_TLBI] = "tlbi", //
 	[HW_MSR] = "sysreg-write", //
 };
+DEFINE_ENUM_MAP(hw_step_map, hw_step_names);
 
 static const char *abs_step_names[] = {
 	[GHOST_ABS_LOCK] = "lock", //
@@ -63,8 +88,7 @@ static const char *abs_step_names[] = {
 	[GHOST_ABS_FREE] = "mem-free", //
 	[GHOST_ABS_MEMSET] = "mem-set", //
 };
-
-static const char *hint_step_name = "hint";
+DEFINE_ENUM_MAP(abs_step_map, abs_step_names);
 
 static const char *hint_names[] = {
 	[GHOST_HINT_SET_ROOT_LOCK] = "set_root_lock",
@@ -72,13 +96,14 @@ static const char *hint_names[] = {
 	[GHOST_HINT_RELEASE_TABLE] = "release_table",
 	[GHOST_HINT_SET_PTE_THREAD_OWNER] = "set_pte_thread_owner",
 };
+DEFINE_ENUM_MAP(hint_map, hint_names);
 
 //////////////////////
 // Record construction
 
 static int record_cm_sysreg_fields(struct string_builder *buf, struct trans_msr_data *data)
 {
-	TRY_PUT_KV("sysreg", sb_puts(buf, sysreg_names[data->sysreg]));
+	TRY_PUT_KV("sysreg", sb_puts(buf, enum_map_lookup(&sysreg_map, data->sysreg)));
 	TRY_PUT(' ');
 	TRY_PUT_KV("value", sb_putxn(buf, data->val, 64));
 	return 0;
@@ -86,7 +111,7 @@ static int record_cm_sysreg_fields(struct string_builder *buf, struct trans_msr_
 
 static int record_cm_tlbi_fields(struct string_builder *buf, struct trans_tlbi_data *data)
 {
-	TRY_PUTS(tlbi_kind_names[data->tlbi_kind]);
+	TRY_PUTS(enum_map_lookup(&tlbi_kind_map, data->tlbi_kind));
 
 	switch (data->tlbi_kind) {
 	case TLBI_vmalls12e1:
@@ -107,13 +132,13 @@ static int record_cm_tlbi_fields(struct string_builder *buf, struct trans_tlbi_d
 		return 0;
 
 	default:
-		unreachable();
+		return 0;
 	}
 }
 
 static int record_cm_barrier_fields(struct string_builder *buf, struct trans_barrier_data *data)
 {
-	TRY_PUTS(barrier_kind_names[data->kind]);
+	TRY_PUTS(enum_map_lookup(&barrier_kind_map, data->kind));
 
 	switch (data->kind) {
 	case BARRIER_ISB:
@@ -121,11 +146,12 @@ static int record_cm_barrier_fields(struct string_builder *buf, struct trans_bar
 
 	case BARRIER_DSB:
 		TRY_PUT(' ');
-		TRY_PUT_KV("kind", sb_puts(buf, barrier_dxb_kind_names[data->dxb_data]));
+		TRY_PUT_KV("kind",
+			   sb_puts(buf, enum_map_lookup(&barrier_dxb_kind_map, data->dxb_data)));
 		return 0;
 
 	default:
-		unreachable();
+		return 0;
 	}
 }
 
@@ -133,7 +159,8 @@ static int record_cm_hw_fields(struct string_builder *buf, struct ghost_hw_step 
 {
 	switch (step->kind) {
 	case HW_MEM_WRITE:
-		TRY_PUT_KV("mem-order", sb_puts(buf, mem_order_names[step->write_data.mo]));
+		TRY_PUT_KV("mem-order",
+			   sb_puts(buf, enum_map_lookup(&mem_order_map, step->write_data.mo)));
 		TRY_PUT(' ');
 		TRY_PUT_KV("address", sb_putxn(buf, step->write_data.phys_addr, 64));
 		TRY_PUT(' ');
@@ -159,7 +186,7 @@ static int record_cm_hw_fields(struct string_builder *buf, struct ghost_hw_step 
 		break;
 
 	default:
-		unreachable();
+		return 0;
 	}
 }
 
@@ -189,13 +216,13 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 		return 0;
 
 	default:
-		unreachable();
+		return 0;
 	}
 }
 
 static int record_cm_hint_fields(struct string_builder *buf, struct ghost_hint_step *hint_step)
 {
-	const char *hint_name = hint_names[hint_step->kind];
+	const char *hint_name = enum_map_lookup(&hint_map, hint_step->kind);
 
 	TRY_PUT_KV("kind", sb_puts(buf, hint_name));
 	TRY_PUT(' ');
@@ -218,7 +245,7 @@ static int record_trans_fields(struct string_builder *buf, struct casemate_model
 		return record_cm_hint_fields(buf, &trans->hint_step);
 
 	default:
-		BUG();
+		return 0;
 	}
 }
 
@@ -247,19 +274,20 @@ static int record_prefix(struct string_builder *buf, struct casemate_model_step 
 
 	switch (trans->kind) {
 	case TRANS_HW_STEP:
-		prefix = hw_step_names[trans->hw_step.kind];
+		prefix = enum_map_lookup(&hw_step_map, trans->hw_step.kind);
 		break;
 
 	case TRANS_ABS_STEP:
-		prefix = abs_step_names[trans->abs_step.kind];
+		prefix = enum_map_lookup(&abs_step_map, trans->abs_step.kind);
 		break;
 
 	case TRANS_HINT:
-		prefix = hint_step_name;
+		prefix = "hint";
 		break;
 
 	default:
-		BUG();
+		prefix = "???";
+		break;
 	}
 
 	TRY(sb_puts(buf, prefix));
