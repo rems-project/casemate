@@ -20,7 +20,7 @@
  * Casemate public interface
  */
 
-#define CASEMATE_VERSION "3.0.0"
+#define CASEMATE_VERSION "3.0.1"
 
 /* auto-included by Makefile */
 #ifndef CASEMATE_CONFIG_H
