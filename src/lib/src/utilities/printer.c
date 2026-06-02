@@ -449,7 +449,7 @@ int ghost_fprintf(void *arg, const char *fmt, ...)
 
 	/* instead of returning error codes, really just fail,
 	 * as no recovery on printing to UART. */
-	if (ret)
+	if (! arg && ret)
 		BUG();
 
 	return ret;
