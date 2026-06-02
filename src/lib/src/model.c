@@ -1369,8 +1369,14 @@ static void step_pte_on_tlbi(struct pgtable_traverse_context *ctxt)
 		case LIS_dsbed:
 			step_pte_on_tlbi_after_dsb(loc, tlbi);
 			break;
+		case LIS_dsb_tlbi_ipa:
+			/* redundant TLBI has no effect */
+			break;
 		case LIS_dsb_tlbi_ipa_dsb:
 			step_pte_on_tlbi_after_tlbi_ipa(loc, tlbi);
+			break;
+		case LIS_dsb_tlbied:
+			/* redundant TLBI has no effect */
 			break;
 		default:
 			BUG(); // TODO: BS: other TLBIs
