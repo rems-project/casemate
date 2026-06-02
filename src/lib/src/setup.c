@@ -67,6 +67,8 @@ static void init_sm_state(struct casemate_options *cfg, phys_addr_t phys, u64 si
 	init_sm_lock();
 
 	STATE()->transition_id = 0;
+	STATE()->current_transition = (struct casemate_model_step){ 0 };
+	STATE()->traced_current_trans = true;
 	STATE()->watchpoints.num_watchpoints = 0;
 
 	/* initialise the model memory */
@@ -111,6 +113,7 @@ int initialise_casemate_model(struct casemate_options *cfg, phys_addr_t phys, u6
 	/* install as this instance's state
 	 * and initialise it */
 	the_ghost_state = (struct casemate_state *)sm_virt;
+	memset(the_ghost_state, 0, expected_size);
 	init_sm_state(cfg, phys, size);
 
 	ret = 0;
