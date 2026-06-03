@@ -513,6 +513,11 @@ void parse_lock_tail(struct parser *p)
 	p->out->abs_step.lock_data.address = PARSE_KV_HEX(p, "address");
 }
 
+void parse_context_tail(struct parser *p)
+{
+	p->out->abs_step.context_data.el = PARSE_KV_DECIMAL(p, "el");
+}
+
 static size_t strlen_partition_colon(struct parser *p, const char *s)
 {
 	char c;
@@ -604,6 +609,13 @@ void parse_trans(struct parser *p)
 		p->out->kind = TRANS_ABS_STEP;
 		p->out->abs_step.kind = GHOST_ABS_UNLOCK;
 		parse_lock_tail(p);
+	} else if (streq(prefix, "enter-context")) {
+		p->out->kind = TRANS_ABS_STEP;
+		p->out->abs_step.kind = GHOST_ABS_ENTER_CONTEXT;
+		parse_context_tail(p);
+	} else if (streq(prefix, "exit-context")) {
+		p->out->kind = TRANS_ABS_STEP;
+		p->out->abs_step.kind = GHOST_ABS_EXIT_CONTEXT;
 	} else {
 		parse_error(p, "unexpected transition kind '%s'", prefix);
 	}

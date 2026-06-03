@@ -88,6 +88,8 @@ static const char *abs_step_names[] = {
 	[GHOST_ABS_INIT] = "mem-init", //
 	[GHOST_ABS_FREE] = "mem-free", //
 	[GHOST_ABS_MEMSET] = "mem-set", //
+	[GHOST_ABS_ENTER_CONTEXT] = "enter-context", //
+	[GHOST_ABS_EXIT_CONTEXT] = "exit-context", //
 };
 DEFINE_ENUM_MAP(abs_step_map, abs_step_names);
 
@@ -214,6 +216,13 @@ static int record_cm_abs_fields(struct string_builder *buf, struct ghost_abs_ste
 		TRY_PUT_KV("size", sb_putxn(buf, step->memset_data.size, 64));
 		TRY_PUT(' ');
 		TRY_PUT_KV("value", sb_putxn(buf, step->memset_data.value, 8));
+		return 0;
+
+	case GHOST_ABS_ENTER_CONTEXT:
+		TRY_PUT_KV("el", sb_putd(buf, (s64)step->context_data.el));
+		return 0;
+
+	case GHOST_ABS_EXIT_CONTEXT:
 		return 0;
 
 	default:

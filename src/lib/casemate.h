@@ -473,5 +473,12 @@ int __casemate_model_step_trylock(uint64_t tid, struct src_loc src_loc, uint64_t
 	__casemate_model_step_unlock(THREAD_ID, SRC_LOC, __VA_ARGS__)
 int __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t address);
 
+#define casemate_model_step_enter_context(...) \
+	__casemate_model_step_enter_context(THREAD_ID, SRC_LOC, __VA_ARGS__)
+int __casemate_model_step_enter_context(uint64_t tid, struct src_loc src_loc, uint64_t el);
+
+#define casemate_model_step_exit_context() __casemate_model_step_exit_context(THREAD_ID, SRC_LOC)
+int __casemate_model_step_exit_context(uint64_t tid, struct src_loc src_loc);
+
 
 #endif /* CASEMATE_H */

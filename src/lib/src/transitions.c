@@ -254,3 +254,33 @@ int __casemate_model_step_unlock(uint64_t tid, struct src_loc src_loc, uint64_t 
 			},
 	});
 }
+
+int __casemate_model_step_enter_context(uint64_t tid, struct src_loc src_loc, uint64_t el)
+{
+	return casemate_model_step((struct casemate_model_step){
+		.tid = tid,
+		.src_loc = src_loc,
+		.kind = TRANS_ABS_STEP,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_ENTER_CONTEXT,
+				.context_data =
+					(struct trans_context_data){
+						.el = el,
+					},
+			},
+	});
+}
+
+int __casemate_model_step_exit_context(uint64_t tid, struct src_loc src_loc)
+{
+	return casemate_model_step((struct casemate_model_step){
+		.tid = tid,
+		.src_loc = src_loc,
+		.kind = TRANS_ABS_STEP,
+		.abs_step =
+			(struct ghost_abs_step){
+				.kind = GHOST_ABS_EXIT_CONTEXT,
+			},
+	});
+}

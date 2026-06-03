@@ -152,6 +152,14 @@ typedef enum {
 } entry_stage_t;
 
 /**
+ * enum translation_regime - The translation regime a root participates in.
+ */
+enum translation_regime {
+	TRANSLATION_REGIME_EL10,
+	TRANSLATION_REGIME_EL2,
+};
+
+/**
  * enum entry_permissions - Abstract permissions for a range of OA, as bitflags
  */
 enum entry_permissions {
@@ -281,6 +289,7 @@ struct sm_location {
 /**
  * struct casemate_memory_blob - A page of memory.
  * @valid: whether this blob is being used.
+ * @expired: whether this page must be reinitialised before it can be used as a table.
  * @phys: if valid, the physical address of the start of this region.
  * @slots: if valid, the array of memory locations within this region.
  *
@@ -288,6 +297,7 @@ struct sm_location {
  */
 struct casemate_memory_blob {
 	bool valid;
+	bool expired;
 	u64 phys;
 	struct sm_location slots[SLOTS_PER_PAGE];
 };
@@ -397,7 +407,8 @@ struct vmid_map {
 
 /**
  * struct root - A single root (base addr + ASID/VMID)
- * @present: whether this root is active
+ * @present: whether this root table is registered.
+ * @regime: the translation regime this root belongs to.
  * @stage: whether this points to a stage1 or a stage2 table
  * @baddr: the root base (physical) address.
  * @id: the associated ASID/VMID.
@@ -406,6 +417,7 @@ struct vmid_map {
  */
 struct root {
 	bool present;
+	enum translation_regime regime;
 	entry_stage_t stage;
 	sm_owner_t baddr;
 	addr_id_t id;
@@ -444,10 +456,14 @@ bool try_read_sysreg(enum ghost_sysreg_kind reg, u64 *ret);
 u64 read_sysreg(enum ghost_sysreg_kind reg);
 
 /**
- * struct root_index - An (optionally) loaded root with index to it
+ * struct root_index - A loaded root with optional in-context state.
+ * @present: whether the TTBR/VTTBR names this root.
+ * @active: whether this CPU is currently in an enabled context with this root.
+ * @index: index of the root in the roots table.
  */
 struct root_index {
 	bool present;
+	bool active;
 	u64 index;
 };
 
@@ -455,12 +471,14 @@ typedef struct root_index root_index_t;
 
 /**
  * struct cm_thrd_ctxt - Per thread context ghost copy
- * @current_s1: index into the roots map of the currently-loaded stage1 root
- * @current_s2: index into the roots map of the currently-loaded stage1 root
+ * @current_context: this thread's current EL (which for now implies regime).
+ * @current_ttbr_el2: loaded and possibly active TTBR0_EL2 root.
+ * @current_vttbr: loaded and possibly active VTTBR root.
  */
 struct cm_thrd_ctxt {
-	root_index_t current_s1;
-	root_index_t current_s2;
+	int current_context;
+	root_index_t current_ttbr_el2;
+	root_index_t current_vttbr;
 	struct sysreg regs[MAX_SYSREG];
 };
 

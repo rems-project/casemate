@@ -140,6 +140,16 @@ enum ghost_abs_kind {
 	 * @GHOST_ABS_MEMSET - A C memset() call.
 	 */
 	GHOST_ABS_MEMSET,
+
+	/**
+	 * @GHOST_ABS_ENTER_CONTEXT - Enter an exception context at an EL.
+	 */
+	GHOST_ABS_ENTER_CONTEXT,
+
+	/**
+	 * @GHOST_ABS_EXIT_CONTEXT - Exit the current exception context.
+	 */
+	GHOST_ABS_EXIT_CONTEXT,
 };
 
 struct ghost_abs_step {
@@ -160,6 +170,10 @@ struct ghost_abs_step {
 			u64 size;
 			u64 value;
 		} memset_data;
+
+		struct trans_context_data {
+			u64 el;
+		} context_data;
 	};
 };
 

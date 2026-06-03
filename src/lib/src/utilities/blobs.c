@@ -306,6 +306,7 @@ static struct casemate_memory_blob *ensure_blob(u64 phys)
 
 	// and initialise it.
 	this->valid = true;
+	this->expired = false;
 	this->phys = blob_phys;
 	// the slots are intentionally uninitialised;
 	// as of yet, they haven't been "seen" by the ghost model
@@ -346,6 +347,7 @@ void free_blob(struct casemate_memory_blob *blob)
 	fastcache_invalidate(&MODEL()->memory, blob);
 
 	/* and now mark as invalid so can be re-used */
+	blob->expired = false;
 	blob->valid = false;
 
 	/* didn't mess anything up */

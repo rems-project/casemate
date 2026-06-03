@@ -515,6 +515,24 @@ static void initialise_location(struct sm_location *loc, u64 val)
 	loc->is_pte = false;
 }
 
+static bool page_expired(u64 page_phys)
+{
+	ghost_assert(IS_PAGE_ALIGNED(page_phys));
+	return page(page_phys)->expired;
+}
+
+static void expire_page(u64 page_phys)
+{
+	ghost_assert(IS_PAGE_ALIGNED(page_phys));
+	page(page_phys)->expired = true;
+}
+
+static void renew_page(u64 page_phys)
+{
+	ghost_assert(IS_PAGE_ALIGNED(page_phys));
+	page(page_phys)->expired = false;
+}
+
 /**
  * Callback to mark a location in the page table as a page table entry
  * in the ghost model.
@@ -522,6 +540,9 @@ static void initialise_location(struct sm_location *loc, u64 val)
 void mark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
+
+	if (page_expired(PAGE_ALIGN_DOWN(loc->phys_addr)))
+		GHOST_MODEL_CATCH_FIRE("cannot make expired table live");
 
 	if (! loc->initialised)
 		initialise_location(loc, ctxt->descriptor);
@@ -541,6 +562,9 @@ void mark_cb(struct pgtable_traverse_context *ctxt)
 void unmark_cb(struct pgtable_traverse_context *ctxt)
 {
 	struct sm_location *loc = ctxt->loc;
+
+	if (loc->initialised && loc->is_pte && loc->descriptor.kind == PTE_KIND_TABLE)
+		expire_page(loc->descriptor.table_data.next_level_table_addr);
 
 	if (! loc->initialised)
 		initialise_location(loc, ctxt->descriptor);
@@ -593,7 +617,7 @@ static inline struct cm_thrd_ctxt *current_thread_context(void)
 
 struct root *get_current_ttbr(void)
 {
-	root_index_t *cur = &current_thread_context()->current_s1;
+	root_index_t *cur = &current_thread_context()->current_ttbr_el2;
 	if (cur->present)
 		return retrieve_root_from_idx(cur->index);
 	else
@@ -602,31 +626,33 @@ struct root *get_current_ttbr(void)
 
 struct root *get_current_vttbr(void)
 {
-	root_index_t *cur = &current_thread_context()->current_s2;
+	root_index_t *cur = &current_thread_context()->current_vttbr;
 	if (cur->present)
 		return retrieve_root_from_idx(cur->index);
 	else
 		return NULL;
 }
 
-struct root *retrieve_root_for_id(struct roots *roots, addr_id_t id)
+struct root *retrieve_root_for_id(struct roots *roots, enum translation_regime regime,
+				  addr_id_t id)
 {
 	struct root *root;
 	for (int i = 0; i < MAX_ROOTS; i++) {
 		root = &roots->roots[i];
-		if (root->present && root->id == id) {
+		if (root->present && root->regime == regime && root->id == id) {
 			return root;
 		}
 	}
 	return NULL;
 }
 
-struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t baddr)
+struct root *retrieve_root_for_baddr(struct roots *roots, enum translation_regime regime,
+				     sm_owner_t baddr)
 {
 	struct root *root;
 	for (int i = 0; i < MAX_ROOTS; i++) {
 		root = &roots->roots[i];
-		if (root->present && root->baddr == baddr) {
+		if (root->present && root->regime == regime && root->baddr == baddr) {
 			return root;
 		}
 	}
@@ -636,6 +662,19 @@ struct root *retrieve_root_for_baddr(struct roots *roots, sm_owner_t baddr)
 void free_root(struct roots *roots, struct root *root)
 {
 	ghost_assert(root != NULL);
+	for (u64 i = 0; i < MAX_CPU; i++) {
+		struct cm_thrd_ctxt *ctxt = &MODEL()->thread_context[i];
+
+		if (ctxt->current_ttbr_el2.present &&
+		    ctxt->current_ttbr_el2.index == root->index) {
+			ctxt->current_ttbr_el2.present = false;
+			ctxt->current_ttbr_el2.active = false;
+		}
+		if (ctxt->current_vttbr.present && ctxt->current_vttbr.index == root->index) {
+			ctxt->current_vttbr.present = false;
+			ctxt->current_vttbr.active = false;
+		}
+	}
 	root->present = false;
 	roots->len--;
 }
@@ -656,11 +695,90 @@ bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage)
 	}
 }
 
-void try_register_root(struct roots *roots, entry_stage_t stage, phys_addr_t baddr, addr_id_t id)
+bool regime_from_ttbr(enum ghost_sysreg_kind sysreg, enum translation_regime *out_regime)
+{
+	switch (sysreg) {
+	case SYSREG_TTBR_EL2:
+		*out_regime = TRANSLATION_REGIME_EL2;
+		return true;
+
+	case SYSREG_VTTBR:
+		*out_regime = TRANSLATION_REGIME_EL10;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+enum ghost_sysreg_kind ttbr_for_regime(enum translation_regime regime, entry_stage_t stage)
+{
+	switch (regime) {
+	case TRANSLATION_REGIME_EL2:
+		ghost_assert(stage == ENTRY_STAGE1);
+		return SYSREG_TTBR_EL2;
+	case TRANSLATION_REGIME_EL10:
+		ghost_assert(stage == ENTRY_STAGE2);
+		return SYSREG_VTTBR;
+	default:
+		BUG();
+	}
+}
+
+/**
+ * cr_for_regime() - Return the control register controlling a given regime
+ *
+ * There are generically many such registers, this returns the one that controls enable/disable
+ * i.e. SCTLR/HCR
+ */
+static enum ghost_sysreg_kind cr_for_regime(enum translation_regime regime, entry_stage_t stage)
+{
+	switch (ttbr_for_regime(regime, stage)) {
+	case SYSREG_TTBR_EL2:
+		return SYSREG_SCTLR_EL2;
+	case SYSREG_VTTBR:
+		return SYSREG_HCR_EL2;
+	default:
+		BUG();
+	}
+}
+
+static enum translation_regime regime_for_stage(entry_stage_t stage)
+{
+	switch (stage) {
+	case ENTRY_STAGE1:
+		return TRANSLATION_REGIME_EL2;
+	case ENTRY_STAGE2:
+		return TRANSLATION_REGIME_EL10;
+	default:
+		BUG();
+	}
+}
+
+/**
+ * stage_in_regime() - Checks whether a given translation stage exists in a given translation regime
+ */
+static bool stage_in_regime(enum translation_regime regime, entry_stage_t stage)
+{
+	switch (regime) {
+	case TRANSLATION_REGIME_EL2:
+		return stage == ENTRY_STAGE1;
+	case TRANSLATION_REGIME_EL10:
+		return (stage == ENTRY_STAGE1 || stage == ENTRY_STAGE2);
+	default:
+		return false;
+	}
+}
+
+void try_register_root(struct roots *roots, enum translation_regime regime, entry_stage_t stage,
+		       phys_addr_t baddr, addr_id_t id)
 {
 	u64 new_root_idx;
 	struct root new_root;
 	GHOST_LOG_CONTEXT_ENTER();
+
+	if (page_expired(baddr))
+		GHOST_MODEL_CATCH_FIRE("cannot make expired table live");
 
 	if (roots->len >= MAX_ROOTS) {
 		GHOST_MODEL_CATCH_FIRE("too many roots");
@@ -682,6 +800,7 @@ found:
 	roots->len++;
 	new_root = (struct root){
 		.present = true,
+		.regime = regime,
 		.baddr = baddr,
 		.stage = stage,
 		.id = id,
@@ -696,13 +815,14 @@ found:
 	GHOST_LOG_CONTEXT_EXIT();
 }
 
-static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
+static void try_unregister_root(enum translation_regime regime, entry_stage_t stage,
+				phys_addr_t root)
 {
 	struct roots *roots = &MODEL()->roots;
 	struct root *assoc_root;
 	GHOST_LOG_CONTEXT_ENTER();
 
-	assoc_root = retrieve_root_for_baddr(roots, root);
+	assoc_root = retrieve_root_for_baddr(roots, regime, root);
 
 	if (! assoc_root)
 		GHOST_MODEL_CATCH_FIRE("root does not exist");
@@ -712,6 +832,7 @@ static void try_unregister_root(entry_stage_t stage, phys_addr_t root)
 
 	traverse_pgtable(root, stage, unmark_cb, READ_UNLOCKED_LOCATIONS, NULL);
 	free_root(roots, assoc_root);
+	expire_page(root);
 
 	GHOST_LOG_CONTEXT_EXIT();
 }
@@ -745,21 +866,13 @@ u64 read_sysreg(enum ghost_sysreg_kind reg)
 	return side_effect()->read_sysreg(reg);
 }
 
-bool regime_enabled(entry_stage_t stage)
+bool regime_enabled(enum translation_regime regime, entry_stage_t stage)
 {
 	enum ghost_sysreg_kind sysreg;
 	u64 val;
 
-	switch (stage) {
-	case ENTRY_STAGE1:
-		sysreg = SYSREG_SCTLR_EL2;
-		break;
-	case ENTRY_STAGE2:
-		sysreg = SYSREG_HCR_EL2;
-		break;
-	default:
-		ghost_assert(false); // unreachable
-	}
+	ghost_assert(stage_in_regime(regime, stage));
+	sysreg = cr_for_regime(regime, stage);
 
 	/* read the register
 	 *
@@ -780,41 +893,92 @@ bool regime_enabled(entry_stage_t stage)
 
 static void deactivate_translation(struct root *root)
 {
+	ghost_assert(root->refcount > 0);
 	root->refcount--;
+}
+
+static root_index_t *current_translation(enum translation_regime regime)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+
+	switch (regime) {
+	case TRANSLATION_REGIME_EL2:
+		return &ctxt->current_ttbr_el2;
+	case TRANSLATION_REGIME_EL10:
+		return &ctxt->current_vttbr;
+	default:
+		BUG();
+	}
+}
+
+static void deactivate_current_translation(enum translation_regime regime)
+{
+	root_index_t *cur_root;
+	struct root *assoc_root;
+
+	cur_root = current_translation(regime);
+	if (! cur_root->active)
+		return;
+
+	assoc_root = retrieve_root_from_idx(cur_root->index);
+	deactivate_translation(assoc_root);
+	cur_root->active = false;
+}
+
+static void load_translation(struct root *root)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+
+	struct root_index new_root_index = (struct root_index){
+		.present = true,
+		.active = false,
+		.index = root->index,
+	};
+
+	if (root->regime == TRANSLATION_REGIME_EL2) {
+		ctxt->current_ttbr_el2 = new_root_index;
+	} else {
+		ctxt->current_vttbr = new_root_index;
+	}
 }
 
 static void activate_translation(struct root *root)
 {
-	struct cm_thrd_ctxt *ctxt = current_thread_context();
+	root_index_t *cur_root = current_translation(root->regime);
 
-	/* make it the curent context */
-	struct root_index new_root_index = (struct root_index){
-		.present = true,
-		.index = root->index,
-	};
+	if (! cur_root->present || cur_root->index != root->index)
+		load_translation(root);
+	if (cur_root->active)
+		return;
 
-	if (root->stage == ENTRY_STAGE1) {
-		ctxt->current_s1 = new_root_index;
-	} else {
-		ctxt->current_s2 = new_root_index;
-	}
-
+	cur_root->active = true;
 	root->refcount++;
 }
 
+/**
+ * activate_ttbr() - Switch to a new root in an active regime
+ *
+ * The main workhorse for context-switching in an active translation context.
+ * Checks for re-use of root or (AS/VM)ID, and if good:
+ * decrements the old root's reference count
+ * increments the new root's reference count
+ * (potentially walking the new root to start tracking its memory, if not seen before)
+ * and marking the new root as active.
+ */
 static void activate_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
 {
 	bool ret;
 	phys_addr_t root;
 	vmid_t id;
+	enum translation_regime regime;
 	entry_stage_t stage;
 	struct roots *roots;
 	struct root *assoc_root;
 	root_index_t *cur_root;
 
-	struct cm_thrd_ctxt *ctxt = current_thread_context();
-
 	ret = stage_from_ttbr(sysreg, &stage);
+	ghost_assert(ret);
+	ret = regime_from_ttbr(sysreg, &regime);
 	ghost_assert(ret);
 
 	root = ttbr_extract_baddr(ttb);
@@ -830,7 +994,7 @@ static void activate_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
 	roots = &MODEL()->roots;
 
 	/* if that root with that id exists already, were just context switching */
-	assoc_root = retrieve_root_for_baddr(roots, root);
+	assoc_root = retrieve_root_for_baddr(roots, regime, root);
 	if (assoc_root && assoc_root->id == id) {
 		goto context_switch;
 	}
@@ -840,7 +1004,7 @@ static void activate_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
 	}
 
 	/* see if VMID is already associated */
-	assoc_root = retrieve_root_for_id(roots, id);
+	assoc_root = retrieve_root_for_id(roots, regime, id);
 	if (assoc_root && assoc_root->baddr != root) {
 		GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
 	}
@@ -851,52 +1015,231 @@ static void activate_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
 	/* otherwise, that VMID is free and this root has no associated VMID
 	 * so attach this one */
 	else {
-		try_register_root(roots, stage, root, id);
+		try_register_root(roots, regime, stage, root, id);
 	}
 
 context_switch:
 	/* decrement refcount on current (if applicable) */
-	cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
-	if (cur_root->present) {
+	cur_root = current_translation(regime);
+	if (cur_root->active) {
 		assoc_root = retrieve_root_from_idx(cur_root->index);
 		deactivate_translation(assoc_root);
+		cur_root->active = false;
 	}
 
 	/* and increment refcount on one we just switched to */
-	assoc_root = retrieve_root_for_id(roots, id);
+	assoc_root = retrieve_root_for_id(roots, regime, id);
 	ghost_assert(assoc_root);
 	activate_translation(assoc_root);
+}
+
+static struct root *root_for_ttbr(enum ghost_sysreg_kind sysreg, u64 ttb)
+{
+	bool ret;
+	phys_addr_t root;
+	addr_id_t id;
+	enum translation_regime regime;
+	entry_stage_t stage;
+	struct roots *roots = &MODEL()->roots;
+	struct root *assoc_root;
+
+	ret = stage_from_ttbr(sysreg, &stage);
+	ghost_assert(ret);
+	ret = regime_from_ttbr(sysreg, &regime);
+	ghost_assert(ret);
+
+	root = ttbr_extract_baddr(ttb);
+	id = ttbr_extract_id(ttb);
+
+	if (sysreg == SYSREG_TTBR_EL2 && id != 0)
+		GHOST_MODEL_CATCH_FIRE("TTBR0_EL2 ASID is reserved 0");
+
+	assoc_root = retrieve_root_for_baddr(roots, regime, root);
+	if (assoc_root && assoc_root->id != id)
+		GHOST_MODEL_CATCH_FIRE("root already associated with an (VM/AS)ID");
+
+	assoc_root = retrieve_root_for_id(roots, regime, id);
+	if (assoc_root && assoc_root->baddr != root)
+		GHOST_MODEL_CATCH_FIRE("duplicate (VM/AS)ID");
+
+	if (! assoc_root)
+		try_register_root(roots, regime, stage, root, id);
+
+	assoc_root = retrieve_root_for_id(roots, regime, id);
+	ghost_assert(assoc_root);
+	return assoc_root;
+}
+
+/**
+ * tracked_regime_from_el() - Given an EL, return the translation regime Casemate is tracking for it.
+ *
+ * For now, Casemate only tracks some translation regimes (and some stages within it)
+ */
+static bool tracked_regime_from_el(u64 el, enum translation_regime *regime)
+{
+	switch (el) {
+	case 0:
+	case 1:
+		*regime = TRANSLATION_REGIME_EL10;
+		return true;
+	case 2:
+		*regime = TRANSLATION_REGIME_EL2;
+		return true;
+	default:
+		return false;
+	}
+}
+
+/**
+ * tracked_stage_from_regime() - Given a translation regime, return the stage Casemate is tracking in it
+ */
+static entry_stage_t tracked_stage_from_regime(enum translation_regime regime)
+{
+	switch (regime) {
+	case TRANSLATION_REGIME_EL2:
+		return ENTRY_STAGE1;
+	case TRANSLATION_REGIME_EL10:
+		return ENTRY_STAGE2;
+	default:
+		BUG();
+	}
+}
+
+static u64 current_el(void)
+{
+	return current_thread_context()->current_context;
+}
+
+static bool current_regime(enum translation_regime *regime_out)
+{
+	return tracked_regime_from_el(current_el(), regime_out);
+}
+
+static bool in_context(enum translation_regime regime)
+{
+	enum translation_regime current;
+
+	if (! current_regime(&current))
+		GHOST_MODEL_CATCH_FIRE("bad current context EL");
+
+	return current == regime;
+}
+
+static bool translation_should_be_active(enum translation_regime regime, entry_stage_t stage)
+{
+	ghost_assert(stage_in_regime(regime, stage));
+	return in_context(regime) && regime_enabled(regime, stage);
+}
+
+static void enter_translation_context(enum translation_regime regime, entry_stage_t stage)
+{
+	enum ghost_sysreg_kind sysreg;
+	struct root *assoc_root;
+
+	ghost_assert(stage_in_regime(regime, stage));
+	sysreg = ttbr_for_regime(regime, stage);
+	assoc_root = root_for_ttbr(sysreg, read_sysreg(sysreg));
+
+	if (translation_should_be_active(regime, stage)) {
+		activate_ttbr(sysreg, read_sysreg(sysreg));
+	} else {
+		deactivate_current_translation(regime);
+		load_translation(assoc_root);
+	}
+}
+
+static void enter_context(u64 el)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+	enum translation_regime old_regime;
+	enum translation_regime new_regime;
+	entry_stage_t new_stage;
+
+	if (! current_regime(&old_regime))
+		GHOST_MODEL_CATCH_FIRE("bad current context EL");
+	if (! tracked_regime_from_el(el, &new_regime))
+		GHOST_MODEL_CATCH_FIRE("bad context EL");
+
+	if (old_regime != new_regime)
+		deactivate_current_translation(old_regime);
+
+	ctxt->current_context = el;
+	new_stage = tracked_stage_from_regime(new_regime);
+	enter_translation_context(new_regime, new_stage);
+}
+
+static void exit_context(void)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+	enum translation_regime old_regime;
+
+	if (! current_regime(&old_regime))
+		GHOST_MODEL_CATCH_FIRE("bad current context EL");
+
+	if (old_regime != TRANSLATION_REGIME_EL2)
+		GHOST_MODEL_CATCH_FIRE("Casemate only supported at EL2");
+
+	deactivate_current_translation(TRANSLATION_REGIME_EL2);
+	deactivate_current_translation(TRANSLATION_REGIME_EL10);
+	ctxt->current_context = 1;
+}
+
+static bool valid_context_el(u64 raw)
+{
+	return raw <= 2;
 }
 
 static void step_msr(struct ghost_hw_step *step)
 {
 	bool ret;
+	enum translation_regime regime;
 	entry_stage_t stage;
 
 	struct cm_thrd_ctxt *ctxt = current_thread_context();
 
 	switch (step->msr_data.sysreg) {
 	case SYSREG_TTBR_EL2:
-	case SYSREG_VTTBR:
+	case SYSREG_VTTBR: {
+		struct root *root;
+
 		ret = stage_from_ttbr(step->msr_data.sysreg, &stage);
 		ghost_assert(ret);
+		ret = regime_from_ttbr(step->msr_data.sysreg, &regime);
+		ghost_assert(ret);
 
-		if (regime_enabled(stage))
+		/* Writing a TTBR/VTTBR only makes the root live when the corresponding
+		 * regime is both enabled and in-context. Otherwise the register merely
+		 * names a loaded root.
+		 */
+		if (translation_should_be_active(regime, stage)) {
 			activate_ttbr(step->msr_data.sysreg, step->msr_data.val);
+		} else {
+			root = root_for_ttbr(step->msr_data.sysreg, step->msr_data.val);
+			load_translation(root);
+		}
 		break;
+	}
 
 	case SYSREG_HCR_EL2:
-		/* switched on virtualization of translation */
-		if (! regime_enabled(ENTRY_STAGE2) && (step->msr_data.val & 0b1) == 1)
+		ret = regime_enabled(TRANSLATION_REGIME_EL10, ENTRY_STAGE2);
+		/* switched on/off virtualisation */
+		if (! in_context(TRANSLATION_REGIME_EL10))
+			break;
+		if (! ret && BITS_SET(step->msr_data.val, HCR_VM_MASK))
 			activate_ttbr(SYSREG_VTTBR, read_sysreg(SYSREG_VTTBR));
-		/* XXX .. and switched off ?*/
+		else if (ret && ! BITS_SET(step->msr_data.val, HCR_VM_MASK))
+			deactivate_current_translation(TRANSLATION_REGIME_EL10);
 		break;
 
 	case SYSREG_SCTLR_EL2:
-		/* switched on translation */
-		if (! regime_enabled(ENTRY_STAGE1) && (step->msr_data.val & 0b1) == 1)
+		ret = regime_enabled(TRANSLATION_REGIME_EL2, ENTRY_STAGE1);
+		/* switched on/off translation */
+		if (! in_context(TRANSLATION_REGIME_EL2))
+			break;
+		if (! ret && BITS_SET(step->msr_data.val, SCTLR_M_MASK))
 			activate_ttbr(SYSREG_TTBR_EL2, read_sysreg(SYSREG_TTBR_EL2));
-		/* XXX .. and switched off ?*/
+		else if (ret && ! BITS_SET(step->msr_data.val, SCTLR_M_MASK))
+			deactivate_current_translation(TRANSLATION_REGIME_EL2);
 		break;
 
 	default:
@@ -1454,8 +1797,13 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 	 * and check the VTTBR VMID annotation matches the one associated with this root
 	 */
 	if (tlbi->regime == TLBI_REGIME_EL10 && ctxt->exploded_descriptor.stage == ENTRY_STAGE2) {
-		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots, ctxt->root);
-		if (get_current_vttbr()->id != pte_root->id)
+		struct root *pte_root = retrieve_root_for_baddr(
+			&MODEL()->roots, TRANSLATION_REGIME_EL10, ctxt->root);
+		struct root *current_vttbr = get_current_vttbr();
+
+		ghost_assert(pte_root);
+		ghost_assert(current_vttbr);
+		if (current_vttbr->id != pte_root->id)
 			return false;
 		else
 			return true;
@@ -1463,7 +1811,8 @@ static bool __should_perform_tlbi_matches_id(struct pgtable_traverse_context *ct
 
 	/* for TLBI that affects an ASID, it is supplied as an argument to the TLBI */
 	if (tlbi->regime == TLBI_REGIME_EL2 && ctxt->exploded_descriptor.stage == ENTRY_STAGE1) {
-		struct root *pte_root = retrieve_root_for_baddr(&MODEL()->roots, ctxt->root);
+		struct root *pte_root = retrieve_root_for_baddr(
+			&MODEL()->roots, TRANSLATION_REGIME_EL2, ctxt->root);
 		u64 asid;
 
 		if (__get_tlbi_asid(tlbi, &asid))
@@ -1707,7 +2056,7 @@ static void step_hint_release_table(u64 root)
 	traverse_pgtable_from(root, loc->owner, loc->descriptor.ia_region.range_size,
 			      loc->descriptor.level, loc->descriptor.stage, check_release_cb,
 			      READ_UNLOCKED_LOCATIONS, NULL);
-	try_unregister_root(loc->descriptor.stage, root);
+	try_unregister_root(regime_for_stage(loc->descriptor.stage), loc->descriptor.stage, root);
 }
 
 static void step_hint_set_PTE_thread_owner(u64 phys, u64 val)
@@ -1878,6 +2227,9 @@ static void __step_init(u64 phys_addr, u64 size)
 
 		ERROR_FORGET_LOC(loc);
 	}
+
+	for (p = PAGE_ALIGN(phys_addr); p + PAGE_SIZE <= phys_addr + size; p += PAGE_SIZE)
+		renew_page(p);
 }
 
 static void __step_free(u64 phys_addr, u64 size)
@@ -1937,6 +2289,14 @@ static void step_abs(struct ghost_abs_step *step)
 	case GHOST_ABS_MEMSET:
 		__step_memset(step->memset_data.address, step->memset_data.size,
 			      step->memset_data.value);
+		break;
+	case GHOST_ABS_ENTER_CONTEXT: {
+		ghost_assert(valid_context_el(step->context_data.el));
+		enter_context(step->context_data.el);
+		break;
+	}
+	case GHOST_ABS_EXIT_CONTEXT:
+		exit_context();
 		break;
 	default:
 		unreachable();
@@ -2096,8 +2456,12 @@ static int validate_transition(struct casemate_model_step *trans)
 	case TRANS_HW_STEP:
 		return validate_hw_step(&trans->hw_step);
 	case TRANS_ABS_STEP:
-		if (! IS_IN_ENUM_RANGE(trans->abs_step.kind, GHOST_ABS_LOCK, GHOST_ABS_MEMSET))
+		if (! IS_IN_ENUM_RANGE(trans->abs_step.kind, GHOST_ABS_LOCK,
+				       GHOST_ABS_EXIT_CONTEXT))
 			return ERROR(EINVAL, "bad abstract step");
+		if (trans->abs_step.kind == GHOST_ABS_ENTER_CONTEXT &&
+		    ! valid_context_el(trans->abs_step.context_data.el))
+			return ERROR(EINVAL, "bad context EL");
 		break;
 	case TRANS_HINT:
 		if (! IS_IN_ENUM_RANGE(trans->hint_step.kind, GHOST_HINT_SET_ROOT_LOCK,

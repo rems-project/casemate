@@ -50,8 +50,11 @@ static void init_roots(struct roots *roots)
 
 static void init_thrd_ctxt(struct cm_thrd_ctxt *ctx)
 {
-	ctx->current_s1.present = false;
-	ctx->current_s2.present = false;
+	ctx->current_context = 2;
+	ctx->current_ttbr_el2.present = false;
+	ctx->current_ttbr_el2.active = false;
+	ctx->current_vttbr.present = false;
+	ctx->current_vttbr.active = false;
 
 	for (u64 i = 0; i < MAX_SYSREG; i++) {
 		ctx->regs[i].present = false;

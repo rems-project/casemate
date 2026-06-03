@@ -89,13 +89,16 @@ struct sm_location *location(u64 phys);
  * Returns false if given sysreg name is not a valid TTBR.
  */
 bool stage_from_ttbr(enum ghost_sysreg_kind sysreg, entry_stage_t *out_stage);
+bool regime_from_ttbr(enum ghost_sysreg_kind sysreg, enum translation_regime *out_regime);
+enum ghost_sysreg_kind ttbr_for_regime(enum translation_regime regime, entry_stage_t stage);
 
-void try_register_root(struct roots *roots, entry_stage_t stage, phys_addr_t baddr, addr_id_t id);
+void try_register_root(struct roots *roots, enum translation_regime regime, entry_stage_t stage,
+		       phys_addr_t baddr, addr_id_t id);
 
 /**
  * regime_enabled() - Returns True if the given translation regime is currently enabled
  */
-bool regime_enabled(entry_stage_t stage);
+bool regime_enabled(enum translation_regime regime, entry_stage_t stage);
 
 /**
  * is_on_write_transition() - Returns true when the current step is a write transition to `p`.

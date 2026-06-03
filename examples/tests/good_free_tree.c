@@ -33,6 +33,7 @@ int main(int argc, char **argv)
 	HINT(GHOST_HINT_RELEASE_TABLE, (u64)root, 0);
 
 	/* can now re-use child in new_root */
+	TRANS_MEM_INIT((u64)child, 4096);
 	LOCK(l2);
 	WRITE_ONCE(new_root[0], (u64)child | 0b11);
 	UNLOCK(l2);

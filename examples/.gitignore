@@ -36,4 +36,5 @@
 /bad_EL2_ASID
 /good_switch
 /good_release_table
+/good_enter_context
 /good_trylock
