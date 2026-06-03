@@ -554,8 +554,8 @@ void walk_pgtable_to(pgtable_traverse_cb visitor_cb, u64 root, u64 ia, entry_sta
 		ctxt.loc = loc;
 		ctxt.data = data;
 		ctxt.level = lvl;
-		ctxt.descriptor = loc->val;
-		ctxt.exploded_descriptor = deconstruct_pte(ia, loc->val, lvl, stage);
+		ctxt.descriptor = read_phys(pte_phys);
+		ctxt.exploded_descriptor = deconstruct_pte(ia, ctxt.descriptor, lvl, stage);
 		ctxt.leaf = ctxt.exploded_descriptor.kind != PTE_KIND_TABLE;
 		visitor_cb(&ctxt);
 
