@@ -780,7 +780,23 @@ bool regime_enabled(entry_stage_t stage)
 
 static void deactivate_translation(struct root *root)
 {
+	ghost_assert(root->refcount > 0);
 	root->refcount--;
+}
+
+static void deactivate_current_translation(entry_stage_t stage)
+{
+	struct cm_thrd_ctxt *ctxt = current_thread_context();
+	root_index_t *cur_root;
+	struct root *assoc_root;
+
+	cur_root = (stage == ENTRY_STAGE1) ? &ctxt->current_s1 : &ctxt->current_s2;
+	if (! cur_root->present)
+		return;
+
+	assoc_root = retrieve_root_from_idx(cur_root->index);
+	deactivate_translation(assoc_root);
+	cur_root->present = false;
 }
 
 static void activate_translation(struct root *root)
@@ -886,17 +902,21 @@ static void step_msr(struct ghost_hw_step *step)
 		break;
 
 	case SYSREG_HCR_EL2:
-		/* switched on virtualization of translation */
-		if (! regime_enabled(ENTRY_STAGE2) && (step->msr_data.val & 0b1) == 1)
+		ret = regime_enabled(ENTRY_STAGE2);
+		/* switched on/off virtualisation */
+		if (! ret && BITS_SET(step->msr_data.val, HCR_VM_MASK))
 			activate_ttbr(SYSREG_VTTBR, read_sysreg(SYSREG_VTTBR));
-		/* XXX .. and switched off ?*/
+		else if (ret && ! BITS_SET(step->msr_data.val, HCR_VM_MASK))
+			deactivate_current_translation(ENTRY_STAGE2);
 		break;
 
 	case SYSREG_SCTLR_EL2:
-		/* switched on translation */
-		if (! regime_enabled(ENTRY_STAGE1) && (step->msr_data.val & 0b1) == 1)
+		ret = regime_enabled(ENTRY_STAGE1);
+		/* switched on/off translation */
+		if (! ret && BITS_SET(step->msr_data.val, SCTLR_M_MASK))
 			activate_ttbr(SYSREG_TTBR_EL2, read_sysreg(SYSREG_TTBR_EL2));
-		/* XXX .. and switched off ?*/
+		else if (ret && ! BITS_SET(step->msr_data.val, SCTLR_M_MASK))
+			deactivate_current_translation(ENTRY_STAGE1);
 		break;
 
 	default:
