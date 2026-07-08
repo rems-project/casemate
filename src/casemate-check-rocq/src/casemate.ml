@@ -6,11 +6,26 @@ let parse_line line =
   (* ignore the final line with "!" *)
   if String.length line = 0 || String.get line 0 = '!' then None
   else
-    match Parser.of_line line with
-    | None -> Fmt.invalid_arg "Parse error: %S" line
-    | res -> res
+    match
+      try Ok (Parser.of_line line) with
+      | exn -> Error exn
+    with
+    | Ok None -> Fmt.invalid_arg "parse error: %S" line
+    | Ok res -> res
+    | Error exn ->
+        Fmt.invalid_arg "parse error: %S (%s)" line (Printexc.to_string exn)
 
-let transitions ic = Iters.lines ic |> Iters.filter_map parse_line
+let transitions ic =
+  let lineno = ref 0 in
+  Iters.lines ic
+  |> Iters.filter_map (fun line ->
+         incr lineno;
+         match
+           try Ok (parse_line line) with
+           | Invalid_argument msg -> Error msg
+         with
+         | Ok res -> res
+         | Error msg -> Fmt.invalid_arg "line %d: %s" !lineno msg)
 
 (** Entrypoints **)
 
@@ -43,21 +58,24 @@ let run_model ?(dump_state = false) ?(dump_roots = false) ?(dump_trans = false)
   in
   let xs = match limit with Some n -> Iters.take n xs | _ -> xs in
   let step_ state trans =
+    if dump_trans then Fmt.pr "@[<v2>Step:@,%a@]@." pp_tr trans;
     let res = Rocq_casemate.step trans state in
-    if res.cmr_log != [] then (
-      if dump_trans then
-        Fmt.pr "%a@ @[<2>%a@]@." pp_tr trans pp_logs res.cmr_log
-      else Fmt.pr "%a@." pp_logs res.cmr_log;
-      if dump_roots then
-        Fmt.pr "@[<2>Roots:@ @[<2>%a@]@]@." pp_casemate_model_roots state.cms_roots;
-      if dump_state then
-        Fmt.pr "@[<2>State:@ @[<2>%a@]@]@." pp_casemate_model_state state);
-    (* If we reach an error, we dump the transition *)
-    if Result.is_error res.cmr_data then Fmt.pr "@[%a@]@." pp_tr trans;
-    res.cmr_data
+    if res.cmr_log != [] then
+      Fmt.pr "%a@." pp_logs res.cmr_log;
+    if dump_roots then
+      Fmt.pr "@[<v2>Roots before step:@,%a@]@." pp_casemate_model_roots
+        state.cms_roots;
+    if dump_state then
+      Fmt.pr "@[<v2>State before step:@,%a@]@." pp_casemate_model_state
+        state;
+    match res.cmr_data with
+    | Ok _ as ok -> ok
+    | Error err ->
+        Fmt.pr "@[%a@]@." pp_step_error (trans, err);
+        Error err
   in
   let res = Iters.fold_result step_ cms_init xs in
-  Fmt.pr "@[%a@]@." pp_step_result res;
+  if Result.is_ok res then Fmt.pr "@[%a@]@." pp_step_result res;
   res
 
 (** Cmdline args **)
@@ -76,7 +94,8 @@ let exit_of_step r =
   | Ok _ -> Ok Cmd.Exit.ok
   | Error _ -> Ok step_error
 
-let info = Cmd.info "parser" ~doc:"Describe me" ~exits:exits
+let info =
+  Cmd.info "casemate" ~doc:"Check a casemate execution trace." ~exits:exits
 
 let term : Cmd.Exit.code Term.t =
   let open Arg in
@@ -98,9 +117,9 @@ let term : Cmd.Exit.code Term.t =
     value
     @@ opt (some int) None
     @@ info [ "limit" ] ~docv:"NUM" ~doc:"Check only the first $(docv) events."
-  and dump_s = value @@ opt bool false @@ info [ "dump-states" ]
-  and dump_r = value @@ opt bool false @@ info [ "dump-roots" ]
-  and dump_t = value @@ opt bool false @@ info [ "dump-transitions" ] in
+  and dump_s = value @@ flag @@ info [ "dump-states" ]
+  and dump_r = value @@ flag @@ info [ "dump-roots" ]
+  and dump_t = value @@ flag @@ info [ "dump-transitions" ] in
   Term.(
     (fun read write limit dump_state dump_roots dump_trans trace ->
       match (read, write, trace) with
@@ -116,6 +135,17 @@ let term : Cmd.Exit.code Term.t =
     $$ read $ write $ limit $ dump_s $ dump_r $ dump_t $ trace)
   |> Term.term_result' ~usage:true
 
-let _ =
+let pp_uncaught_exception ppf = function
+  | Invalid_argument msg | Failure msg | Sys_error msg -> Fmt.pf ppf "%s" msg
+  | End_of_file -> Fmt.pf ppf "unexpected end of file"
+  | exn -> Fmt.pf ppf "unexpected exception: %s" (Printexc.to_string exn)
+
+let main () =
   Fmt_tty.setup_std_outputs ();
-  Cmd.v info term |> Cmd.eval' |> exit
+  Cmd.v info term |> Cmd.eval' ~catch:false |> exit
+
+let _ =
+  try main () with
+  | exn ->
+      Fmt.epr "Error: %a@." pp_uncaught_exception exn;
+      exit Cmd.Exit.some_error
