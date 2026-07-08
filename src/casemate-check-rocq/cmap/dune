@@ -6,4 +6,4 @@
 (coq.theory
  (name Cmap)
  (modules cmap)
- (theories stdpp stdpp.bitvector))
+ (theories Stdlib stdpp stdpp.bitvector))

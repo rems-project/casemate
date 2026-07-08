@@ -2,4 +2,4 @@
  (name casemate)
  (flags :standard)
  (synopsis "casemate")
- (theories RecordUpdate stdpp stdpp.bitvector Cmap Zmap))
+ (theories Stdlib Ltac2 RecordUpdate stdpp stdpp.bitvector Cmap Zmap))
