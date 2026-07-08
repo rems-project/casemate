@@ -54,6 +54,23 @@ let rec insert x va map =
         is_valid = true;
       }
 
+let delete x map =
+  assert map.is_valid;
+  let ad = map_bits x in
+  match lookup_cache ad map.c with
+  | Some line ->
+      Array.set line (array_bits x) None;
+      map.is_valid <- false;
+      { c = map.c; map = map.map; is_valid = true }
+  | None -> (
+      try
+        let line = ZMap.find ad map.map in
+        map.c <- add_to_cache ad line map.c;
+        Array.set line (array_bits x) None;
+        map.is_valid <- false;
+        { c = map.c; map = map.map; is_valid = true }
+      with Not_found -> map)
+
 let lookup x map =
   assert map.is_valid;
   let ma = map_bits x in

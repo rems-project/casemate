@@ -1,8 +1,8 @@
-Require Export String Cmap.cmap Zmap.zmap stdpp.gmap.
+From Stdlib Require Export String Recdef.
+Require Export Cmap.cmap Zmap.zmap stdpp.gmap.
 Require Export stdpp.bitvector.bitvector.
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
-Require Export Recdef.
 
 (* This is to prevent non-bools from being used as bools *)
 Notation "'if' C 'then' A 'else' B" :=
@@ -116,7 +116,13 @@ Definition pa_mul (a b : phys_addr_t) : phys_addr_t :=
   PA ((phys_addr_val a) b* (phys_addr_val b))
 .
 Infix "pa*" := pa_mul (at level 40).
-Notation "<[ K := V ]> D" := (<[ bv_shiftr_64 (phys_addr_val K) b3 := V ]> D) (at level 100).
+
+Definition insert_phys_addr {A M : Type} `{!Insert u64 A M}
+  (key : phys_addr_t)
+  (value : A)
+  (map : M) : M :=
+  insert (bv_shiftr_64 (phys_addr_val key) b3) value map.
+
 Definition pa0 := PA b0.
 
 Inductive sm_owner_t :=
@@ -160,9 +166,9 @@ Inductive log_element :=
 .
 
 Inductive internal_error_type :=
-  | IET_infinite_loop
-  | IET_unexpected_none
-  | IET_no_write_authorization
+  | InternalError_IterationLimit
+  | InternalError_UnexpectedNone
+  | InternalError_NoWriteAuthorization
 .
 
 Fixpoint idx_of {A : Type} (f : A -> bool) (acc : nat) (l : list A) {struct l} : nat :=

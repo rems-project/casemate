@@ -155,7 +155,7 @@ Definition deconstruct_pte
   |}
 .
 
-(* Coq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
+(* Rocq typechecking needs a guarantee that the function terminates, that is why the max_call_number nat exists,
           the number of recursive calls is bounded. *)
 Fixpoint traverse_pgt_from_aux
   (root : sm_owner_t)
@@ -176,7 +176,7 @@ Fixpoint traverse_pgt_from_aux
                             b0 
                             max_call_number 
                             mon
-  | O => Merror (CME_internal_error IET_infinite_loop)
+  | O => Merror (ModelError_Internal InternalError_IterationLimit)
   end
   (* This is the for loop that iterates over all the entries of a page table *)
 with traverse_pgt_from_offs
@@ -216,7 +216,7 @@ with traverse_pgt_from_offs
         | Ok _ _ updated_state =>
           let location := updated_state !! addr in
           match location with
-          | None => mon (* If the page table was not initialised, we cannot continue (or we could ignore this and continue.) *)
+          | None => mon (* Nothing to traverse when the page-table location is not initialized. *)
           | Some location =>
             let exploded_desc :=
               match location.(sl_pte) with
@@ -256,7 +256,7 @@ with traverse_pgt_from_offs
           end
         end
       end
-  | O => Merror (CME_internal_error IET_infinite_loop)
+  | O => Merror (ModelError_Internal InternalError_IterationLimit)
   end
 .
 
@@ -350,15 +350,15 @@ Definition mark_cb
   match ctx.(ptc_loc) with
   | Some location =>
     match location.(sl_pte) with
-    | Some _ => Merror (CME_double_use_of_pte ctx.(ptc_addr))
+    | Some _ => Merror (ModelError_DoubleUseOfPte ctx.(ptc_addr))
     | None =>
       let new_desc := deconstruct_pte cpu_id ctx.(ptc_partial_ia) location.(sl_val) ctx.(ptc_level) ctx.(ptc_root) ctx.(ptc_stage) in
       let new_location := location <| sl_pte := (Some new_desc) |> <| sl_thread_owner := None |> in
-      let new_state := ctx.(ptc_state) <| cms_memory := <[ location.(sl_phys_addr) := new_location]> ctx.(ptc_state).(cms_memory) |> in
+      let new_state := ctx.(ptc_state) <| cms_memory := insert_phys_addr location.(sl_phys_addr) new_location ctx.(ptc_state).(cms_memory) |> in
       Mreturn new_state
     end
-  | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-    Merror (CME_uninitialised "mark_cb" ctx.(ptc_addr))
+  | None =>  (* The Rocq model needs the location value to construct PTE metadata. *)
+    Merror (ModelError_Uninitialised "mark_cb" ctx.(ptc_addr))
   end
 .
 
@@ -371,13 +371,13 @@ Definition unmark_cb
     match location.(sl_pte) with
       | Some _ =>
         let new_loc := location <| sl_pte := None |> in
-        let new_st := <[ location.(sl_phys_addr) := new_loc ]> ctx.(ptc_state).(cms_memory) in
+        let new_st := insert_phys_addr location.(sl_phys_addr) new_loc ctx.(ptc_state).(cms_memory) in
         Mreturn (ctx.(ptc_state) <| cms_memory := new_st |>)
       | None =>
-        Merror (CME_not_a_pte "unmark_cb"%string ctx.(ptc_addr))
+        Merror (ModelError_NotPte "unmark_cb"%string ctx.(ptc_addr))
     end
-  | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-      Merror (CME_uninitialised "unmark_cb" ctx.(ptc_addr))
+  | None =>  (* The Rocq model needs the location value to remove PTE metadata. *)
+      Merror (ModelError_Uninitialised "unmark_cb" ctx.(ptc_addr))
   end
 .
 
@@ -393,14 +393,14 @@ Definition mark_not_writable_cb
         | Some desc =>
           let new_desc := desc <| eed_state := SPS_STATE_PTE_NOT_WRITABLE |> in
           let new_location := location <| sl_pte := Some new_desc |> in
-          let new_cms := <[ location.(sl_phys_addr) := new_location ]> ctx.(ptc_state).(cms_memory) in
+          let new_cms := insert_phys_addr location.(sl_phys_addr) new_location ctx.(ptc_state).(cms_memory) in
           Mreturn (ctx.(ptc_state) <| cms_memory := new_cms |>)
         | None =>
-          Merror (CME_not_a_pte "mark_not_writable"%string ctx.(ptc_addr))
+          Merror (ModelError_NotPte "mark_not_writable"%string ctx.(ptc_addr))
       end
-    | Some tho => Merror (CME_parent_invalidated location.(sl_phys_addr))
+    | Some tho => Merror (ModelError_ParentInvalidated location.(sl_phys_addr))
     end
-  | None =>  (* In the C model, it is not an issue memory can be read, here we cannot continue because we don't have the value at that memory location *)
-      Merror (CME_uninitialised "mark_not_writable" ctx.(ptc_addr))
+  | None =>  (* The Rocq model needs the location value to update PTE metadata. *)
+      Merror (ModelError_Uninitialised "mark_not_writable" ctx.(ptc_addr))
   end
 .

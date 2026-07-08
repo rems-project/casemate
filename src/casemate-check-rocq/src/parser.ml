@@ -11,28 +11,21 @@ let u64 sexp = match sexp with
 | Atom s ->
     let n = String.length s in
     try (
-      if n > 2 && s.[0] == '0' && s.[1] == 'x' then
+      if n > 2 && s.[0] = '0' && (s.[1] = 'x' || s.[1] = 'X') then
         Z0.of_substring_base 16 s ~pos:2 ~len:(n - 2)
-      else Z0.of_string s
+      else Z0.of_string_base 16 s
     ) with Invalid_argument _ -> of_sexp_error "bad u64" sexp
 
-let mem_write_order = function
-  | Atom "plain"   -> WMO_plain
-  | Atom "page"    -> WMO_page
-  | Atom "release" -> WMO_release
-  | sexp -> of_sexp_error "bad mem-write mem-order" sexp
+let named_atom what lookup = function
+  | Atom name -> (
+      match lookup name with
+      | Some value -> value
+      | None -> of_sexp_error ("bad " ^ what) (Atom name))
+  | sexp -> of_sexp_error ("bad " ^ what) sexp
 
-let msr_sysreg = function
-  | Atom "vttbr_el2" -> SYSREG_VTTBR
-  | Atom "ttbr0_el2" -> SYSREG_TTBR_EL2
-  | sexp -> of_sexp_error "bad msr sysreg" sexp
-
-let hint_kind = function
-  | Atom "set_root_lock"        -> GHOST_HINT_SET_ROOT_LOCK
-  | Atom "set_owner_root"       -> GHOST_HINT_SET_OWNER_ROOT
-  | Atom "release_table"        -> GHOST_HINT_RELEASE_TABLE
-  | Atom "set_pte_thread_owner" -> GHOST_HINT_SET_PTE_THREAD_OWNER
-  | sexp -> of_sexp_error "bad lock hint kind" sexp
+let mem_write_order = named_atom "mem-write mem-order" Transition_names.write_order_of_string
+let msr_sysreg = named_atom "msr sysreg" Transition_names.sysreg_of_string
+let hint_kind = named_atom "lock hint kind" Transition_names.hint_of_string
 
 let barrier_kind = function
   | Atom "ish"   -> MBReqDomain_InnerShareable
@@ -51,46 +44,13 @@ let barrier_of barrier_name tl =
   | sexpr -> of_sexp_error "Bad barrier name" sexpr
 
 let tlbi_of tlbi_name tl =
-  match tlbi_name with
-  | Atom "vmalls12e1" ->
-      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1; ttd_value = b0 },
-        tl )
-  | Atom "vmalls12e1is" ->
-      ( CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalls12e1is; ttd_value = b0 },
-        tl )
-  | Atom "vmalle1is" ->
-      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_vmalle1is; ttd_value = b0 }, tl)
-  | Atom "alle1is" ->
-      (CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = TLBI_alle1is; ttd_value = b0 }, tl)
-  | Atom "vae2" -> (
-      match tl with
-      | List [ Atom "value"; value ] :: tl ->
-          ( CMSD_TRANS_HW_TLBI
-              { ttd_tlbi_kind = TLBI_vae2; ttd_value = u64 value },
-            tl )
-      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
-  | Atom "vale2is" -> (
-      match tl with
-      | List [ Atom "value"; value ] :: tl ->
-          ( CMSD_TRANS_HW_TLBI
-              { ttd_tlbi_kind = TLBI_vale2is; ttd_value = u64 value },
-            tl )
-      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
-  | Atom "vae2is" -> (
-      match tl with
-      | List [ Atom "value"; value ] :: tl ->
-          ( CMSD_TRANS_HW_TLBI
-              { ttd_tlbi_kind = TLBI_vae2is; ttd_value = u64 value },
-            tl )
-      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
-  | Atom "ipas2e1is" -> (
-      match tl with
-      | List [ Atom "value"; value ] :: tl ->
-          ( CMSD_TRANS_HW_TLBI
-              { ttd_tlbi_kind = TLBI_ipas2e1is; ttd_value = u64 value },
-            tl )
-      | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr))
-  | sexp -> of_sexp_error "Bad tlbi" sexp
+  let tlbi_kind = named_atom "tlbi" Transition_names.tlbi_of_string tlbi_name in
+  if Transition_names.tlbi_needs_value tlbi_kind then
+    match tl with
+    | List [ Atom "value"; value ] :: tl ->
+        (StepData_HwTlbi { ttd_tlbi_kind = tlbi_kind; ttd_value = u64 value }, tl)
+    | sexpr -> of_sexp_error "Bad tlbi data" (List sexpr)
+  else (StepData_HwTlbi { ttd_tlbi_kind = tlbi_kind; ttd_value = b0 }, tl)
 
 let transition sexp =
   let data, id, tid, tl = match sexp with
@@ -102,7 +62,7 @@ let transition sexp =
       :: List [ Atom "address"; addr ]
       :: List [ Atom "value"; value ]
       :: tl) ->
-        CMSD_TRANS_HW_MEM_WRITE { twd_mo = mem_write_order order; twd_phys_addr = u64 addr; twd_val = u64 value },
+        StepData_HwMemWrite { twd_mo = mem_write_order order; twd_phys_addr = u64 addr; twd_val = u64 value },
         id, tid, tl
   | List
       (Atom "mem-read"
@@ -111,7 +71,7 @@ let transition sexp =
       :: List [ Atom "address"; addr ]
       :: List [ Atom "value"; value ]
       :: tl) ->
-        CMSD_TRANS_HW_MEM_WRITE { twd_mo = WMO_page; twd_phys_addr = u64 addr; twd_val = u64 value },
+        StepData_HwMemRead { trd_phys_addr = u64 addr; trd_val = u64 value },
         id, tid, tl
   | List
       (Atom "barrier"
@@ -119,7 +79,7 @@ let transition sexp =
       :: List [ Atom "tid"; tid ]
       :: barrier_name :: tl) ->
       let barrier, tl = barrier_of barrier_name tl in
-      (CMSD_TRANS_HW_BARRIER barrier, id, tid, tl)
+      (StepData_HwBarrier barrier, id, tid, tl)
   | List
       (Atom "tlbi"
       :: List [ Atom "id"; id ]
@@ -134,7 +94,7 @@ let transition sexp =
       :: List [ Atom "sysreg"; sysreg ]
       :: List [ Atom "value"; value ]
       :: tl) ->
-        CMSD_TRANS_HW_MSR { tmd_sysreg = msr_sysreg sysreg; tmd_val = u64 value },
+        StepData_HwMsr { tmd_sysreg = msr_sysreg sysreg; tmd_val = u64 value },
         id, tid, tl
   | List
       (Atom "mem-init"
@@ -143,7 +103,16 @@ let transition sexp =
       :: List [ Atom "address"; addr ]
       :: List [ Atom "size"; size ]
       :: tl) ->
-        CMSD_TRANS_ABS_MEM_INIT { tid_addr = u64 addr; tid_size = u64 size },
+        StepData_AbsMemInit { tmrd_addr = u64 addr; tmrd_size = u64 size },
+        id, tid, tl
+  | List
+      (Atom "mem-free"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: List [ Atom "size"; size ]
+      :: tl) ->
+        StepData_AbsMemFree { tmrd_addr = u64 addr; tmrd_size = u64 size },
         id, tid, tl
   | List
       (Atom "mem-set"
@@ -153,7 +122,7 @@ let transition sexp =
       :: List [ Atom "size"; size ]
       :: List [ Atom "value"; value ]
       :: tl) ->
-        CMSD_TRANS_ABS_MEMSET { tmd_addr = u64 addr; tmd_size = u64 size; tmd_value = u64 value },
+        StepData_AbsMemset { tmd_addr = u64 addr; tmd_size = u64 size; tmd_value = u64 value },
         id, tid, tl
   | List
       (Atom "lock"
@@ -161,14 +130,21 @@ let transition sexp =
       :: List [ Atom "tid"; tid ]
       :: List [ Atom "address"; addr ]
       :: tl) ->
-      (CMSD_TRANS_ABS_LOCK (u64 addr), id, tid, tl)
+      (StepData_AbsLock (u64 addr), id, tid, tl)
+  | List
+      (Atom "trylock"
+      :: List [ Atom "id"; id ]
+      :: List [ Atom "tid"; tid ]
+      :: List [ Atom "address"; addr ]
+      :: tl) ->
+      (StepData_AbsTryLock (u64 addr), id, tid, tl)
   | List
       (Atom "unlock"
       :: List [ Atom "id"; id ]
       :: List [ Atom "tid"; tid ]
       :: List [ Atom "address"; addr ]
       :: tl) ->
-      (CMSD_TRANS_ABS_UNLOCK (u64 addr), id, tid, tl)
+      (StepData_AbsUnlock (u64 addr), id, tid, tl)
   | List
       (Atom "hint"
       :: List [ Atom "id"; id ]
@@ -177,7 +153,7 @@ let transition sexp =
       :: List [ Atom "location"; loc ]
       :: List [ Atom "value"; value ]
       :: tl) ->
-        CMSD_TRANS_HINT { thd_hint_kind = hint_kind kind; thd_location = u64 loc; thd_value = u64 value; },
+        StepData_Hint { thd_hint_kind = hint_kind kind; thd_location = u64 loc; thd_value = u64 value; },
         id, tid, tl
   | sexp -> of_sexp_error "bad event" sexp
   in
@@ -201,5 +177,5 @@ let transition sexp =
     cms_thread_identifier = u64 tid;
     cms_data = data;
   }
-  
+
 let of_line line = Sexplib.Sexp.of_string_conv_exn line transition

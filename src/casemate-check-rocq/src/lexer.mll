@@ -25,10 +25,10 @@
   "SYSREG_TTBR_EL2", SYSREG_TTBR_EL2;
   (* HINT *)
   "HINT", HINT;
-  "GHOST_HINT_SET_ROOT_LOCK", GHOST_HINT_SET_ROOT_LOCK;
-  "GHOST_HINT_SET_OWNER_ROOT", GHOST_HINT_SET_OWNER_ROOT;
-  "GHOST_HINT_RELEASE_TABLE", GHOST_HINT_RELEASE_TABLE;
-  "GHOST_HINT_SET_PTE_THREAD_OWNER", GHOST_HINT_SET_PTE_THREAD_OWNER;
+  "Hint_SetRootLock", Hint_SetRootLock;
+  "Hint_SetOwnerRoot", Hint_SetOwnerRoot;
+  "Hint_ReleaseTable", Hint_ReleaseTable;
+  "Hint_SetPteThreadOwner", Hint_SetPteThreadOwner;
   (* ZALLOC *)
   "ZALLOC", ZALLOC;
   (* LOCK *)

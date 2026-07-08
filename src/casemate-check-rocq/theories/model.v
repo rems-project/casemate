@@ -147,6 +147,7 @@ Inductive write_authorization :=
 Record lock_state := {
   ls_tid : thread_identifier;
   ls_write_authorization : write_authorization;
+  ls_count : nat;
 }.
 
 Definition casemate_model_lock_state_map := zmap lock_state.
@@ -297,7 +298,8 @@ Definition is_pte_well_locked
   | None => false
   | Some addr =>
     match lookup addr cms.(cms_lock_state) with
-    | Some {| ls_tid := lock_owner; ls_write_authorization := _ |} => bool_decide (lock_owner = cpu)
+    | Some {| ls_tid := lock_owner; ls_write_authorization := _; ls_count := _ |} =>
+      bool_decide (lock_owner = cpu)
     | None => false
     end
   end
@@ -345,7 +347,8 @@ Definition update_current_thread_context
       | S2 => {| current_s1 := thrd_ctxt.(current_s2); current_s2 := assoc_root_baddr|}
       end
     | None => 
-      match stage with (* TODO: pa0 to None? *)
+      (* Missing thread-local context is represented by Root pa0. *)
+      match stage with
       | S1 => {| current_s1 := assoc_root_baddr; current_s2 := Root pa0 |}
       | S2 => {| current_s1 := Root pa0; current_s2 := assoc_root_baddr|}
       end
@@ -380,36 +383,36 @@ Definition get_current_vttbr
   current_thread_context_root tid S2 cms.
 
 Inductive violation_type :=
-  | BBM_valid_on_invalid_unclean
-  | BBM_valid_on_valid
-  | BBM_release_unclean
+  | BBMViolation_ValidOnInvalidUnclean
+  | BBMViolation_ValidOnValid
+  | BBMViolation_ReleaseUnclean
 .
 
 Inductive addr_id_violation :=
-  | AID_root_already_associated
-  | AID_TTBR0_EL2_reserved_zero
-  | AID_duplicate_addr_id
+  | AddressIdViolation_RootAlreadyAssociated
+  | AddressIdViolation_TTBR0_EL2ReservedZero
+  | AddressIdViolation_Duplicate
 .
 
 Inductive casemate_model_error :=
-  | CME_bbm_violation : violation_type -> phys_addr_t -> casemate_model_error
-  | CME_not_a_pte : string -> phys_addr_t -> casemate_model_error
-  | CME_inconsistent_read
-  | CME_uninitialised : string -> phys_addr_t -> casemate_model_error
-  | CME_unclean_child : phys_addr_t -> casemate_model_error
-  | CME_write_on_not_writable : phys_addr_t -> casemate_model_error
-  | CME_double_use_of_pte : phys_addr_t -> casemate_model_error
-  | CME_root_already_exists
-  | CME_unaligned_write
-  | CME_double_lock_acquire : thread_identifier -> thread_identifier -> casemate_model_error
-  | CME_transition_without_lock : phys_addr_t -> casemate_model_error
-  | CME_write_without_authorization : phys_addr_t -> casemate_model_error
-  | CME_unimplemented
-  | CME_internal_error : internal_error_type -> casemate_model_error
-  | CME_parent_invalidated : phys_addr_t -> casemate_model_error
-  | CME_owned_pte_accessed_by_other_thread : phys_addr_t -> casemate_model_error
-  | CME_addr_id_error : addr_id_violation -> casemate_model_error (* TODO: add error cases as inductive types *)
-  | CME_owner_not_associated_with_a_root
+  | ModelError_BBMViolation : violation_type -> phys_addr_t -> casemate_model_error
+  | ModelError_NotPte : string -> phys_addr_t -> casemate_model_error
+  | ModelError_InconsistentRead
+  | ModelError_Uninitialised : string -> phys_addr_t -> casemate_model_error
+  | ModelError_UncleanChild : phys_addr_t -> casemate_model_error
+  | ModelError_WriteOnNotWritable : phys_addr_t -> casemate_model_error
+  | ModelError_DoubleUseOfPte : phys_addr_t -> casemate_model_error
+  | ModelError_RootAlreadyExists
+  | ModelError_UnalignedWrite
+  | ModelError_DoubleLockAcquire : thread_identifier -> thread_identifier -> casemate_model_error
+  | ModelError_TransitionWithoutLock : phys_addr_t -> casemate_model_error
+  | ModelError_WriteWithoutAuthorization : phys_addr_t -> casemate_model_error
+  | ModelError_Unimplemented
+  | ModelError_Internal : internal_error_type -> casemate_model_error
+  | ModelError_ParentInvalidated : phys_addr_t -> casemate_model_error
+  | ModelError_OwnedPteAccessedByOtherThread : phys_addr_t -> casemate_model_error
+  | ModelError_AddressIdentifier : addr_id_violation -> casemate_model_error
+  | ModelError_OwnerNotAssociatedWithLock
 .
 
 Record casemate_model_result := mk_casemate_model_result {
@@ -459,7 +462,7 @@ Definition insert_location
   (loc : sm_location)
   (cms : casemate_model_state) :
   casemate_model_state :=
-  (cms <| cms_memory := <[ loc.(sl_phys_addr) := loc ]> cms.(cms_memory) |>)
+  (cms <| cms_memory := insert_phys_addr loc.(sl_phys_addr) loc cms.(cms_memory) |>)
 .
 
 Definition Minsert_location
@@ -475,4 +478,3 @@ Definition Minsert_location
   | e => e
   end
 .
-

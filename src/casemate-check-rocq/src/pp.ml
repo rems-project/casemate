@@ -7,17 +7,18 @@ let pp_phys_addr_t = p0xZ
 type regime = [%import: Rocq_casemate.regime] [@@deriving show]
 
 let pp_transition_data ppf = function
-  | CMSD_TRANS_HW_MEM_WRITE
+  | StepData_HwMemWrite
       { twd_mo = typ; twd_phys_addr = addr; twd_val = value } ->
       Fmt.pf ppf "W%s %a %a"
-        (match typ with
-        | WMO_release -> "rel"
-        | WMO_page -> "page"
-        | WMO_plain -> "")
+        (match Transition_names.string_of_write_order typ with
+        | "release" -> "rel"
+        | "page" -> "page"
+        | "plain" -> ""
+        | order -> ":" ^ order)
         p0xZ addr p0xZ value
-  | CMSD_TRANS_HW_MEM_READ { trd_phys_addr = addr; trd_val = value } ->
+  | StepData_HwMemRead { trd_phys_addr = addr; trd_val = value } ->
       Fmt.pf ppf "R %a (=%a)" p0xZ addr p0xZ value
-  | CMSD_TRANS_HW_BARRIER barrier ->
+  | StepData_HwBarrier barrier ->
     Fmt.pf ppf "%s"
       (match barrier with
       | Barrier_DSB _ -> "dsb"
@@ -27,33 +28,28 @@ let pp_transition_data ppf = function
       | Barrier_SSBB _ -> "ssbb"
       | Barrier_PSSBB _ -> "pssbb"
       | Barrier_SB _ -> "sb")
-  | CMSD_TRANS_HW_MSR { tmd_sysreg = reg; tmd_val = value } ->
-      Fmt.pf ppf "MSR %s %a"
-        (match reg with
-        | SYSREG_TTBR_EL2 -> "SYSREG_TTBR_EL2"
-        | SYSREG_VTTBR -> "SYSREG_VTTBR")
+  | StepData_HwMsr { tmd_sysreg = reg; tmd_val = value } ->
+      Fmt.pf ppf "MSR %s %a" (Transition_names.string_of_sysreg reg) p0xZ
+        value
+  | StepData_HwTlbi { ttd_tlbi_kind = tlbi_kind; ttd_value = value } ->
+    if Transition_names.tlbi_needs_value tlbi_kind then
+      Fmt.pf ppf "TLBI %s %a" (Transition_names.string_of_tlbi tlbi_kind)
         p0xZ value
-  | CMSD_TRANS_HW_TLBI { ttd_tlbi_kind = tlbi_kind; ttd_value = value } ->
-    Fmt.pf ppf "TLBI %s %a"
-      (match tlbi_kind with
-      | TLBI_vmalls12e1 -> "vmalls12e1"
-      | TLBI_vmalls12e1is -> "vmalls12e1is"
-      | TLBI_vmalle1is -> "vmalle1is"
-      | TLBI_alle1is -> "alle1is"
-      | TLBI_vae2 -> "vae2"
-      | TLBI_vmalle1 -> "vmalle1"
-      | TLBI_vale2is -> "vale2is"
-      | TLBI_vae2is -> "vae2is"
-      | TLBI_ipas2e1is -> "ipas2e1is")
-      p0xZ value
-  | CMSD_TRANS_ABS_MEM_INIT { tid_addr = addr; tid_size = size } ->
+    else
+      Fmt.pf ppf "TLBI %s" (Transition_names.string_of_tlbi tlbi_kind)
+  | StepData_AbsMemInit { tmrd_addr = addr; tmrd_size = size } ->
       Fmt.pf ppf "INIT %a size %a" p0xZ addr p0xZ size
-  | CMSD_TRANS_ABS_MEMSET
+  | StepData_AbsMemFree { tmrd_addr = addr; tmrd_size = size } ->
+      Fmt.pf ppf "FREE %a size %a" p0xZ addr p0xZ size
+  | StepData_AbsMemset
       { tmd_addr = addr; tmd_size = size; tmd_value = value } ->
       Fmt.pf ppf "SET %a size %a as %a" p0xZ addr p0xZ size p0xZ value
-  | CMSD_TRANS_ABS_LOCK addr -> Fmt.pf ppf "LOCK %a" p0xZ addr
-  | CMSD_TRANS_ABS_UNLOCK addr -> Fmt.pf ppf "UNLOCK %a" p0xZ addr
-  | CMSD_TRANS_HINT _ -> Fmt.pf ppf "Hint"
+  | StepData_AbsLock addr -> Fmt.pf ppf "LOCK %a" p0xZ addr
+  | StepData_AbsTryLock addr -> Fmt.pf ppf "TRYLOCK %a" p0xZ addr
+  | StepData_AbsUnlock addr -> Fmt.pf ppf "UNLOCK %a" p0xZ addr
+  | StepData_Hint { thd_hint_kind = hint; thd_location = loc; thd_value = value } ->
+      Fmt.pf ppf "Hint %s %a %a" (Transition_names.string_of_hint hint) p0xZ
+        loc p0xZ value
 
 let pp_location ppf = function
   | Some loc ->
@@ -66,57 +62,54 @@ let pp_transition ppf trans =
     trans.cms_src_loc
 
 let pp_error ppf = function
-  | CME_bbm_violation (violation, addr) ->
-      Fmt.pf ppf "@[BBM violation:@ %s %a@]"
+  | ModelError_BBMViolation (violation, addr) ->
+      Fmt.pf ppf "@[%s at %a@]"
         (match violation with
-        | BBM_valid_on_invalid_unclean -> "Wrote valid on invalid unclean"
-        | BBM_valid_on_valid -> "Wrote valid on another valid descriptor"
-        | BBM_release_unclean -> "Tried to release a page that was still unclean")
+        | BBMViolation_ValidOnInvalidUnclean -> "BBM invalid unclean->valid"
+        | BBMViolation_ValidOnValid -> "BBM valid->valid"
+        | BBMViolation_ReleaseUnclean ->
+            "cannot release table where children are still unclean")
         p0xZ addr
-  | CME_not_a_pte (str, addr) ->
+  | ModelError_NotPte (str, addr) ->
       Fmt.pf ppf "Address %a was expected to be a PTE in function %s" p0xZ addr
         str
-  | CME_inconsistent_read -> Fmt.pf ppf "CME_inconsistent_read"
-  | CME_uninitialised (str, addr) ->
+  | ModelError_InconsistentRead -> Fmt.pf ppf "inconsistent read"
+  | ModelError_Uninitialised (str, addr) ->
       Fmt.pf ppf "Address %a was uninitialized in function %s" p0xZ addr str
-  | CME_unclean_child loc ->
+  | ModelError_UncleanChild loc ->
       Fmt.pf ppf "An unclean child has been encountered at address: %a" p0xZ loc
-  | CME_write_on_not_writable loc ->
-      Fmt.pf ppf "Tried to write while a parent is unclean at address %a" p0xZ
-        loc
-  | CME_double_use_of_pte loc ->
-      Fmt.pf ppf "PTE at address %a is used in two page-tables" p0xZ loc
-  | CME_root_already_exists -> Fmt.pf ppf "CME_root_already_exists"
-  | CME_unaligned_write -> Fmt.pf ppf "unaligned write"
-  | CME_double_lock_acquire (i, j) ->
+  | ModelError_WriteOnNotWritable loc ->
+      Fmt.pf ppf "Wrote on a page with an unclean parent at %a" p0xZ loc
+  | ModelError_DoubleUseOfPte loc ->
+      Fmt.pf ppf "double-use pte at %a" p0xZ loc
+  | ModelError_RootAlreadyExists -> Fmt.pf ppf "root already exists"
+  | ModelError_UnalignedWrite -> Fmt.pf ppf "unaligned write"
+  | ModelError_DoubleLockAcquire (i, j) ->
       Fmt.pf ppf "locking error, locked owned by %a, used by %a" p0xZ i p0xZ j
-  | CME_transition_without_lock i ->
-      Fmt.pf ppf
-        "Tried to take make a step without owning the lock at address: %a" p0xZ
-        i
-  | CME_unimplemented -> Fmt.pf ppf "CME_unimplemented"
-  | CME_internal_error e ->
-      Fmt.pf ppf "@[CME_internal_error:@ %s@]"
+  | ModelError_TransitionWithoutLock i ->
+      Fmt.pf ppf "must write to pte while holding owner lock at %a" p0xZ i
+  | ModelError_Unimplemented -> Fmt.pf ppf "unsupported operation in Rocq model"
+  | ModelError_Internal e ->
+      Fmt.pf ppf "@[internal model error:@ %s@]"
         (match e with
-        | IET_infinite_loop -> "the maximum number of iterations was reached."
-        | IET_unexpected_none -> "a None was found where it was unexpected."
-        | IET_no_write_authorization -> "no write authorization was found.")
-  | CME_write_without_authorization addr ->
-      Fmt.pf ppf "Wrote plain without being authorized to at address %a" p0xZ
-        addr
-  | CME_parent_invalidated addr ->
+        | InternalError_IterationLimit -> "the maximum number of iterations was reached."
+        | InternalError_UnexpectedNone -> "a None was found where it was unexpected."
+        | InternalError_NoWriteAuthorization -> "no write authorization was found.")
+  | ModelError_WriteWithoutAuthorization addr ->
+      Fmt.pf ppf "Wrote plain without authorization at %a" p0xZ addr
+  | ModelError_ParentInvalidated addr ->
       Fmt.pf ppf "Address %a's parent was invalidated" p0xZ addr
-  | CME_owned_pte_accessed_by_other_thread addr ->
+  | ModelError_OwnedPteAccessedByOtherThread addr ->
       Fmt.pf ppf "Location %a owned by a thread but accessed by another" p0xZ addr
-  | CME_addr_id_error violation ->
+  | ModelError_AddressIdentifier violation ->
     Fmt.pf ppf "@[(VM/AS)ID violation:@ %s@]"
       (match violation with
-      | AID_root_already_associated ->
+      | AddressIdViolation_RootAlreadyAssociated ->
           "root already associated with an (VM/AS)ID"
-      | AID_TTBR0_EL2_reserved_zero -> "TTBR0_EL2 ASID is reserved 0"
-      | AID_duplicate_addr_id -> "duplicate (VM/AS)ID")
-  | CME_owner_not_associated_with_a_root ->
-     Fmt.pf ppf "must have associated owner with a root"
+      | AddressIdViolation_TTBR0_EL2ReservedZero -> "TTBR0_EL2 ASID is reserved 0"
+      | AddressIdViolation_Duplicate -> "duplicate (VM/AS)ID")
+  | ModelError_OwnerNotAssociatedWithLock ->
+      Fmt.pf ppf "must have associated root with a lock"
 
 let pp_log ppf = function
   | Inconsistent_read (a, b, c) ->
@@ -139,6 +132,10 @@ let pp_step_result :
   Fmt.(
     result ~ok:(const string "Success!\n") ~error:(fun ppf ->
         Fmt.pf ppf "@[<v>@[<2>Error:@ @[%a@]@]@]" pp_error))
+
+let pp_step_error ppf (trans, err) =
+  Fmt.pf ppf "@[<v2>Error while checking transition:@,%a@,@[<2>Reason:@ %a@]@]"
+    pp_transition trans pp_error err
 
 (* Automatically derive printers using pretty evil metaprogramming, with
    ppx_import and ppx_deriving.show.
@@ -202,12 +199,18 @@ let pp_sm_location ppf sl =
       | _ -> ())
     sl.sl_pte
 
-(* TODO: update format *)
 let pp_cm_root ppf root =
-  Fmt.pf ppf "[<v>{ baddr: %a;@ id: %a;@ refcount: %d }@]" p0xZ root.r_baddr
+  Fmt.pf ppf "@[{ baddr: %a;@ id: %a;@ refcount: %d }@]" p0xZ root.r_baddr
     p0xZ root.r_id root.r_refcount
 
-let pp_casemate_model_roots ppf _ = Fmt.pf ppf ""
+let pp_root_list label ppf roots =
+  Fmt.pf ppf "@[%s: @[<2>[%a]@]@]" label
+    Fmt.(list ~sep:comma pp_cm_root)
+    roots
+
+let pp_casemate_model_roots ppf roots =
+  Fmt.pf ppf "@[<v>%a@,%a@]" (pp_root_list "S1") roots.cmr_s1
+    (pp_root_list "S2") roots.cmr_s2
 
 let pp_casemate_model_memory ppf m =
   let pp_k_v =
@@ -232,7 +235,8 @@ let pp_lock_entry ppf (root, addr, state) =
   match state with
   | None -> Fmt.pf ppf "%a -> %a unlocked" p0xZ root p0xZ addr
   | Some x ->
-      Fmt.pf ppf "%a -> %a locked by %a%s" p0xZ root p0xZ addr p0xZ x.ls_tid
+      Fmt.pf ppf "%a -> %a locked by %a count %d%s" p0xZ root p0xZ addr p0xZ x.ls_tid
+      x.ls_count
       (match x.ls_write_authorization with
       | Write_authorized -> "; authorized to write"
       | Write_unauthorized -> "; unauthorized to write")
