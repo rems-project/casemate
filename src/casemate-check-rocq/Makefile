@@ -1,20 +1,22 @@
 EXAMPLES_DIR=../../examples/expected
 LOG_DIR=./logs
+CASEMATE_EXE=_build/default/src/casemate.exe
 
 all:
 	dune build
 
 cm-test-ex:
+	dune build ./src/casemate.exe
 	for log_file in $(EXAMPLES_DIR)/*.log; do \
 		echo "Processing '$$log_file'..."; \
-		dune exec casemate -- "$$log_file"; \
+		$(CASEMATE_EXE) "$$log_file"; \
 	done
 
 cm-test:
-	dune exe parser ${trace}
+	dune exec ./src/casemate.exe -- ${trace}
 
 cm-coverage:
-	dune exe parser --instrument-with bisect_ppx --force ${trace} && bisect-ppx-report html
+	dune exec --instrument-with bisect_ppx --force ./src/casemate.exe -- ${trace} && bisect-ppx-report html
 
 clean:
 	dune clean
