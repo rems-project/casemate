@@ -11,10 +11,12 @@ synopsis: "Casemate offline checker"
 
 depends: [
   "ocaml" {>= "4.14.0"}
-  "dune"
-  "coq" { (>= "8.19.0") & (<= "8.19.99") | (= "dev") }
-  "coq-stdpp-unstable"
-  "coq-record-update" { (= "0.3.3") | (= "dev") }
+  "dune" {>= "3.8"}
+  "rocq-core" { (>= "9.0.0") | (= "dev") }
+  "rocq-stdlib" { (>= "9.0.0") | (= "dev") }
+  "rocq-stdpp" {>= "1.13.0"}
+  "rocq-stdpp-bitvector" {>= "1.13.0"}
+  "coq-record-update" { ((>= "0.3.6") & (< "0.4")) | (= "dev") }
   "zarith"
   "fmt"
   "ppx_deriving"

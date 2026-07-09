@@ -5,7 +5,7 @@ Require Import stdpp.gmap.
 Require Import Cmap.cmap.
 Require Import Zmap.zmap.
 
-Require Coq.extraction.Extraction.
+From Stdlib Require extraction.Extraction.
 Extraction Language OCaml.
 
 Extract Inlined Constant bv64.BV64 => "".
@@ -22,6 +22,7 @@ Extract Constant cmap "'x" => "'x Cmap.t".
 Extract Inlined Constant cmap_empty => "(Cmap.empty ())".
 Extract Inlined Constant cmap_lookup => "Cmap.lookup".
 Extract Inlined Constant cmap_insert => "Cmap.insert".
+Extract Inlined Constant cmap_delete => "Cmap.delete".
 
 
 Extract Constant zmap "'x" => "'x Zmap.t". 
@@ -33,10 +34,10 @@ Extract Inlined Constant zmap_delete => "Zmap.remove".
 
 Extract Inductive result => "Stdlib.result" [ "Ok" "Error" ].
 
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlNativeString.
-Require Import ExtrOcamlZBigInt.
-Require Import ExtrOcamlNatInt.
+From Stdlib Require Import ExtrOcamlBasic.
+From Stdlib Require Import ExtrOcamlNativeString.
+From Stdlib Require Import ExtrOcamlZBigInt.
+From Stdlib Require Import ExtrOcamlNatInt.
 
 Set Extraction Optimize.
 (* Enable all optimizations *)
