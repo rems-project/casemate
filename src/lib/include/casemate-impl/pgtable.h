@@ -214,6 +214,7 @@ static inline u64 ttbr_extract_id(u64 ttb)
 }
 
 #define TLBI_PAGE_MASK BITMASK(43, 0)
+#define TLBI_ASID_LO 48
 #define TLBI_ASID_MASK BITMASK(63, 48)
 #define TLBI_TTL_MASK BITMASK(47, 44)
 

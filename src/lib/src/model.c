@@ -270,7 +270,7 @@ static bool __decoded_tlbi_has_asid(struct trans_tlbi_data data, u8 *out_asid)
 	switch (data.tlbi_kind) {
 	case TLBI_vale2is:
 	case TLBI_vae2is:
-		*out_asid = data.value & TLBI_ASID_MASK;
+		*out_asid = (data.value & TLBI_ASID_MASK) >> TLBI_ASID_LO;
 		return true;
 
 	case TLBI_vmalle1is:
