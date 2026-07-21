@@ -1667,7 +1667,7 @@ static void step_hint_set_owner_root(u64 phys, u64 root)
 	// the whole page should be owned by the same owner
 	// but in the ghost model, the metadata is split by 64-bit location,
 	// so we iterate to set all in the same page.
-	for (u64 p = PAGE_ALIGN_DOWN(phys); p < PAGE_ALIGN(phys); p += 8) {
+	for (u64 p = PAGE_ALIGN_DOWN(phys); p < PAGE_ALIGN_DOWN(phys) + PAGE_SIZE; p += 8) {
 		struct sm_location *loc = location(p);
 
 		if (loc->is_pte) {
