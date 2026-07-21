@@ -418,7 +418,8 @@ DEFINE_ENUM_MAP(barrier_map, "barrier_kind",
 DEFINE_ENUM_MAP(barrier_dxb_map, "barrier_dxb_kind",
 	DXB_KIND(nsh),
 	DXB_KIND(ish),
-	DXB_KIND(ishst));
+	DXB_KIND(ishst),
+	DXB_KIND(sy));
 /* clang-format on */
 
 void parse_barrier_tail(struct parser *p)

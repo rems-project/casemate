@@ -51,6 +51,7 @@ enum dxb_kind {
 	DxB_ish,
 	DxB_ishst,
 	DxB_nsh,
+	DxB_sy,
 };
 
 enum barrier_kind {

@@ -1198,6 +1198,9 @@ void dsb_visitor(struct pgtable_traverse_context *ctxt)
 	if (! is_location_locked(ctxt->loc))
 		return;
 
+	if (dsb_kind == DxB_sy)
+		dsb_kind = DxB_ish;
+
 	if (dsb_kind == DxB_nsh) {
 		if (opts()->check_opts.promote_DSB_nsh) {
 			// silence noisy warning...
@@ -2062,7 +2065,7 @@ static int validate_hw_step(struct ghost_hw_step *step)
 		if (! IS_IN_ENUM_RANGE(step->barrier_data.kind, BARRIER_DSB, BARRIER_ISB))
 			return ERROR(EINVAL, "bad barrier kind");
 		if (step->barrier_data.kind == BARRIER_DSB &&
-		    ! IS_IN_ENUM_RANGE(step->barrier_data.dxb_data, DxB_ish, DxB_nsh))
+		    ! IS_IN_ENUM_RANGE(step->barrier_data.dxb_data, DxB_ish, DxB_sy))
 			return ERROR(EINVAL, "bad DSB kind");
 		break;
 	case HW_TLBI:

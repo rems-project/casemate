@@ -62,6 +62,7 @@ static const char *barrier_dxb_kind_names[] = {
 	[DxB_ish] = "ish",
 	[DxB_ishst] = "ishst",
 	[DxB_nsh] = "nsh",
+	[DxB_sy] = "sy",
 };
 DEFINE_ENUM_MAP(barrier_dxb_kind_map, barrier_dxb_kind_names);
 
