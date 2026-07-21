@@ -87,7 +87,7 @@ int thr_recv(void);
 	casemate_model_step_free(VAR, SIZE)
 
 #define TRANS_MEM_SET(VAR, SIZE, VAL) \
-	casemate_model_step_memset(VAR, SIZE, VAL)
+	casemate_model_step_memset(VAR, VAL, SIZE)
 
 #define MSR(REG, VAL) \
 	casemate_model_step_msr(REG, VAL)
